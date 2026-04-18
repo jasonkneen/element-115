@@ -945,7 +945,20 @@ function makeFarChunk(cx, cz) {
   geo.computeVertexNormals();
 
   const mesh = new THREE.Mesh(geo, sandM);
-  mesh.position.set(cxW, -0.5, czW);  // slight vertical offset avoids z-fighting with near chunks
+  // Drop far chunks well below the surface so near-chunk valleys (which,
+  // at 10 m sampling, dig deeper than the 50 m far grid can ever reach)
+  // don't let the coarser mesh poke through and Z-fight. 8 m covers the
+  // worst-case valley aliasing for this heightfield. The fog tint hides
+  // the seam at distance.
+  mesh.position.set(cxW, -8.0, czW);
+  // Belt-and-braces: push far-chunk fragments slightly back in depth so
+  // any residual coplanar fight at the LOD seam resolves in favour of
+  // the high-detail near tile.
+  mesh.material = mesh.material.clone();
+  mesh.material.polygonOffset = true;
+  mesh.material.polygonOffsetFactor = 1;
+  mesh.material.polygonOffsetUnits = 4;
+  mesh.renderOrder = -1;
   scene.add(mesh);
   return { mesh, geo };
 }
@@ -955,8 +968,16 @@ function updateFarChunks(px, pz) {
   const pcz = Math.floor(pz / FAR_CHUNK_SIZE);
   const wanted = new Set();
 
-  // Skip far chunks that are fully inside the high-detail ring to avoid overdraw
-  const nearWorldRadius = RENDER_RADIUS * CHUNK_SIZE * 0.7;
+  // Skip far chunks that are fully inside the high-detail ring to avoid
+  // Z-fighting between LOD tiers. The near-chunk grid is an axis-aligned
+  // square of half-extent ≈ (RENDER_RADIUS + 0.5) * CHUNK_SIZE centred on
+  // the plane's chunk — NOT a circle — so the cull test must also be
+  // axis-aligned. A far chunk is fully redundant only when ALL its corners
+  // (half-extent = FAR_CHUNK_SIZE/2) sit inside that square, with a small
+  // safety margin so the LOD seam stays near chunk boundaries.
+  const nearHalfExtent = (RENDER_RADIUS + 0.5) * CHUNK_SIZE;  // 2100
+  const farHalf        = FAR_CHUNK_SIZE / 2;                   // 900
+  const safety         = 60;                                    // 1 near-vertex spacing
 
   for (let dz = -FAR_RADIUS; dz <= FAR_RADIUS; dz++) {
     for (let dx = -FAR_RADIUS; dx <= FAR_RADIUS; dx++) {
@@ -964,10 +985,9 @@ function updateFarChunks(px, pz) {
       const cxW = (cx + 0.5) * FAR_CHUNK_SIZE;
       const czW = (cz + 0.5) * FAR_CHUNK_SIZE;
       const dxp = cxW - px, dzp = czW - pz;
-      const distToCenter = Math.sqrt(dxp * dxp + dzp * dzp);
-      // Far chunk corners extend ±FAR_CHUNK_SIZE/2 from center, so only cull
-      // if the whole tile sits well inside the inner ring
-      if (distToCenter + FAR_CHUNK_SIZE * 0.71 < nearWorldRadius) continue;
+      // Fully inside the near-chunk square (with safety margin) → skip.
+      if (Math.abs(dxp) + farHalf + safety < nearHalfExtent &&
+          Math.abs(dzp) + farHalf + safety < nearHalfExtent) continue;
 
       const key = chunkKey(cx, cz);
       wanted.add(key);
@@ -1793,6 +1813,16 @@ scene.add(jet);
       model.position.set(-center.x * s, -center.y * s + dy, -center.z * s);
       model.rotation.set(rx, ry, rz);
 
+      // Compute the model's bounds in the frame it is ABOUT to live in
+      // (jet-local), BEFORE attaching to jet. If we ran setFromObject
+      // after jet.add(model), matrixWorld would include jet.position
+      // (already moved to plane.pos by the first animate() tick by the
+      // time this async callback fires), pushing the procedural prop
+      // tens of metres off the nose and out of frame. See bug: "prop
+      // spins in telemetry but is invisible on screen".
+      model.updateMatrixWorld(true);
+      const modelBoxLocal = new THREE.Box3().setFromObject(model);
+
       jet.add(model);
 
       // Swapped-in GLB planes are visual models only — their rigs have no
@@ -1841,9 +1871,11 @@ scene.add(jet);
       // Parent directly to `jet` (NOT the model), so the prop lives in jet
       // local space without the model's 180° rotation being applied twice.
       if (props.length === 0) {
-        const modelBox = new THREE.Box3().setFromObject(model);
-        // jet.matrixWorld is identity at this moment (scene hasn't rendered
-        // its first frame), so world coords == jet-local coords here.
+        // Use the pre-attach jet-local bounds captured above. The nose of
+        // a +Z-natural model that's been rotated 180° around Y sits at
+        // modelBoxLocal.min.z in jet-local space, so we place the prop
+        // slightly FORWARD of that (more negative Z).
+        const modelBox = modelBoxLocal;
         const cx = (modelBox.min.x + modelBox.max.x) / 2;
         const cy = (modelBox.min.y + modelBox.max.y) / 2;
         const noseZ = modelBox.min.z - 1.5;          // well in front of fuselage
@@ -2836,11 +2868,17 @@ function updatePhysics(dt) {
     aoa = Math.atan2(-localVel.y, Math.max(1, forwardSpeed));
   }
 
-  // Control authority scales with airspeed (surfaces need airflow)
+  // Control authority scales with airspeed (surfaces need airflow), then
+  // FALLS OFF at high speed so a prop-plane autopilot can't over-rotate
+  // at 300+ kts. Curve: rises linearly to 1.0 between 0 and ~35 m/s
+  // (≈ 70 kts), holds through cruise, and damps toward 0.5 past 80 m/s
+  // (≈ 155 kts). This gives consistent feel across the flight envelope
+  // and prevents the 'one pitch tap → 15° attitude change' death spiral.
   const q = Math.max(0, forwardSpeed);
-  const authPitch = Math.min(1.3, q / 35);
-  const authRoll = Math.min(1.5, q / 30);
-  const authYaw = Math.min(1.0, q / 50);
+  const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012); // ≈0.5 @ 140m/s
+  const authPitch = Math.min(1.0, q / 35) * hiSpeedDamp;
+  const authRoll  = Math.min(1.3, q / 30) * hiSpeedDamp;
+  const authYaw   = Math.min(1.0, q / 50) * hiSpeedDamp;
 
   // Apply torque (pitch=X, yaw=Y, roll=Z in local frame)
   plane.angVel.x += pitchIn * 1.8 * authPitch * dt;
@@ -3563,6 +3601,79 @@ applyStyle();
   
   // Store for potential animation updates
   window._cruiseRingsAdded = true;
+})();
+
+// __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
+(function addDescendRings() {
+  const RING_COUNT = 5;
+  const RING_RADIUS = 30;
+  const TUBE_RADIUS = 1.8;
+  
+  // Start and end positions
+  const START = { x: 0, y: 400, z: -1500 };
+  const END = { x: 0, y: 60, z: -3000 };
+  
+  const yellowMat = new THREE.MeshStandardMaterial({
+    color: 0xffcc00,
+    emissive: 0xffaa00,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.9
+  });
+  
+  const ringGeo = new THREE.TorusGeometry(RING_RADIUS, TUBE_RADIUS, 16, 64);
+  
+  window.__descendRings = [];
+  
+  for (let i = 0; i < RING_COUNT; i++) {
+    const t = i / (RING_COUNT - 1); // 0 to 1
+    
+    // Linear interpolation between start and end
+    const x = START.x + t * (END.x - START.x);
+    const y = START.y + t * (END.y - START.y);
+    const z = START.z + t * (END.z - START.z);
+    
+    const ring = new THREE.Mesh(ringGeo, yellowMat.clone());
+    ring.position.set(x, y, z);
+    ring.rotation.x = Math.PI / 2; // horizontal, facing forward
+    
+    // Slight tilt to suggest descent path
+    const tiltAmount = 0.08; // subtle nose-down angle
+    ring.rotation.x = Math.PI / 2 - tiltAmount * (1 - t * 0.5);
+    
+    ring.userData.ringIndex = i;
+    ring.userData.baseY = y;
+    ring.userData.phase = i * 1.5; // animation offset
+    ring.userData.isDescendRing = true;
+    
+    scene.add(ring);
+    window.__descendRings.push(ring);
+  }
+  
+  // Add helper arrow markers pointing down at each ring
+  const arrowGeo = new THREE.ConeGeometry(4, 12, 8);
+  const arrowMat = new THREE.MeshBasicMaterial({ 
+    color: 0xffcc00, 
+    transparent: true, 
+    opacity: 0.6 
+  });
+  
+  for (let i = 0; i < RING_COUNT; i++) {
+    const t = i / (RING_COUNT - 1);
+    const x = START.x + t * (END.x - START.x);
+    const y = START.y + t * (END.y - START.y);
+    const z = START.z + t * (END.z - START.z);
+    
+    // Arrow above ring pointing down
+    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+    arrow.position.set(x, y + 45, z);
+    arrow.rotation.x = Math.PI; // point down
+    arrow.userData.isDescendArrow = true;
+    scene.add(arrow);
+    window.__descendRings.push(arrow); // track for cleanup if needed
+  }
 })();
 
 requestAnimationFrame(animate);
