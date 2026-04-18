@@ -4770,6 +4770,15 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// __popup_blocker_workaround__ — aggressive focus reclamation for overlay dismissal
+// Twitter/X and other OAuth popups steal focus; reclaim it on any user interaction
+window.addEventListener('click', () => {
+  if (running) renderer.domElement.focus();
+}, { capture: true });
+window.addEventListener('keydown', () => {
+  if (running) renderer.domElement.focus();
+}, { capture: true });
+
 // =============================================================
 //  AUTOPILOT BRIDGE
 //  Exposes window.__ap helpers used by the external autopilot
