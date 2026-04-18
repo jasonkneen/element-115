@@ -83,9 +83,9 @@
     </div>
   </div>
   <div class="panel" id="controls-help">
-    W/S PITCH &nbsp; A/D ROLL &nbsp; Q/E or ←/→ RUDDER<br>
-    SHIFT THROTTLE UP &nbsp; CTRL DOWN<br>
-    G GEAR &nbsp; B BRAKE &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET
+    <div id="ch-line1">W/S PITCH &nbsp; A/D ROLL &nbsp; Q/E or ←/→ RUDDER</div>
+    <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL DOWN</div>
+    <div id="ch-line3">G GEAR &nbsp; B BRAKE &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel" id="status-msg">READY FOR DEPARTURE</div>
   <div id="title">
@@ -1795,6 +1795,15 @@ scene.add(jet);
       plane.fixedGear = true;
       plane.gear = 1;
       plane.gearTarget = 1;
+
+      // Hide G GEAR from the on-screen legend AND from the gear indicator
+      // so the AI doesn't waste actions trying to retract fixed gear.
+      const ch3 = document.getElementById('ch-line3');
+      if (ch3) ch3.textContent = 'B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
+      const gearRow = document.getElementById('gear');
+      if (gearRow && gearRow.parentElement) {
+        gearRow.parentElement.style.display = 'none';
+      }
 
       // ——— Kill jet-specific FX on swapped-in planes ———
       // The procedural afterburner + engine contrail + heat-haze only

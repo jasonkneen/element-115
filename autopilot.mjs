@@ -317,6 +317,10 @@ function buildSystem(skills) {
   const idx = CURRICULUM.findIndex(s => s.id === skills.current_stage);
   const stage = CURRICULUM[idx] || CURRICULUM[0];
   const remaining = CURRICULUM.slice(idx).map(s => `${s.name}: ${s.goal}`);
+  const l = latest() || {};
+  const fixedGear = l.gear > 0.95 && l.on_ground && l.spd_kts < 5
+    ? true  // on ground, gear full down — likely fixed-gear config
+    : undefined;
   return `You are an autonomous AI pilot learning to fly a browser flight simulator by vision alone.
 
 HARD RULES:
@@ -326,6 +330,11 @@ HARD RULES:
   make progress on the current stage.
 - If you crash, the status line tells you so. Press R (action type "reset") to try again.
 - If you lose control, level the wings (use A/D to roll back to level), then recover altitude.
+
+PLANE CONFIG: fixed-wing prop plane with FIXED (non-retractable) landing gear.
+- Do NOT press G. The gear is permanently down. The G key is a no-op.
+- There is no "retract gear" step. Skip it entirely.
+- The on-screen control legend has already been updated to omit G GEAR.
 
 CURRENT STAGE: ${stage.name}
 GOAL: ${stage.goal}
