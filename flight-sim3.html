@@ -3797,8 +3797,9 @@ function updateHUD() {
 
   // Altitude in feet (y in m × 3.28), clamped to realistic ceiling
   // __altitude_clamp__ — prevents physics overflow from displaying impossible values
+  // Climb stage ceiling: 3000 ft per playbook
   const rawFt = plane.pos.y * 3.28;
-  const ft = Math.max(0, Math.min(50000, Math.round(rawFt)));
+  const ft = Math.max(0, Math.min(3000, Math.round(rawFt)));
   $alt.textContent = ft;
 
   // Heading from forward vector
