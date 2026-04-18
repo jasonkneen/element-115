@@ -88,6 +88,14 @@
     <div id="ch-line3">G GEAR &nbsp; B BRAKE &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel" id="status-msg">READY FOR DEPARTURE</div>
+  <!-- Dev overlay: internal state at a glance so we can diagnose from any
+       screenshot. Updated each frame by updateHUD(). -->
+  <div id="dev-overlay" style="position:fixed;top:4px;right:50%;transform:translateX(50%);
+        background:rgba(0,0,0,0.55);color:#9ff09a;border:1px solid #2a4060;
+        font:10px/1.3 ui-monospace,Menlo,monospace;padding:3px 8px;border-radius:4px;
+        letter-spacing:0.06em;z-index:50;pointer-events:none;">
+    <span id="dev-planeinfo">—</span>
+  </div>
   <div id="title">
     <h1>CANYON AIRSTRIP</h1>
     <p>TAKEOFF · NAVIGATE · REGENERATIVE TERRAIN</p>
@@ -1826,49 +1834,55 @@ scene.add(jet);
 
       // ——— Procedural prop disc fallback ———
       // Most Sketchfab GLBs (incl. Disney Dusty) bake the prop into one
-      // unnamed mesh, so name detection finds nothing. Spawn a visible
-      // spinning disc at the nose so there's always propeller feedback.
+      // unnamed mesh so there's nothing named 'prop' to rotate. We spawn
+      // our own high-contrast spinning prop in front of the nose so that:
+      //   a) the AI sees it spinning in screenshots, and
+      //   b) the human streamer can see visual feedback on throttle.
+      // Parent directly to `jet` (NOT the model), so the prop lives in jet
+      // local space without the model's 180° rotation being applied twice.
       if (props.length === 0) {
         const modelBox = new THREE.Box3().setFromObject(model);
-        // Model is a child of jet; scene/jet haven't rendered yet so
-        // jet.matrixWorld == identity. world coords == jet-local coords.
+        // jet.matrixWorld is identity at this moment (scene hasn't rendered
+        // its first frame), so world coords == jet-local coords here.
         const cx = (modelBox.min.x + modelBox.max.x) / 2;
         const cy = (modelBox.min.y + modelBox.max.y) / 2;
-        const noseZ = modelBox.min.z - 0.8;     // push well in front of fuselage
+        const noseZ = modelBox.min.z - 1.5;          // well in front of fuselage
         const span = modelBox.max.x - modelBox.min.x;
-        const discSize = Math.max(1.0, Math.min(3.0, span * 0.22));
+        const discSize = Math.max(1.5, Math.min(4.0, span * 0.30));
 
         const propPivot = new THREE.Group();
+        propPivot.name = 'ap_procedural_prop';
         propPivot.position.set(cx, cy, noseZ);
 
-        // Two crossed blade-shaped boxes — bright so they're unmistakable
-        const bladeGeo = new THREE.BoxGeometry(discSize * 2.4, 0.12, 0.18);
+        // Two crossed blades — dark with a strong red emissive so they
+        // remain visible against any terrain colour and pop on camera.
+        const bladeGeo = new THREE.BoxGeometry(discSize * 2.6, 0.18, 0.22);
         const bladeMat = new THREE.MeshStandardMaterial({
-          color: 0x111111, metalness: 0.4, roughness: 0.5,
-          emissive: 0x000000
+          color: 0x1a1a1a, emissive: 0xff3322, emissiveIntensity: 0.35,
+          metalness: 0.4, roughness: 0.5
         });
         const blade1 = new THREE.Mesh(bladeGeo, bladeMat);
         const blade2 = new THREE.Mesh(bladeGeo, bladeMat);
         blade2.rotation.z = Math.PI / 2;
         propPivot.add(blade1); propPivot.add(blade2);
 
-        // Motion-blur translucent disc (fades in at higher throttle)
-        const discGeo = new THREE.CircleGeometry(discSize * 1.1, 32);
+        // Motion-blur translucent disc (fades with throttle)
+        const discGeo = new THREE.CircleGeometry(discSize * 1.2, 32);
         const discMat = new THREE.MeshBasicMaterial({
-          color: 0xdddddd, transparent: true, opacity: 0.15,
+          color: 0xffffff, transparent: true, opacity: 0.18,
           side: THREE.DoubleSide, depthWrite: false,
         });
         const disc = new THREE.Mesh(discGeo, discMat);
         propPivot.add(disc);
 
         // White spinner cone pointing forward (-Z)
-        const hubGeo = new THREE.ConeGeometry(discSize * 0.22, discSize * 0.55, 12);
+        const hubGeo = new THREE.ConeGeometry(discSize * 0.25, discSize * 0.65, 12);
         const hubMat = new THREE.MeshStandardMaterial({
           color: 0xffffff, metalness: 0.3, roughness: 0.4
         });
         const hub = new THREE.Mesh(hubGeo, hubMat);
-        hub.rotation.x = -Math.PI / 2;        // cone axis -> world -Z
-        hub.position.z = -discSize * 0.2;
+        hub.rotation.x = -Math.PI / 2;               // cone axis -> -Z
+        hub.position.z = -discSize * 0.25;
         propPivot.add(hub);
 
         jet.add(propPivot);
@@ -1876,9 +1890,9 @@ scene.add(jet);
         propPivot.userData.__isProceduralProp = true;
         propPivot.userData.__disc = disc;
         props.push(propPivot);
-        console.log(`[plane-swap] procedural prop added at nose (x=${cx.toFixed(1)} y=${cy.toFixed(1)} z=${noseZ.toFixed(1)}) size=${discSize.toFixed(2)}`);
+        console.log(`[plane-swap] procedural prop @ (x=${cx.toFixed(1)} y=${cy.toFixed(1)} z=${noseZ.toFixed(1)}) discSize=${discSize.toFixed(2)}`);
       } else {
-        console.log(`[plane-swap] found ${props.length} named prop mesh(es): ${props.map(p => p.name).join(', ')}`);
+        console.log(`[plane-swap] ${props.length} named prop mesh(es): ${props.map(p => p.name).join(', ')}`);
       }
 
       plane.props = props;
@@ -3108,6 +3122,7 @@ const $gforce = document.getElementById('gforce');
 const $gear = document.getElementById('gear');
 const _aiBall = document.getElementById('ai-ball');
 const _aiRollText = document.getElementById('ai-roll-text');
+const _devInfo = document.getElementById('dev-planeinfo');
 const $throttleVal = document.getElementById('throttle-val');
 const $throttleBar = document.getElementById('throttle-bar');
 const $abStatus = document.getElementById('ab-status');
@@ -3175,6 +3190,18 @@ function updateHUD() {
     $gear.textContent = 'UP'; $gear.className = '';
   } else {
     $gear.textContent = 'MOVING'; $gear.className = 'warn';
+  }
+
+  // ——— Dev overlay: show prop count, fixed-gear, world-rev, throttle ———
+  // This makes it trivial to see whether the prop fallback fired and
+  // whether the plane config flags are set as expected.
+  if (typeof _devInfo !== 'undefined' && _devInfo) {
+    const propCnt = (plane.props && plane.props.length) || 0;
+    _devInfo.textContent =
+      `PROP ${propCnt}×  ·  FIXED-GEAR ${plane.fixedGear ? 'Y' : 'N'}  ·  ` +
+      `THR ${Math.round(plane.throttle * 100)}%  ·  ` +
+      `SPD ${(plane.vel.length()*1.94).toFixed(0)}kt  ·  ` +
+      `POS ${plane.pos.x.toFixed(0)},${plane.pos.y.toFixed(0)},${plane.pos.z.toFixed(0)}`;
   }
 
   // ——— Attitude indicator (artificial horizon) ———
