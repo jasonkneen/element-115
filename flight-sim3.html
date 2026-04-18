@@ -115,7 +115,9 @@
     <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
     <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
-      <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
+      <div>TIME <span id="tod-ind" class="ok">MORNING</span></div>
+      <button type="button" class="hud-action" id="landing-btn" style="margin-top:3px;">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
+      <button type="button" class="hud-action" id="style-btn" style="margin-top:3px;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
       <button type="button" class="hud-action" id="biome-btn" style="margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
       <button type="button" class="hud-action" id="audio-btn" style="margin-top:3px;">SOUND <span id="audio-ind" class="warn">OFF</span></button>
     </div>
@@ -123,7 +125,7 @@
   <div class="panel" id="controls-help">
     <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
     <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL THROTTLE DOWN &nbsp; B BRAKE</div>
-    <div id="ch-line3">G GEAR &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
+    <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
@@ -136,12 +138,13 @@
   </div>
   <div id="title">
     <h1>CANYON AIRSTRIP</h1>
-    <p>FREE FLIGHT · TRAINING GATES · REGENERATIVE TERRAIN</p>
+    <p>FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
       <div>2 · HOLD SHIFT TO BUILD SPEED</div>
       <div>3 · PRESS S TO ROTATE AND CLIMB</div>
-      <div>4 · PRESS R ANY TIME TO RESET</div>
+      <div>4 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
+      <div>5 · PRESS R ANY TIME TO RESET</div>
     </div>
     <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
     <div class="cta">&gt; CLICK OR PRESS ANY KEY TO FLY &lt;</div>
@@ -149,6 +152,13 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
 <script>
 (() => {
 'use strict';
@@ -239,6 +249,11 @@ const BIOMES = {
 };
 const currentBiome = { name: 'grassland', ...BIOMES.grassland };
 const smoothstep = t => t * t * (3 - 2 * t);
+const clamp01 = t => Math.max(0, Math.min(1, t));
+const smoothstepRange = (edge0, edge1, x) => {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return smoothstep(t);
+};
 function vnoise(x, y) {
   const ix = Math.floor(x), iy = Math.floor(y);
   const fx = x - ix, fy = y - iy;
@@ -300,8 +315,15 @@ const SKY_TOP = new THREE.Color(currentBiome.skyTop);
 const SKY_BOT = new THREE.Color(currentBiome.skyBottom);
 const FOG_COLOR = currentBiome.fogColor;
 const SUN_DIR = new THREE.Vector3(0.58, 0.76, 0.28).normalize();
-const ATMOS_REALISTIC = Object.freeze({ fogNear: 420, fogFar: 7200, hazeStrength: 0.72, hazeExponent: 1.65 });
-const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 520, fogFar: 6200, hazeStrength: 0.94, hazeExponent: 1.35 });
+const sunDir = SUN_DIR.clone();
+const ATMOS_REALISTIC = Object.freeze({ fogNear: 360, fogFar: 6200, hazeStrength: 0.92, hazeExponent: 1.55 });
+const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 420, fogFar: 5400, hazeStrength: 1.18, hazeExponent: 1.22 });
+const timeOfDay = {
+  phase: 0.12,
+  cycleSeconds: 420,
+  daylight: 1,
+  label: 'MORNING',
+};
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG_COLOR);
@@ -444,6 +466,56 @@ renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
 
+const postFX = {
+  enabled: false,
+  composer: null,
+  bokehPass: null,
+};
+
+function initPostFX() {
+  if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function' || typeof THREE.BokehPass !== 'function') return;
+  try {
+    postFX.composer = new THREE.EffectComposer(renderer);
+    const renderPass = new THREE.RenderPass(scene, camera);
+    postFX.composer.addPass(renderPass);
+    postFX.bokehPass = new THREE.BokehPass(scene, camera, {
+      focus: 18.0,
+      aperture: 0.00008,
+      maxblur: 0.0035,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+    postFX.composer.addPass(postFX.bokehPass);
+    postFX.enabled = true;
+  } catch (err) {
+    console.warn('[postfx] dof disabled', err && err.message ? err.message : err);
+    postFX.enabled = false;
+  }
+}
+
+function updateDepthOfField() {
+  if (!postFX.enabled || !postFX.bokehPass) return;
+  const focusTarget = camera.userData.focusTarget || plane.pos;
+  const focusDistance = Math.max(6, camera.position.distanceTo(focusTarget));
+  const agl = plane && plane.pos ? Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z)) : 0;
+  const groundFactor = plane && plane.onGround ? 1 : 0;
+  const nightFactor = timeOfDay ? (1 - timeOfDay.daylight) : 0;
+  const focus = focusDistance;
+  const aperture = 0.00003 + groundFactor * 0.000035 + nightFactor * 0.000015 + Math.min(agl / 900, 1) * 0.00001;
+  const maxblur = 0.0015 + groundFactor * 0.002 + nightFactor * 0.0012;
+  const uniforms = postFX.bokehPass.materialBokeh.uniforms;
+  uniforms.focus.value += (focus - uniforms.focus.value) * 0.12;
+  uniforms.aperture.value += (aperture - uniforms.aperture.value) * 0.12;
+  uniforms.maxblur.value += (maxblur - uniforms.maxblur.value) * 0.12;
+}
+
+function renderScene() {
+  if (postFX.enabled && postFX.composer) postFX.composer.render();
+  else renderer.render(scene, camera);
+}
+
+initPostFX();
+
 // Sky dome
 const skyMat = new THREE.ShaderMaterial({
   uniforms: {
@@ -478,7 +550,7 @@ scene.add(sky);
 const sunTarget = new THREE.Object3D();
 scene.add(sunTarget);
 const sun = new THREE.DirectionalLight(0xfff1d4, 1.65);
-sun.position.copy(SUN_DIR).multiplyScalar(650);
+sun.position.copy(sunDir).multiplyScalar(650);
 sun.target = sunTarget;
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -525,6 +597,8 @@ const SAND_FS = `
   uniform vec3 fogColor;
   uniform float fogNear;
   uniform float fogFar;
+  uniform float hazeStrength;
+  uniform float hazeExponent;
 
   varying vec3 vColor;
   varying vec3 vWorldPos;
@@ -571,7 +645,9 @@ const SAND_FS = `
 
     // ---- Lighting ----
     vec3 L = normalize(sunDir);
-    float NdotL = max(dot(perturbed, L), 0.0);
+    float rawNdotL = dot(perturbed, L);
+    float NdotL = max(rawNdotL, 0.0);
+    float sunFacing = smoothstep(-0.18, 0.78, rawNdotL);
 
     // Hemisphere fill (sky from above, warm bounce from ground)
     float hemi = perturbed.y * 0.5 + 0.5;
@@ -601,11 +677,15 @@ const SAND_FS = `
     vec3 rimCol = mix(vColor, fogColor, 0.6) * rim;
 
     vec3 color = diffuse + spec * sunColor + sparkle + backScatter + rimCol;
+    color *= mix(vec3(0.72, 0.78, 0.88), vec3(1.03, 1.0, 0.97), sunFacing);
 
-    // ---- Linear fog ----
+    // ---- Distance haze / aerial perspective ----
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
-    color = mix(color, fogColor, fogF);
+    float horizon = pow(clamp(1.0 - abs(V.y), 0.0, 1.0), hazeExponent);
+    float haze = clamp(fogF * (0.86 + horizon * hazeStrength), 0.0, 1.0);
+    vec3 hazeColor = mix(fogColor, skyTint, 0.38 + horizon * 0.22);
+    color = mix(color, hazeColor, haze);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -613,14 +693,16 @@ const SAND_FS = `
 
 const sandMat = new THREE.ShaderMaterial({
   uniforms: {
-    sunDir:        { value: sun.position.clone().normalize() },
+    sunDir:        { value: SUN_DIR.clone() },
     sunColor:      { value: new THREE.Color(0xfff1d4) },
     ambientColor:  { value: new THREE.Color(0x2a2520) },
     skyTint:       { value: new THREE.Color(0x88aacc) },
     groundTint:    { value: new THREE.Color(0x6a4830) },
     fogColor:      { value: new THREE.Color(0xe8b888) },
-    fogNear:       { value: 600 },
-    fogFar:        { value: 8500 },
+    fogNear:       { value: ATMOS_REALISTIC.fogNear },
+    fogFar:        { value: ATMOS_REALISTIC.fogFar },
+    hazeStrength:  { value: ATMOS_REALISTIC.hazeStrength },
+    hazeExponent:  { value: ATMOS_REALISTIC.hazeExponent },
   },
   vertexShader: SAND_VS,
   fragmentShader: SAND_FS,
@@ -637,6 +719,8 @@ const LOWPOLY_FS = `
   uniform vec3 fogColor;
   uniform float fogNear;
   uniform float fogFar;
+  uniform float hazeStrength;
+  uniform float hazeExponent;
 
   varying vec3 vColor;
   varying vec3 vWorldPos;
@@ -652,31 +736,36 @@ const LOWPOLY_FS = `
 
     vec3 L = normalize(sunDir);
     float NdotL = dot(N, L);
+    vec3 V = normalize(cameraPosition - vWorldPos);
 
-    // Cel-shaded: 4 hard light bands
+    // Cel-shaded: 4 softer light bands so low-poly mode feels less harsh
     float band;
-    if (NdotL > 0.7)       band = 1.10;
-    else if (NdotL > 0.35) band = 0.85;
-    else if (NdotL > 0.0)  band = 0.62;
-    else                   band = 0.45;
+    if (NdotL > 0.72)       band = 1.00;
+    else if (NdotL > 0.38) band = 0.86;
+    else if (NdotL > 0.02)  band = 0.74;
+    else                   band = 0.62;
 
-    // Posterise color into 8 levels per channel — punchy palette
-    vec3 c = vColor * 1.10;
-    c = floor(c * 8.0) / 8.0;
-    // Boost saturation a bit
+    // Posterise color, but with more steps and a gentler boost
+    vec3 c = vColor * 1.04;
+    c = floor(c * 12.0) / 12.0;
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
-    c = mix(vec3(lum), c, 1.25);
+    c = mix(vec3(lum), c, 1.08);
 
     // Subtle hemisphere fill
     float hemi = N.y * 0.5 + 0.5;
     vec3 hemiCol = mix(vec3(0.55, 0.40, 0.30), vec3(0.65, 0.78, 0.92), hemi);
 
-    vec3 color = c * (band * sunColor + hemiCol * 0.35 + ambientColor);
+    vec3 color = c * (band * sunColor + hemiCol * 0.30 + ambientColor);
+    float shadowMix = smoothstep(-0.12, 0.45, NdotL);
+    color *= mix(vec3(0.82, 0.85, 0.92), vec3(0.98, 0.97, 0.95), shadowMix);
 
-    // Lighter fog so the stylised palette stays readable
+    // Lighter fog + horizon haze so distant terrain sits deeper in the scene
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
-    color = mix(color, fogColor, fogF * 0.85);
+    float horizon = pow(clamp(1.0 - abs(V.y), 0.0, 1.0), hazeExponent);
+    float haze = clamp(fogF * (0.82 + horizon * hazeStrength), 0.0, 1.0);
+    vec3 hazeColor = mix(fogColor, hemiCol, 0.25 + horizon * 0.22);
+    color = mix(color, hazeColor, haze);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -684,12 +773,14 @@ const LOWPOLY_FS = `
 
 const sandMatLowPoly = new THREE.ShaderMaterial({
   uniforms: {
-    sunDir:       { value: sun.position.clone().normalize() },
+    sunDir:       { value: SUN_DIR.clone() },
     sunColor:     { value: new THREE.Color(0xfff1d4) },
     ambientColor: { value: new THREE.Color(0x3a3328) },
     fogColor:     { value: new THREE.Color(0xe8b888) },
-    fogNear:      { value: 900 },
-    fogFar:       { value: 9000 },
+    fogNear:      { value: ATMOS_LOWPOLY.fogNear },
+    fogFar:       { value: ATMOS_LOWPOLY.fogFar },
+    hazeStrength: { value: ATMOS_LOWPOLY.hazeStrength },
+    hazeExponent: { value: ATMOS_LOWPOLY.hazeExponent },
   },
   vertexShader: SAND_VS,
   fragmentShader: LOWPOLY_FS,
@@ -1201,6 +1292,39 @@ function updateFarChunks(px, pz) {
 // =============================================================
 //  RUNWAY + TOWER
 // =============================================================
+const airfieldNightFx = {
+  edgeMeshes: [],
+  approachMeshes: [],
+  edgeMaterial: null,
+  approachMaterial: null,
+  beacon: null,
+  beaconMaterial: null,
+};
+const destructibleTargets = [];
+
+function registerDestructible(object, opts = {}) {
+  const target = {
+    object,
+    radius: opts.radius || 3,
+    health: opts.health || 1,
+    alive: true,
+    kind: opts.kind || 'prop',
+  };
+  destructibleTargets.push(target);
+  return target;
+}
+
+function applyShadowFlags(root, { cast = true, receive = true } = {}) {
+  root.traverse(obj => {
+    if (!obj.isMesh) return;
+    const material = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+    const isBasic = material && material.type === 'MeshBasicMaterial';
+    const isMostlyTransparent = material && material.transparent && material.opacity < 0.95;
+    obj.receiveShadow = receive && !isBasic;
+    obj.castShadow = cast && !isBasic && !isMostlyTransparent;
+  });
+}
+
 function buildAirfield() {
   const g = new THREE.Group();
 
@@ -1248,6 +1372,17 @@ function buildAirfield() {
   apron.position.set(26, 0.015, 130);
   g.add(apron);
 
+  const shadowCatcher = new THREE.Mesh(
+    new THREE.PlaneGeometry(520, 520),
+    new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.22 })
+  );
+  shadowCatcher.rotation.x = -Math.PI / 2;
+  shadowCatcher.position.set(0, 0.012, 20);
+  shadowCatcher.receiveShadow = true;
+  shadowCatcher.material.depthWrite = false;
+  shadowCatcher.renderOrder = 1;
+  g.add(shadowCatcher);
+
   // Tower
   const towerGrp = new THREE.Group();
   towerGrp.position.set(38, 0, 70);
@@ -1290,6 +1425,7 @@ function buildAirfield() {
     const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMat);
     c.position.set(30 + (i % 2) * 8, 1.5, 155 - Math.floor(i / 2) * 6);
     g.add(c);
+    registerDestructible(c, { radius: 3.7, kind: 'crate' });
   }
 
   // Hangar — semi-cylinder for visibility from altitude
@@ -1316,6 +1452,26 @@ function buildAirfield() {
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 4, 16), tankMat);
     tank.position.set(-30 + i * 6, 2, 100);
     g.add(tank);
+    registerDestructible(tank, { radius: 2.8, kind: 'fuel' });
+  }
+
+  // Strafe-range explosive drums along the runway edge so the player can shoot things immediately.
+  const drumMat = new THREE.MeshStandardMaterial({
+    color: 0xcc4422,
+    emissive: 0x661100,
+    emissiveIntensity: 0.25,
+    roughness: 0.5,
+    metalness: 0.2,
+  });
+  const drumOffsets = [
+    { x: -18, z: 40 }, { x: 18, z: 20 },
+    { x: -18, z: -60 }, { x: 18, z: -120 },
+  ];
+  for (const off of drumOffsets) {
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2.1, 12), drumMat);
+    drum.position.set(off.x, 1.05, off.z);
+    g.add(drum);
+    registerDestructible(drum, { radius: 1.4, kind: 'barrel' });
   }
 
   // Radio mast
@@ -1326,39 +1482,96 @@ function buildAirfield() {
   // Red beacon at mast top
   const beacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.5, 8, 6),
-    new THREE.MeshBasicMaterial({ color: 0xff2200 })
+    new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.2, toneMapped: false })
   );
   beacon.position.set(-40, 30.3, 60);
   g.add(beacon);
+  airfieldNightFx.beacon = beacon;
+  airfieldNightFx.beaconMaterial = beacon.material;
 
   // Runway edge lights
-  const lightMat = new THREE.MeshBasicMaterial({ color: 0xffe499 });
+  const lightMat = new THREE.MeshBasicMaterial({
+    color: 0xffe499,
+    transparent: true,
+    opacity: 0.18,
+    toneMapped: false,
+  });
+  airfieldNightFx.edgeMaterial = lightMat;
   for (let z = -150; z <= 150; z += 20) {
     const lw = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), lightMat);
     lw.position.set(-15, 0.3, z);
+    lw.userData.baseScale = 1;
     g.add(lw);
+    airfieldNightFx.edgeMeshes.push(lw);
     const le = lw.clone();
     le.position.x = 15;
+    le.userData.baseScale = 1;
     g.add(le);
+    airfieldNightFx.edgeMeshes.push(le);
   }
 
   // Approach lights — extending past runway ends, helps spot field from air
-  const approachMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const approachMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.16,
+    toneMapped: false,
+  });
+  airfieldNightFx.approachMaterial = approachMat;
   for (let i = 1; i <= 8; i++) {
     const z1 = -160 - i * 12;
     const z2 = 160 + i * 12;
     const w = 1 + i * 0.4;
     const a1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.5), approachMat);
     a1.position.set(0, 0.05, z1);
+    a1.userData.baseScale = 1;
+    a1.userData.sequence = i;
     g.add(a1);
+    airfieldNightFx.approachMeshes.push(a1);
     const a2 = a1.clone();
     a2.position.z = z2;
+    a2.userData.baseScale = 1;
+    a2.userData.sequence = i;
     g.add(a2);
+    airfieldNightFx.approachMeshes.push(a2);
   }
+
+  runway.receiveShadow = true;
+  runway.castShadow = false;
+  apron.receiveShadow = true;
+  apron.castShadow = false;
+  applyShadowFlags(g);
+  shadowCatcher.receiveShadow = true;
+  shadowCatcher.castShadow = false;
 
   scene.add(g);
 }
 buildAirfield();
+
+function updateRunwayLights(nightFactor, twilight) {
+  const nightGlow = Math.max(0, nightFactor * 1.15 + twilight * 0.22);
+  const pulseT = performance.now() * 0.004;
+  const pulse = 0.9 + Math.sin(pulseT) * 0.08;
+  if (airfieldNightFx.edgeMaterial) {
+    airfieldNightFx.edgeMaterial.opacity = 0.04 + nightGlow * 0.92;
+  }
+  if (airfieldNightFx.approachMaterial) {
+    airfieldNightFx.approachMaterial.opacity = 0.03 + nightGlow * 0.95;
+  }
+  for (const mesh of airfieldNightFx.edgeMeshes) {
+    const s = 0.72 + nightGlow * 1.05 * pulse;
+    mesh.scale.setScalar(s);
+  }
+  for (const mesh of airfieldNightFx.approachMeshes) {
+    const seqPulse = 0.82 + Math.max(0, Math.sin(pulseT * 1.9 - (mesh.userData.sequence || 0) * 0.72)) * 0.48;
+    const sx = 1 + nightGlow * 0.42 * seqPulse;
+    mesh.scale.set(sx, 1, 1 + nightGlow * 0.24 * seqPulse);
+  }
+  if (airfieldNightFx.beaconMaterial) {
+    const blink = Math.sin(performance.now() * 0.009) > 0.35 ? 1 : 0.25;
+    airfieldNightFx.beaconMaterial.opacity = 0.08 + nightGlow * 0.82 * blink;
+  }
+}
 
 // =============================================================
 //  FIGHTER JET
@@ -1400,6 +1613,21 @@ function makeJet() {
   nose.rotation.x = -Math.PI / 2;
   nose.position.z = -6.6;
   root.add(nose);
+
+  // Nose gun ports / muzzle anchors
+  function addGunBarrel(x) {
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.04, 0.38, 8),
+      matDark
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(x, -0.08, -7.05);
+    root.add(barrel);
+  }
+  addGunBarrel(-0.32);
+  addGunBarrel(0.32);
+  root.userData.gunL = new THREE.Vector3(-0.32, -0.08, -7.15);
+  root.userData.gunR = new THREE.Vector3(0.32, -0.08, -7.15);
 
   // Engine nozzle
   const nozzle = new THREE.Mesh(
@@ -1525,7 +1753,7 @@ function makeJet() {
   addIntake(1.0);
 
   // --- Landing gear ---
-  function makeGear(isNose) {
+  function makeGear(isNose, side = 0) {
     const grp = new THREE.Group();
     const strutH = isNose ? 1.3 : 1.6;
     const wheelR = isNose ? 0.22 : 0.3;
@@ -1542,21 +1770,26 @@ function makeJet() {
     wheel.rotation.z = Math.PI / 2;
     wheel.position.y = -strutH;
     grp.add(wheel);
+    grp.userData.strut = strut;
+    grp.userData.wheel = wheel;
+    grp.userData.side = side;
+    grp.userData.baseStrutY = strut.position.y;
+    grp.userData.baseWheelY = wheel.position.y;
     return grp;
   }
 
   // Nose gear — retracts forward/up
-  const gearNose = makeGear(true);
+  const gearNose = makeGear(true, 0);
   gearNose.position.set(0, -0.6, -4.2);
   root.add(gearNose);
 
   // Left main gear — retracts inward/up
-  const gearL = makeGear(false);
+  const gearL = makeGear(false, -1);
   gearL.position.set(-1.8, -0.4, 1.2);
   root.add(gearL);
 
   // Right main gear
-  const gearR = makeGear(false);
+  const gearR = makeGear(false, 1);
   gearR.position.set(1.8, -0.4, 1.2);
   root.add(gearR);
 
@@ -1599,6 +1832,24 @@ function makeJet() {
   const visorMat = new THREE.MeshStandardMaterial({
     color: 0x0a0f18, roughness: 0.1, metalness: 1.0
   });
+  const panelMat = new THREE.MeshStandardMaterial({
+    color: 0x0a0a0a,
+    roughness: 0.7,
+    emissive: 0x07131b,
+    emissiveIntensity: 0.0,
+  });
+  const gaugeGlowMat = new THREE.MeshBasicMaterial({
+    color: 0x66ffd1,
+    toneMapped: false,
+    transparent: true,
+    opacity: 0.0,
+  });
+  const warnGlowMat = new THREE.MeshBasicMaterial({
+    color: 0xff9966,
+    toneMapped: false,
+    transparent: true,
+    opacity: 0.0,
+  });
   // Ejection seat
   const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.55), seatMat);
   seat.position.set(0, 0.1, -1.5);
@@ -1632,10 +1883,29 @@ function makeJet() {
   // Instrument panel
   const panel = new THREE.Mesh(
     new THREE.BoxGeometry(0.6, 0.25, 0.15),
-    new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.7 })
+    panelMat
   );
   panel.position.set(0, 0.6, -2.4);
   root.add(panel);
+  const cockpitGlowParts = [hudGlass];
+  const leftDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.01), gaugeGlowMat);
+  leftDisplay.position.set(-0.14, 0.63, -2.49);
+  root.add(leftDisplay);
+  cockpitGlowParts.push(leftDisplay);
+  const centerDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.09, 0.01), gaugeGlowMat.clone());
+  centerDisplay.position.set(0, 0.61, -2.49);
+  root.add(centerDisplay);
+  cockpitGlowParts.push(centerDisplay);
+  const rightDisplay = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.01), gaugeGlowMat.clone());
+  rightDisplay.position.set(0.14, 0.64, -2.49);
+  root.add(rightDisplay);
+  cockpitGlowParts.push(rightDisplay);
+  for (let i = 0; i < 3; i++) {
+    const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.018, 10), (i === 1 ? warnGlowMat.clone() : gaugeGlowMat.clone()));
+    lamp.position.set(-0.1 + i * 0.1, 0.54, -2.49);
+    root.add(lamp);
+    cockpitGlowParts.push(lamp);
+  }
 
   // ============ PITOT TUBE on nose tip ============
   const pitot = new THREE.Mesh(
@@ -1816,6 +2086,74 @@ function makeJet() {
   strobe.position.set(0, 2.3, 6.6);
   root.add(strobe);
 
+  // Retractable landing lights on the nose — twin beams angled slightly down
+  function makeLandingLightRig(xSign) {
+    const housing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.1, 0.18, 10),
+      matDark
+    );
+    housing.rotation.x = Math.PI / 2;
+    housing.position.set(xSign * 0.68, -0.12, -6.1);
+    root.add(housing);
+
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 10, 8),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff3d8,
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.0,
+      })
+    );
+    glow.position.set(xSign * 0.68, -0.12, -6.28);
+    root.add(glow);
+
+    const beam = new THREE.Mesh(
+      new THREE.ConeGeometry(1.7, 24, 16, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xffefc8,
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      })
+    );
+    beam.position.set(xSign * 0.68, -0.65, -17.5);
+    beam.rotation.x = -Math.PI / 2;
+    root.add(beam);
+
+    const splash = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 30),
+      new THREE.MeshBasicMaterial({
+        color: 0xffefc8,
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      })
+    );
+    splash.rotation.x = -Math.PI / 2;
+    splash.renderOrder = 4;
+    scene.add(splash);
+
+    const light = new THREE.SpotLight(0xfff4db, 0.0, 260, Math.PI / 8, 0.44, 1.15);
+    light.position.set(xSign * 0.68, -0.12, -6.15);
+    light.castShadow = false;
+    const target = new THREE.Object3D();
+    target.position.set(xSign * 0.22, -3.0, -120);
+    root.add(light);
+    root.add(target);
+    light.target = target;
+
+    return { housing, glow, beam, splash, light, target, side: xSign };
+  }
+  const landingLeft = makeLandingLightRig(-1);
+  const landingRight = makeLandingLightRig(1);
+
   // Canard foreplanes — small winglets ahead of the main wing
   function makeCanard() {
     const g = new THREE.BoxGeometry(1.6, 0.1, 0.9, 2, 1, 1);
@@ -1901,6 +2239,8 @@ function makeJet() {
   root.userData.navRed = navRed;
   root.userData.navGrn = navGrn;
   root.userData.bellyLight = bellyLight;
+  root.userData.landingRigs = [landingLeft, landingRight];
+  root.userData.cockpitGlow = { panelMat, hudGlass, visorMat, canopyMat: matCanopy, parts: cockpitGlowParts };
   // Local-space anchor points for particle emitters.
   // engineSmokeL/R — aerobatic smoke, each side of the engine cowling
   //   just behind the prop spinner (forward-left / forward-right). These
@@ -1919,6 +2259,7 @@ function makeJet() {
 }
 
 const jet = makeJet();
+applyShadowFlags(jet);
 scene.add(jet);
 
 // =============================================================
@@ -2026,6 +2367,7 @@ scene.add(jet);
       model.updateMatrixWorld(true);
       const modelBoxLocal = new THREE.Box3().setFromObject(model);
 
+      applyShadowFlags(model);
       jet.add(model);
 
       // Swapped-in GLB planes are visual models only — their rigs have no
@@ -2040,7 +2382,7 @@ scene.add(jet);
       // Hide G GEAR from the on-screen legend AND from the gear indicator
       // so the AI doesn't waste actions trying to retract fixed gear.
       const ch3 = document.getElementById('ch-line3');
-      if (ch3) ch3.textContent = 'B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
+      if (ch3) ch3.textContent = 'L LIGHTS · B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
       const gearRow = document.getElementById('gear');
       if (gearRow && gearRow.parentElement) {
         gearRow.parentElement.style.display = 'none';
@@ -2379,6 +2721,188 @@ scene.add(jet);
         hud.style.opacity = '0';
         setTimeout(() => hud.remove(), 1000);
       }, 2500);
+
+      // ── In-game tweak HUD + server-side persistence ──────────
+      // Sliders live-edit model.scale/rotation/position. "Save"
+      // PUTs to /api/tweaks/<file> on localhost (server rejects
+      // remote writers). On deploy, the static plane-tweaks.json
+      // is fetched on boot and applied when no URL hash overrides.
+      const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+      const hadUrlTweaks = ['s','rx','ry','rz','dx','dy','dz']
+        .some(k => params.has(k));
+
+      const applyTweak = (t) => {
+        if (!t || typeof t !== 'object') return;
+        if (Number.isFinite(t.s) && t.s > 0) model.scale.setScalar(t.s);
+        if ('rx' in t || 'ry' in t || 'rz' in t) {
+          model.rotation.set(
+            (Number(t.rx) || 0) * Math.PI / 180,
+            (Number(t.ry) || 180) * Math.PI / 180,
+            (Number(t.rz) || 0) * Math.PI / 180
+          );
+        }
+        if (Number.isFinite(t.px)) model.position.x = t.px;
+        if (Number.isFinite(t.py)) model.position.y = t.py;
+        if (Number.isFinite(t.pz)) model.position.z = t.pz;
+      };
+
+      const snapshotTweak = () => ({
+        s:  +model.scale.x.toFixed(4),
+        rx: +((model.rotation.x * 180 / Math.PI) % 360).toFixed(2),
+        ry: +((model.rotation.y * 180 / Math.PI) % 360).toFixed(2),
+        rz: +((model.rotation.z * 180 / Math.PI) % 360).toFixed(2),
+        px: +model.position.x.toFixed(3),
+        py: +model.position.y.toFixed(3),
+        pz: +model.position.z.toFixed(3),
+      });
+
+      // Fetch saved tweak (if any); apply only when URL hash is clean
+      fetch('/api/tweaks')
+        .then(r => r.ok ? r.json() : {})
+        .then(all => {
+          const saved = all && all[planeFile];
+          if (saved && !hadUrlTweaks) applyTweak(saved);
+        })
+        .catch(() => {})
+        .finally(() => buildTweakHUD());
+
+      function buildTweakHUD() {
+        const panel = document.createElement('div');
+        panel.id = 'tweak-hud';
+        panel.style.cssText = [
+          'position:fixed','bottom:80px','right:12px','z-index:9998','width:252px',
+          'background:rgba(8,14,25,0.88)','color:#cfe3ff',
+          'border:1px solid #1f2a44','border-radius:8px','padding:10px 12px',
+          'font:11px/1.4 ui-monospace, Menlo, monospace','backdrop-filter:blur(6px)',
+        ].join(';');
+
+        // Swallow keystrokes so typing in the inputs doesn't pilot the jet
+        for (const ev of ['keydown','keyup','keypress']) {
+          panel.addEventListener(ev, e => e.stopPropagation());
+        }
+
+        const title = document.createElement('div');
+        title.style.cssText = 'color:#4ecbff;letter-spacing:0.2em;font-weight:600;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;';
+        const titleText = document.createElement('span');
+        titleText.textContent = '◈ TWEAK';
+        const collapseBtn = document.createElement('span');
+        collapseBtn.textContent = '−';
+        collapseBtn.style.color = '#7a8aa8';
+        title.appendChild(titleText);
+        title.appendChild(collapseBtn);
+        panel.appendChild(title);
+
+        const body = document.createElement('div');
+        panel.appendChild(body);
+
+        const DEG = Math.PI / 180;
+        const rows = [
+          ['Scale', 's',  0.05, 20,  0.01, () => model.scale.x,             v => model.scale.setScalar(v)],
+          ['Rot X', 'rx', -180, 180, 1,    () => model.rotation.x / DEG,    v => model.rotation.x = v * DEG],
+          ['Rot Y', 'ry', -180, 180, 1,    () => model.rotation.y / DEG,    v => model.rotation.y = v * DEG],
+          ['Rot Z', 'rz', -180, 180, 1,    () => model.rotation.z / DEG,    v => model.rotation.z = v * DEG],
+          ['Pos X', 'px', -30,  30,  0.05, () => model.position.x,          v => model.position.x = v],
+          ['Pos Y', 'py', -30,  30,  0.05, () => model.position.y,          v => model.position.y = v],
+          ['Pos Z', 'pz', -30,  30,  0.05, () => model.position.z,          v => model.position.z = v],
+        ];
+
+        const fmt = (step, v) => v.toFixed(step < 0.1 ? 2 : 1);
+        const refreshFns = [];
+        for (const [label, id, min, max, step, getter, setter] of rows) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:grid;grid-template-columns:44px 1fr 54px;gap:6px;align-items:center;margin-bottom:4px;';
+
+          const lab = document.createElement('label');
+          lab.textContent = label;
+          lab.style.color = '#7a8aa8';
+
+          const slider = document.createElement('input');
+          slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.step = String(step);
+          slider.value = String(getter());
+
+          const num = document.createElement('input');
+          num.type = 'number'; num.min = String(min); num.max = String(max); num.step = String(step);
+          num.style.cssText = 'width:54px;background:#0a1020;border:1px solid #1f2a44;color:#cfe3ff;font:inherit;border-radius:3px;padding:2px 4px;';
+          num.value = fmt(step, +getter());
+
+          slider.addEventListener('input', () => {
+            const v = parseFloat(slider.value);
+            if (Number.isFinite(v)) { setter(v); num.value = fmt(step, v); }
+          });
+          num.addEventListener('input', () => {
+            const v = parseFloat(num.value);
+            if (Number.isFinite(v)) { setter(v); slider.value = String(v); }
+          });
+
+          row.appendChild(lab); row.appendChild(slider); row.appendChild(num);
+          body.appendChild(row);
+          refreshFns.push(() => { slider.value = String(getter()); num.value = fmt(step, +getter()); });
+        }
+
+        const status = document.createElement('div');
+        status.style.cssText = 'margin-top:8px;min-height:14px;font-size:10px;color:#7a8aa8;letter-spacing:0.1em;';
+        body.appendChild(status);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+        body.appendChild(btnRow);
+
+        const mkBtn = (label, onClick, color) => {
+          const b = document.createElement('button');
+          b.textContent = label;
+          b.type = 'button';
+          b.style.cssText = 'flex:1;background:transparent;border:1px solid #1f2a44;border-radius:4px;padding:5px 6px;font:inherit;font-size:10px;letter-spacing:0.15em;cursor:pointer;color:' + (color || '#4ecbff') + ';';
+          b.addEventListener('click', onClick);
+          b.addEventListener('mouseenter', () => b.style.borderColor = color || '#4ecbff');
+          b.addEventListener('mouseleave', () => b.style.borderColor = '#1f2a44');
+          return b;
+        };
+
+        if (hostIsLocal) {
+          btnRow.appendChild(mkBtn('▲ SAVE', async () => {
+            status.textContent = 'saving…'; status.style.color = '#7a8aa8';
+            try {
+              const res = await fetch('/api/tweaks/' + encodeURIComponent(planeFile), {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(snapshotTweak()),
+              });
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+              status.textContent = '✓ saved to server';
+              status.style.color = '#5df09a';
+            } catch (err) {
+              status.textContent = '✕ save failed — is tweaks-server running?';
+              status.style.color = '#ff4e7a';
+              console.warn('[tweak-save]', err);
+            }
+          }, '#5df09a'));
+        } else {
+          const lock = document.createElement('div');
+          lock.textContent = '🔒 save: localhost only';
+          lock.style.cssText = 'flex:1;font-size:9px;color:#7a8aa8;letter-spacing:0.1em;padding:5px 0;text-align:center;';
+          btnRow.appendChild(lock);
+        }
+
+        btnRow.appendChild(mkBtn('⧉ URL', () => {
+          const t = snapshotTweak();
+          const qs = new URLSearchParams({
+            plane: planeFile,
+            s: t.s, rx: t.rx, ry: t.ry, rz: t.rz, dy: t.py,
+          });
+          const url = location.origin + location.pathname + '#' + qs.toString();
+          navigator.clipboard?.writeText(url);
+          status.textContent = 'URL copied'; status.style.color = '#4ecbff';
+        }));
+
+        let collapsed = false;
+        title.addEventListener('click', () => {
+          collapsed = !collapsed;
+          body.style.display = collapsed ? 'none' : '';
+          collapseBtn.textContent = collapsed ? '+' : '−';
+        });
+
+        document.body.appendChild(panel);
+      }
     },
     (xhr) => {
       if (xhr.total) {
@@ -2409,11 +2933,19 @@ const rockMatLowPoly = new THREE.MeshPhongMaterial({
   color: 0xc88555, flatShading: true, shininess: 0
 });
 
+function applyAtmosphereProfile(profile) {
+  scene.fog.near = profile.fogNear;
+  scene.fog.far = profile.fogFar;
+  waterMat.uniforms.fogNear.value = profile.fogNear;
+  waterMat.uniforms.fogFar.value = profile.fogFar;
+}
+
 function applyStyle() {
   const lowPoly = styleMode.current === 'lowpoly';
   const sandM = lowPoly ? sandMatLowPoly : sandMat;
   const rockM = lowPoly ? rockMatLowPoly : rockMat;
   const floraM = lowPoly ? floraMatLow : floraMat;
+  applyAtmosphereProfile(lowPoly ? ATMOS_LOWPOLY : ATMOS_REALISTIC);
 
   // Swap terrain + rock + flora materials on every existing chunk
   for (const c of chunks.values()) {
@@ -2453,6 +2985,7 @@ function applyStyle() {
     $styleInd.textContent = lowPoly ? 'LOW POLY' : 'REALISTIC';
     $styleInd.className = lowPoly ? 'warn' : 'ok';
   }
+  if (typeof updateTimeOfDay === 'function') updateTimeOfDay(0);
 }
 
 function toggleStyle() {
@@ -2478,10 +3011,17 @@ function applyBiome(name) {
   // Scene fog + background
   scene.background.setHex(b.fogColor);
   scene.fog.color.setHex(b.fogColor);
+  waterMat.uniforms.fogColor.value.setHex(b.fogColor);
 
   // Sky dome gradient
   skyMat.uniforms.topColor.value.setHex(b.skyTop);
   skyMat.uniforms.bottomColor.value.setHex(b.skyBottom);
+
+  // Actual scene lights should track the active biome too
+  sun.color.setHex(b.sunColor);
+  hemiLight.color.setHex(b.skyTop);
+  hemiLight.groundColor.setHex(b.groundTint);
+  ambientLight.color.setHex(b.ambient);
 
   // Sand shader uniforms (both realistic + low-poly variants)
   sandMat.uniforms.fogColor.value.setHex(b.fogColor);
@@ -2524,6 +3064,7 @@ function applyBiome(name) {
   if (typeof $biomeInd !== 'undefined' && $biomeInd) {
     $biomeInd.textContent = b.label;
   }
+  if (typeof updateTimeOfDay === 'function') updateTimeOfDay(0);
 }
 
 function cycleBiome() {
@@ -2547,6 +3088,29 @@ function makeSpriteTexture(size = 64, soft = 0.85) {
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.needsUpdate = true;
+  return t;
+}
+
+function makeStreakTexture(width = 512, height = 128) {
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, height / 2, width, height / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.2, 'rgba(255,255,255,0.06)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.8, 'rgba(255,255,255,0.06)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, width, height);
+  const core = g.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, height * 0.48);
+  core.addColorStop(0, 'rgba(255,255,255,0.65)');
+  core.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = core;
+  g.fillRect(0, 0, width, height);
   const t = new THREE.CanvasTexture(c);
   t.needsUpdate = true;
   return t;
@@ -2726,6 +3290,158 @@ const sharedSpriteTex = makeSpriteTexture(64, 0.7);
 // Multi-lobe cotton puff texture shared by the engine smoke pools. Larger
 // canvas (128) gives enough resolution that the lobes read on screen.
 const puffTex = makePuffTexture(128, 37);
+
+const combatState = {
+  projectiles: [],
+  fireCooldown: 0,
+  shotsFired: 0,
+  hits: 0,
+  crashFxTriggered: false,
+};
+const projectileGroup = new THREE.Group();
+scene.add(projectileGroup);
+const projectileGeo = new THREE.BoxGeometry(0.09, 0.09, 1.8);
+const projectileMat = new THREE.MeshBasicMaterial({ color: 0xfff4b8, toneMapped: false });
+for (let i = 0; i < 48; i++) {
+  const mesh = new THREE.Mesh(projectileGeo, projectileMat);
+  mesh.visible = false;
+  projectileGroup.add(mesh);
+  combatState.projectiles.push({
+    mesh,
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    life: 0,
+    active: false,
+  });
+}
+const muzzleFlashPool = new ParticlePool(scene, {
+  max: 70, color: 0xffe7a8, size: 1.1,
+  life: 0.14, growth: 2.6, additive: true, texture: sharedSpriteTex,
+});
+const impactSparkPool = new ParticlePool(scene, {
+  max: 180, color: 0xffd27a, size: 0.9,
+  life: 0.55, growth: 1.7, additive: true, texture: sharedSpriteTex,
+});
+const explosionFirePool = new ParticlePool(scene, {
+  max: 260, color: 0xff9448, size: 3.4,
+  life: 0.9, growth: 5.6, additive: true, texture: sharedSpriteTex,
+});
+const explosionSmokePool = new ParticlePool(scene, {
+  max: 320, color: 0x2c2520, size: 4.2,
+  life: 2.3, growth: 7.4, additive: false, texture: puffTex,
+});
+const _combatTmpA = new THREE.Vector3();
+const _combatTmpB = new THREE.Vector3();
+const _combatTmpC = new THREE.Vector3();
+const _projectileForward = new THREE.Vector3(0, 0, 1);
+
+function deactivateProjectile(p) {
+  p.active = false;
+  p.life = 0;
+  p.mesh.visible = false;
+}
+
+function getTargetWorldPosition(target, out) {
+  target.object.getWorldPosition(out);
+  return out;
+}
+
+function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
+  explosionFirePool.emitCluster(pos, Math.round(10 + intensity * 8), 1.6 + intensity * 1.1, 0.45, 0.9 + intensity * 0.35, 1.0 + intensity * 0.65);
+  explosionSmokePool.emitCluster(pos, Math.round(10 + smokeMul * 8), 2.0 + smokeMul * 1.3, 0.8, 1.0 + smokeMul * 0.5, 1.0 + smokeMul * 0.8);
+  impactSparkPool.emitCluster(pos, Math.round(8 + intensity * 10), 1.0 + intensity * 0.7, 0.55, 0.7 + intensity * 0.2, 1.1 + intensity * 0.5);
+}
+
+function destroyTarget(target, pos, intensity = 1.0) {
+  if (!target || !target.alive) return;
+  target.alive = false;
+  target.object.visible = false;
+  combatState.hits += 1;
+  spawnExplosion(pos, intensity, intensity * 1.1);
+  if (typeof flashStatus === 'function') flashStatus('TARGET DESTROYED', 'panel ok', 1.1);
+}
+
+function resetCombatState() {
+  combatState.fireCooldown = 0;
+  combatState.crashFxTriggered = false;
+  combatState.shotsFired = 0;
+  combatState.hits = 0;
+  for (const p of combatState.projectiles) deactivateProjectile(p);
+  for (const target of destructibleTargets) {
+    target.alive = true;
+    target.object.visible = true;
+  }
+}
+
+function fireProjectileBurst() {
+  if (!jet.userData.gunL || !jet.userData.gunR) return;
+  const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const muzzles = [jet.userData.gunL, jet.userData.gunR];
+  for (const muzzle of muzzles) {
+    const projectile = combatState.projectiles.find(p => !p.active);
+    if (!projectile) break;
+    projectile.active = true;
+    projectile.life = 2.1;
+    projectile.pos.copy(muzzle).applyQuaternion(plane.quat).add(plane.pos);
+    projectile.vel.copy(forward).multiplyScalar(390).add(plane.vel);
+    projectile.mesh.visible = true;
+    projectile.mesh.position.copy(projectile.pos);
+    projectile.mesh.quaternion.setFromUnitVectors(_projectileForward, projectile.vel.clone().normalize());
+    muzzleFlashPool.emitCluster(projectile.pos, 4, 0.16, 0.12, 0.4, 0.75);
+  }
+  combatState.shotsFired += 1;
+}
+
+function updateCombat(dt) {
+  combatState.fireCooldown = Math.max(0, combatState.fireCooldown - dt);
+  transientStatus.timer = Math.max(0, transientStatus.timer - dt);
+  if (!plane.crashed && keys['Space'] && combatState.fireCooldown <= 0) {
+    fireProjectileBurst();
+    combatState.fireCooldown = 0.085;
+  }
+
+  if (plane.crashed && !combatState.crashFxTriggered) {
+    combatState.crashFxTriggered = true;
+    spawnExplosion(plane.pos.clone(), 1.7, 1.6);
+    if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R', 'panel warn', 1.8);
+  }
+
+  for (const p of combatState.projectiles) {
+    if (!p.active) continue;
+    p.life -= dt;
+    if (p.life <= 0) {
+      deactivateProjectile(p);
+      continue;
+    }
+    p.pos.addScaledVector(p.vel, dt);
+    p.mesh.position.copy(p.pos);
+    p.mesh.quaternion.setFromUnitVectors(_projectileForward, _combatTmpB.copy(p.vel).normalize());
+
+    const groundH = (p.pos.x * p.pos.x + p.pos.z * p.pos.z < 40000)
+      ? 0 : getHeight(p.pos.x, p.pos.z);
+    if (p.pos.y <= groundH + 0.12) {
+      spawnExplosion(p.pos.clone(), 0.32, 0.18);
+      deactivateProjectile(p);
+      continue;
+    }
+
+    for (const target of destructibleTargets) {
+      if (!target.alive || !target.object.visible) continue;
+      const targetPos = getTargetWorldPosition(target, _combatTmpC);
+      if (p.pos.distanceTo(targetPos) < target.radius) {
+        const intensity = target.kind === 'fuel' ? 1.65 : target.kind === 'traffic' ? 1.25 : target.kind === 'barrel' ? 1.1 : 0.75;
+        destroyTarget(target, targetPos.clone(), intensity);
+        deactivateProjectile(p);
+        break;
+      }
+    }
+  }
+
+  muzzleFlashPool.update(dt);
+  impactSparkPool.update(dt);
+  explosionFirePool.update(dt);
+  explosionSmokePool.update(dt);
+}
 
 // Engine-side smoke puffs — aerobatic-display style. Each "event" emits a
 // small cluster (handled in updateAtmospheric) so the trail reads as a
@@ -2934,11 +3650,11 @@ function swapCloudMaterials() {
 // =============================================================
 //  SUN — bright billboard with corona (lens-flare-ish glow)
 // =============================================================
-const sunDir = sun.position.clone().normalize();
 function makeSunSprites() {
   const grp = new THREE.Group();
   const coreTex = makeSpriteTexture(128, 0.5);
   const haloTex = makeSpriteTexture(128, 0.85);
+  const streakTex = makeStreakTexture();
 
   const core = new THREE.Sprite(new THREE.SpriteMaterial({
     map: coreTex, color: 0xffffe0,
@@ -2967,10 +3683,264 @@ function makeSunSprites() {
   outer.renderOrder = 997;
   grp.add(outer);
 
+  const streak = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: streakTex,
+    color: 0xffc98d,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  }));
+  streak.scale.set(1800, 180, 1);
+  streak.renderOrder = 996;
+  grp.add(streak);
+
+  const ghosts = [];
+  const ghostDefs = [
+    { scale: 120, color: 0xffe3b8 },
+    { scale: 180, color: 0xffb870 },
+    { scale: 90,  color: 0xc9d9ff },
+  ];
+  for (const def of ghostDefs) {
+    const ghost = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: haloTex,
+      color: def.color,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      opacity: 0.0,
+      depthWrite: false,
+      depthTest: false,
+      fog: false,
+    }));
+    ghost.scale.set(def.scale, def.scale, 1);
+    ghost.renderOrder = 995;
+    ghosts.push(ghost);
+    grp.add(ghost);
+  }
+
+  grp.userData.core = core;
+  grp.userData.halo = halo;
+  grp.userData.outer = outer;
+  grp.userData.streak = streak;
+  grp.userData.ghosts = ghosts;
   scene.add(grp);
   return grp;
 }
 const sunGrp = makeSunSprites();
+
+function makeMoonSprites() {
+  const grp = new THREE.Group();
+  const moonTex = makeSpriteTexture(128, 0.65);
+  const haloTex = makeSpriteTexture(128, 0.88);
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: moonTex,
+    color: 0xd8e7ff,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  }));
+  core.scale.set(120, 120, 1);
+  core.renderOrder = 996;
+  grp.add(core);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTex,
+    color: 0x8eb8ff,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+  }));
+  halo.scale.set(260, 260, 1);
+  halo.renderOrder = 995;
+  grp.add(halo);
+  grp.userData.core = core;
+  grp.userData.halo = halo;
+  scene.add(grp);
+  return grp;
+}
+const moonGrp = makeMoonSprites();
+
+function makeStarField() {
+  const STAR_COUNT = 900;
+  const radius = 10000;
+  const pos = new Float32Array(STAR_COUNT * 3);
+  const color = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const u = hash2(i * 17, 91);
+    const v = hash2(i * 29, 37);
+    const theta = u * Math.PI * 2;
+    const phi = Math.acos(1 - 2 * v);
+    const x = Math.sin(phi) * Math.cos(theta);
+    const y = Math.cos(phi);
+    const z = Math.sin(phi) * Math.sin(theta);
+    pos[i * 3] = x * radius;
+    pos[i * 3 + 1] = y * radius;
+    pos[i * 3 + 2] = z * radius;
+    const warm = 0.82 + hash2(i * 11, 4) * 0.18;
+    color[i * 3] = 0.72 + warm * 0.28;
+    color[i * 3 + 1] = 0.76 + warm * 0.24;
+    color[i * 3 + 2] = 0.88 + warm * 0.12;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(color, 3));
+  const mat = new THREE.PointsMaterial({
+    size: 26,
+    map: makeSpriteTexture(64, 0.55),
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    depthTest: false,
+    fog: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  points.renderOrder = 994;
+  scene.add(points);
+  return points;
+}
+const starField = makeStarField();
+
+const TOD_NIGHT_TOP = new THREE.Color(0x07111f);
+const TOD_NIGHT_BOTTOM = new THREE.Color(0x16263d);
+const TOD_NIGHT_FOG = new THREE.Color(0x0b1526);
+const TOD_NIGHT_GROUND = new THREE.Color(0x182028);
+const TOD_WARM = new THREE.Color(0xff9b5b);
+const TOD_MOON = new THREE.Color(0xa9c8ff);
+const todSkyTop = new THREE.Color();
+const todSkyBottom = new THREE.Color();
+const todFog = new THREE.Color();
+const todSun = new THREE.Color();
+const todGround = new THREE.Color();
+const todAmbient = new THREE.Color();
+
+function updateTimeOfDay(dt = 0) {
+  timeOfDay.phase = (timeOfDay.phase + dt / timeOfDay.cycleSeconds) % 1;
+  const angle = timeOfDay.phase * Math.PI * 2;
+  const solarElev = Math.sin(angle);
+  const solarAz = angle - Math.PI * 0.18;
+  const solarX = Math.cos(solarAz);
+  const solarZ = Math.sin(solarAz) * 0.62;
+  const daylight = smoothstepRange(-0.18, 0.14, solarElev);
+  const twilight = Math.max(0, 1 - Math.abs(solarElev) * 4.2);
+  const rising = Math.cos(angle) > 0;
+
+  timeOfDay.daylight = daylight;
+  if (daylight < 0.14) timeOfDay.label = 'NIGHT';
+  else if (twilight > 0.55) timeOfDay.label = rising ? 'DAWN' : 'DUSK';
+  else if (solarElev > 0.82) timeOfDay.label = 'NOON';
+  else timeOfDay.label = rising ? 'MORNING' : 'AFTERNOON';
+
+  if (solarElev >= -0.04) {
+    sunDir.set(solarX * 0.82, Math.max(0.08, solarElev * 0.95 + 0.08), solarZ);
+  } else {
+    sunDir.set(-solarX * 0.55, 0.16 + (-solarElev) * 0.1, -solarZ * 0.55);
+  }
+  sunDir.normalize();
+
+  const warmth = twilight * (0.78 + daylight * 0.18);
+  todSkyTop.setHex(currentBiome.skyTop).lerp(TOD_NIGHT_TOP, 1 - daylight).lerp(TOD_WARM, warmth * 0.22);
+  todSkyBottom.setHex(currentBiome.skyBottom).lerp(TOD_NIGHT_BOTTOM, 1 - daylight).lerp(TOD_WARM, warmth * 0.9);
+  todFog.setHex(currentBiome.fogColor).lerp(TOD_NIGHT_FOG, 1 - daylight).lerp(TOD_WARM, warmth * 0.38);
+  todSun.setHex(currentBiome.sunColor).lerp(TOD_MOON, 1 - daylight).lerp(TOD_WARM, warmth * 0.82);
+  todGround.setHex(currentBiome.groundTint).lerp(TOD_NIGHT_GROUND, 1 - daylight).lerp(TOD_WARM, warmth * 0.1);
+  todAmbient.setHex(currentBiome.ambient).lerp(TOD_NIGHT_GROUND, (1 - daylight) * 0.7).lerp(TOD_WARM, warmth * 0.08);
+
+  scene.background.copy(todFog);
+  scene.fog.color.copy(todFog);
+  skyMat.uniforms.topColor.value.copy(todSkyTop);
+  skyMat.uniforms.bottomColor.value.copy(todSkyBottom);
+  waterMat.uniforms.fogColor.value.copy(todFog);
+  waterMat.uniforms.sunDir.value.copy(sunDir);
+  sandMat.uniforms.sunDir.value.copy(sunDir);
+  sandMat.uniforms.sunColor.value.copy(todSun);
+  sandMat.uniforms.fogColor.value.copy(todFog);
+  sandMat.uniforms.skyTint.value.copy(todSkyTop);
+  sandMatLowPoly.uniforms.sunDir.value.copy(sunDir);
+  sandMatLowPoly.uniforms.sunColor.value.copy(todSun);
+  sandMatLowPoly.uniforms.fogColor.value.copy(todFog);
+
+  sun.color.copy(todSun);
+  sun.intensity = 0.08 + daylight * 1.55 + twilight * 0.18;
+  hemiLight.color.copy(todSkyTop);
+  hemiLight.groundColor.copy(todGround);
+  hemiLight.intensity = 0.08 + daylight * 0.36 + twilight * 0.05;
+  ambientLight.color.copy(todAmbient);
+  ambientLight.intensity = 0.04 + daylight * 0.12 + twilight * 0.02;
+  renderer.toneMappingExposure = 0.68 + daylight * 0.38 + twilight * 0.08;
+  updateRunwayLights(1 - daylight, twilight);
+
+  const dayCloudOpacity = currentBiome.cloudOpacity * (0.72 + daylight * 0.28);
+  cloudMat.opacity = dayCloudOpacity;
+  cloudMatLow.opacity = dayCloudOpacity;
+
+  sunGrp.userData.core.material.color.copy(todSun);
+  sunGrp.userData.halo.material.color.copy(todSun).lerp(TOD_WARM, 0.18);
+  sunGrp.userData.outer.material.color.copy(TOD_WARM).lerp(TOD_MOON, 1 - daylight);
+  sunGrp.userData.core.material.opacity = 0.35 + daylight * 0.65;
+  sunGrp.userData.halo.material.opacity = 0.15 + daylight * 0.45 + twilight * 0.1;
+  sunGrp.userData.outer.material.opacity = 0.08 + daylight * 0.18 + twilight * 0.08;
+  sunGrp.userData.core.scale.setScalar(110 + daylight * 70 + twilight * 20);
+  sunGrp.userData.halo.scale.setScalar(360 + daylight * 190 + twilight * 90);
+  sunGrp.userData.outer.scale.setScalar(760 + daylight * 320 + twilight * 140);
+
+  const moonOpacity = clamp01((0.42 - daylight) / 0.42) * (0.55 + twilight * 0.25);
+  moonGrp.userData.core.material.opacity = moonOpacity;
+  moonGrp.userData.halo.material.opacity = moonOpacity * 0.42;
+  moonGrp.userData.core.scale.setScalar(95 + moonOpacity * 55);
+  moonGrp.userData.halo.scale.setScalar(210 + moonOpacity * 120);
+  const starOpacity = clamp01((0.3 - daylight) / 0.3) * 0.95;
+  starField.material.opacity = starOpacity;
+
+  if (typeof $todInd !== 'undefined' && $todInd) {
+    const totalMinutes = Math.floor(((timeOfDay.phase + 0.25) % 1) * 24 * 60) % (24 * 60);
+    const hh = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+    const mm = String(totalMinutes % 60).padStart(2, '0');
+    $todInd.textContent = `${hh}:${mm} ${timeOfDay.label}`;
+    $todInd.className = daylight < 0.2 ? 'warn' : twilight > 0.55 ? '' : 'ok';
+  }
+}
+
+function updateLensFlare() {
+  if (!sunGrp.userData || !sunGrp.userData.streak || !sunGrp.userData.ghosts) return;
+  const streak = sunGrp.userData.streak;
+  const ghosts = sunGrp.userData.ghosts;
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const facing = clamp01(forward.dot(sunDir));
+  const sunScreen = sunGrp.position.clone().project(camera);
+  const onScreen = sunScreen.z > -1 && sunScreen.z < 1 && Math.abs(sunScreen.x) < 1.4 && Math.abs(sunScreen.y) < 1.4;
+  const daylight = timeOfDay.daylight || 0;
+  const flareStrength = onScreen ? Math.pow(facing, 6) * clamp01(0.1 + daylight * 1.15) : 0;
+  const edgeFade = clamp01(1 - (Math.abs(sunScreen.x) * 0.45 + Math.abs(sunScreen.y) * 0.35));
+  const centerPullX = -sunScreen.x;
+  const centerPullY = -sunScreen.y;
+  sunGrp.userData.flareStrength = flareStrength * edgeFade;
+  sunGrp.userData.sunScreen = { x: sunScreen.x, y: sunScreen.y, z: sunScreen.z };
+
+  streak.position.set(centerPullX * 260, centerPullY * 75, 0);
+  streak.material.color.copy(todSun).lerp(TOD_WARM, 0.28);
+  streak.material.opacity = flareStrength * edgeFade * 0.26;
+  streak.scale.set(1200 + flareStrength * 900, 110 + flareStrength * 90, 1);
+
+  const ghostColors = [todSun.clone().lerp(TOD_WARM, 0.12), TOD_WARM.clone(), TOD_MOON.clone()];
+  const ghostFactors = [0.38, 0.9, 1.45];
+  ghosts.forEach((ghost, idx) => {
+    const factor = ghostFactors[idx] || (idx + 1) * 0.5;
+    ghost.position.set(centerPullX * factor * 560, centerPullY * factor * 320, 0);
+    ghost.material.color.copy(ghostColors[idx] || todSun);
+    ghost.material.opacity = flareStrength * edgeFade * (0.12 - idx * 0.02);
+    const base = 90 + idx * 45;
+    ghost.scale.setScalar(base + flareStrength * (140 + idx * 40));
+  });
+}
 
 // =============================================================
 //  DUST DEVILS — swirling sand columns, deterministic placement
@@ -3085,27 +4055,22 @@ function updateDustDevils(t, px, pz) {
 }
 
 // =============================================================
-//  PLANE SHADOW — projected ellipse on terrain, fades with altitude
+//  PLANE SHADOW — rely on real scene shadows now that shadow-maps are in
 // =============================================================
-const planeShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(7, 28),
-  new THREE.MeshBasicMaterial({
-    color: 0x000000, transparent: true, opacity: 0.55,
-    depthWrite: false,
-  })
-);
-planeShadow.rotation.x = -Math.PI / 2;
-scene.add(planeShadow);
+function updateShadow() {}
 
-function updateShadow() {
+const sunShadowFocus = new THREE.Vector3();
+function updateSunShadowRig() {
   const groundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
-    ? 0.05 : getHeight(plane.pos.x, plane.pos.z) + 0.15;
-  planeShadow.position.set(plane.pos.x, groundH, plane.pos.z);
-  const altAGL = Math.max(0, plane.pos.y - groundH);
-  planeShadow.material.opacity = Math.max(0, 0.6 - altAGL * 0.004);
-  const sc = 1 + altAGL * 0.012;
-  planeShadow.scale.set(sc * 1.6, 1, sc);
-  planeShadow.visible = altAGL < 180;
+    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  sunShadowFocus.set(
+    plane.pos.x,
+    groundH + Math.min(36, Math.max(8, (plane.pos.y - groundH) * 0.35)),
+    plane.pos.z
+  );
+  sunTarget.position.copy(sunShadowFocus);
+  sun.position.copy(sunShadowFocus).addScaledVector(sunDir, 560);
+  sunTarget.updateMatrixWorld();
 }
 
 // =============================================================
@@ -3337,6 +4302,7 @@ const plane = {
   throttleTarget: 0,
   gear: 1, gearTarget: 1,
   brake: 0,
+  landingLights: true,
   onGround: true,
   crashed: false,
 };
@@ -3369,11 +4335,12 @@ const MAX_ANG_VEL = 5.0;       // rad/s clamp to prevent runaway spin
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['KeyG', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyG', 'KeyL', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 let gearPressed = false;
+let lightsPressed = false;
 let resetPressed = false;
 let stylePressed = false;
 let biomePressed = false;
@@ -3388,9 +4355,12 @@ function resetPlane() {
   plane.gear = 1;
   plane.gearTarget = 1;
   plane.brake = 0;
+  plane.landingLights = true;
   plane.crashed = false;
+  resetCombatState();
   statusMsg.textContent = 'READY FOR DEPARTURE';
   statusMsg.className = 'panel';
+  if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
 }
 
 function updatePhysics(dt) {
@@ -3416,6 +4386,14 @@ function updatePhysics(dt) {
       gearPressed = true;
     }
   } else gearPressed = false;
+
+  if (keys['KeyL']) {
+    if (!lightsPressed) {
+      plane.landingLights = !plane.landingLights;
+      if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
+      lightsPressed = true;
+    }
+  } else lightsPressed = false;
 
   if (keys['KeyR']) {
     if (!resetPressed) { resetPlane(); resetPressed = true; }
@@ -3711,6 +4689,26 @@ function updateJetVisual() {
   jet.userData.gearL.rotation.z = (1 - g) * (Math.PI * 0.5);
   jet.userData.gearR.rotation.z = -(1 - g) * (Math.PI * 0.5);
 
+  // Fixed gear stance — slightly wider/splayed under load, tucking in as lift unloads it.
+  const gearGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
+    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const gearAltAGL = Math.max(0, plane.pos.y - gearGroundH);
+  const groundLoad = clamp01(1 - gearAltAGL / 8) * g;
+  for (const gear of [jet.userData.gearL, jet.userData.gearR]) {
+    if (!gear || !gear.userData) continue;
+    const side = gear.userData.side || 0;
+    const wheel = gear.userData.wheel;
+    const strut = gear.userData.strut;
+    if (!wheel || !strut || !side) continue;
+    const wheelSplay = 0.05 + groundLoad * 0.16;
+    const strutLean = side * (0.03 + groundLoad * 0.09);
+    wheel.position.x = side * wheelSplay;
+    wheel.position.y = gear.userData.baseWheelY + groundLoad * 0.02;
+    strut.position.x = side * wheelSplay * 0.42;
+    strut.position.y = gear.userData.baseStrutY + groundLoad * 0.01;
+    strut.rotation.z = strutLean;
+  }
+
   // Afterburner — only for jets; swapped-in GLB planes skip this
   if (!plane.suppressJetFX) {
     const ab = jet.userData.afterburner;
@@ -3792,6 +4790,62 @@ function updateJetVisual() {
   // Scanner pulse — subtle opacity breath via scale on Y
   const pulse = 0.8 + Math.sin(tNow * 3.5) * 0.2;
   jet.userData.scanner.scale.y = pulse;
+
+  // Landing lights — brightest at night / dusk but still usable by day.
+  const nightFactor = 1 - timeOfDay.daylight;
+  const landingIntensity = plane.landingLights
+    ? (0.65 + nightFactor * 3.0 + (plane.onGround ? 0.55 : 0))
+    : 0;
+  const beamOpacity = plane.landingLights
+    ? Math.min(0.34, 0.07 + nightFactor * 0.24 + (plane.onGround ? 0.08 : 0))
+    : 0;
+  const glowOpacity = plane.landingLights
+    ? Math.min(1, 0.26 + nightFactor * 0.82 + (plane.onGround ? 0.18 : 0))
+    : 0;
+  if (jet.userData.landingRigs) {
+    const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+    const rightWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+    for (const rig of jet.userData.landingRigs) {
+      rig.light.intensity = landingIntensity;
+      rig.light.distance = 260 + nightFactor * 180;
+      rig.glow.material.opacity = glowOpacity;
+      rig.glow.scale.setScalar(1.0 + glowOpacity * 0.8);
+      rig.beam.material.opacity = beamOpacity;
+      rig.beam.scale.setScalar(1.2 + beamOpacity * 2.2);
+      rig.beam.visible = beamOpacity > 0.01;
+
+      const splashCenter = plane.pos.clone()
+        .addScaledVector(forwardWorld, 54)
+        .addScaledVector(rightWorld, rig.side * 2.6);
+      const splashGround = (splashCenter.x * splashCenter.x + splashCenter.z * splashCenter.z < 40000)
+        ? 0.08 : getHeight(splashCenter.x, splashCenter.z) + 0.18;
+      rig.splash.position.set(splashCenter.x, splashGround, splashCenter.z);
+      rig.splash.rotation.z = Math.atan2(forwardWorld.x, -forwardWorld.z);
+      rig.splash.material.opacity = plane.landingLights
+        ? Math.min(0.22, 0.05 + nightFactor * 0.12 + (plane.onGround ? 0.1 : 0))
+        : 0;
+      rig.splash.scale.set(1.0 + beamOpacity * 2.6, 1.0 + beamOpacity * 3.2, 1);
+      rig.splash.visible = rig.splash.material.opacity > 0.01;
+    }
+  }
+
+  const cockpitGlow = jet.userData.cockpitGlow;
+  if (cockpitGlow) {
+    const cockpitLevel = 0.14 + nightFactor * 1.15;
+    cockpitGlow.panelMat.emissiveIntensity = cockpitLevel * 1.05;
+    cockpitGlow.hudGlass.material.emissiveIntensity = 0.2 + cockpitLevel * 2.2;
+    cockpitGlow.hudGlass.material.opacity = 0.12 + cockpitLevel * 0.36;
+    cockpitGlow.canopyMat.emissive = cockpitGlow.canopyMat.emissive || new THREE.Color(0x000000);
+    cockpitGlow.canopyMat.emissive.setRGB(0.03 * cockpitLevel, 0.09 * cockpitLevel, 0.12 * cockpitLevel);
+    cockpitGlow.canopyMat.emissiveIntensity = cockpitLevel * 0.55;
+    cockpitGlow.visorMat.emissive = cockpitGlow.visorMat.emissive || new THREE.Color(0x000000);
+    cockpitGlow.visorMat.emissive.setRGB(0.03 * cockpitLevel, 0.07 * cockpitLevel, 0.1 * cockpitLevel);
+    cockpitGlow.visorMat.emissiveIntensity = cockpitLevel * 0.7;
+    cockpitGlow.parts.forEach((part, idx) => {
+      if (!part.material) return;
+      part.material.opacity = 0.08 + cockpitLevel * (idx === 0 ? 0.22 : 0.95);
+    });
+  }
 }
 
 // =============================================================
@@ -3829,6 +4883,7 @@ function updateCamera(dt) {
   camera.up.copy(blendedUp);
 
   camera.lookAt(lookTarget);
+  camera.userData.focusTarget = lookTarget.clone();
 }
 
 // =============================================================
@@ -3850,6 +4905,8 @@ const $abStatus = document.getElementById('ab-status');
 const $seedDisp = document.getElementById('seed-disp');
 const $styleInd = document.getElementById('style-ind');
 const $biomeInd = document.getElementById('biome-ind');
+const $todInd = document.getElementById('tod-ind');
+const $landingInd = document.getElementById('landing-ind');
 const statusMsg = document.getElementById('status-msg');
 const $devOverlay = document.getElementById('dev-overlay');
 $seedDisp.textContent = SEED;
@@ -3859,17 +4916,34 @@ if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
 document.getElementById('biome-btn').addEventListener('click', cycleBiome);
 
+document.getElementById('landing-btn').addEventListener('click', () => {
+  plane.landingLights = !plane.landingLights;
+  syncLandingIndicator();
+});
+
 // Audio toggle button
 const $audioInd = document.getElementById('audio-ind');
 function syncAudioIndicator() {
   $audioInd.textContent = audio.enabled ? 'ON' : 'OFF';
   $audioInd.className = audio.enabled ? 'ok' : 'warn';
 }
+function syncLandingIndicator() {
+  $landingInd.textContent = plane.landingLights ? 'ON' : 'OFF';
+  $landingInd.className = plane.landingLights ? 'ok' : 'warn';
+}
 document.getElementById('audio-btn').addEventListener('click', () => {
   setAudioEnabled(!audio.enabled);
   syncAudioIndicator();
 });
 syncAudioIndicator();
+syncLandingIndicator();
+
+const transientStatus = { text: '', className: 'panel', timer: 0 };
+function flashStatus(text, className = 'panel ok', duration = 1.2) {
+  transientStatus.text = text;
+  transientStatus.className = className;
+  transientStatus.timer = duration;
+}
 
 let vsSmoothed = 0;
 let gSmoothed = 1;
@@ -3881,10 +4955,16 @@ function updateStatusGuidance(speedKts, aoaDeg) {
     statusMsg.className = 'panel';
     return;
   }
+  if (transientStatus.timer > 0) {
+    statusMsg.textContent = transientStatus.text;
+    statusMsg.className = transientStatus.className;
+    return;
+  }
 
   const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000
     ? 0 : getHeight(plane.pos.x, plane.pos.z);
   const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
+  const landingTrainingArmed = !plane.onGround && plane.gear > 0.95 && speedKts > 55 && speedKts < 165 && aglFt > 20 && aglFt < 900 && Math.abs(plane.pos.x) < 90 && Math.abs(plane.pos.z) > 220 && Math.abs(plane.pos.z) < 1200;
 
   let message = 'FREE FLIGHT — FOLLOW THE GATES OR EXPLORE THE CANYON';
   let className = 'panel';
@@ -3892,6 +4972,12 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   if (Math.abs(aoaDeg) > 17 && speedKts > 45) {
     message = 'STALL WARNING — RELEASE S AND BUILD SPEED';
     className = 'panel warn';
+  } else if (timeOfDay.daylight < 0.22 && !plane.landingLights && (plane.onGround || aglFt < 350)) {
+    message = 'LOW LIGHT — PRESS L FOR LANDING LIGHTS';
+    className = 'panel warn';
+  } else if (landingTrainingArmed) {
+    message = 'LANDING TRAINING — FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
+    className = 'panel ok';
   } else if (plane.onGround && plane.throttle < 0.15) {
     message = 'HOLD SHIFT TO ADVANCE THROTTLE';
   } else if (plane.onGround && speedKts < 55) {
@@ -4004,7 +5090,18 @@ function animate(now) {
   requestAnimationFrame(animate);
   const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
   lastTime = now;
-  if (!running) { renderer.render(scene, camera); return; }
+  updateTimeOfDay(dt);
+  if (!running) {
+    updateSunShadowRig();
+    sky.position.copy(camera.position);
+    sunGrp.position.copy(camera.position).addScaledVector(sunDir, 4500);
+    moonGrp.position.copy(camera.position).addScaledVector(sunDir, -4300);
+    starField.position.copy(camera.position);
+    updateLensFlare();
+    updateDepthOfField();
+    renderScene();
+    return;
+  }
 
   updatePhysics(dt);
   updateJetVisual();
@@ -4013,6 +5110,7 @@ function animate(now) {
   updateCamera(dt);
   updateAtmospheric(dt);
   updateShadow();
+  updateSunShadowRig();
   updateHeat(dt);
   updateBirds(now);
   updateDustDevils(now, plane.pos.x, plane.pos.z);
@@ -4020,10 +5118,14 @@ function animate(now) {
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAudio(dt);
   updateHUD();
+  updateCombat(dt);
 
-  // Sky + sun stay at apparent infinity by following the camera
+  // Sky + celestial bodies stay at apparent infinity by following the camera
   sky.position.copy(camera.position);
   sunGrp.position.copy(camera.position).addScaledVector(sunDir, 4500);
+  moonGrp.position.copy(camera.position).addScaledVector(sunDir, -4300);
+  starField.position.copy(camera.position);
+  updateLensFlare();
   // Clouds live in world space and wrap when the player flies far past them
   updateClouds(dt, plane.pos.x, plane.pos.z);
 
@@ -4035,15 +5137,24 @@ function animate(now) {
     camera.position.y += (Math.random() - 0.5) * shakeAmt;
   }
 
-  renderer.render(scene, camera);
+  updateDepthOfField();
+  renderScene();
 }
 
 // Initial chunk load before first frame
 updateChunks(plane.pos.x, plane.pos.z);
 updateFarChunks(plane.pos.x, plane.pos.z);
+updateTimeOfDay(0);
 updateJetVisual();
+updateSunShadowRig();
 updateCamera(0.016);
-renderer.render(scene, camera);
+sky.position.copy(camera.position);
+sunGrp.position.copy(camera.position).addScaledVector(sunDir, 4500);
+moonGrp.position.copy(camera.position).addScaledVector(sunDir, -4300);
+starField.position.copy(camera.position);
+updateLensFlare();
+updateDepthOfField();
+renderScene();
 
 // =============================================================
 //  START SCREEN
@@ -4093,6 +5204,12 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (postFX.enabled && postFX.composer) {
+    postFX.composer.setSize(window.innerWidth, window.innerHeight);
+    if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
+      postFX.bokehPass.materialBokeh.uniforms.aspect.value = camera.aspect;
+    }
+  }
 });
 
 // Apply default style (low-poly) once all HUD refs + scene state exist,
@@ -4399,6 +5516,7 @@ function spawnTraffic(file, pathFn, opts) {
     // meant for the player plane — mark them distinctly.
     model.userData.__isTrafficPlane = true;
     model.traverse(o => { o.userData.__isTrafficPlane = true; });
+    applyShadowFlags(model);
     group.add(model);
     rec.child = model;
     rec.loaded = true;
@@ -4573,6 +5691,77 @@ spawnTraffic(
     scene.add(arrow);
     window.__descendRings.push(arrow); // track for cleanup if needed
   }
+})();
+
+// __world_feature_landing_training__ — Dual-end landing approach trainers with flare/touchdown cues
+(function addLandingTraining() {
+  const RING_COUNT = 5;
+  const ringGeo = new THREE.TorusGeometry(26, 1.5, 14, 56);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x66ff99,
+    emissive: 0x44ff99,
+    emissiveIntensity: 0.8,
+    roughness: 0.28,
+    metalness: 0.15,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const flareMat = new THREE.MeshBasicMaterial({
+    color: 0xfff6bf,
+    transparent: true,
+    opacity: 0.72,
+    toneMapped: false,
+  });
+  const touchdownMat = new THREE.MeshBasicMaterial({
+    color: 0x7dffd1,
+    transparent: true,
+    opacity: 0.4,
+    toneMapped: false,
+  });
+  window.__landingTraining = [];
+
+  function addApproach(thresholdZ, dir) {
+    for (let i = 0; i < RING_COUNT; i++) {
+      const t = i / (RING_COUNT - 1);
+      const dist = 980 - t * 760;
+      const y = 240 - t * 212;
+      const z = thresholdZ - dir * dist;
+      const ring = new THREE.Mesh(ringGeo, ringMat.clone());
+      ring.position.set(0, y, z);
+      ring.rotation.x = Math.PI / 2 - (0.12 - t * 0.05);
+      ring.userData.isLandingTraining = true;
+      ring.userData.sequence = i;
+      scene.add(ring);
+      window.__landingTraining.push(ring);
+    }
+
+    // Flare chevrons just before touchdown
+    for (let i = 0; i < 3; i++) {
+      const width = 18 - i * 3.5;
+      const offsetZ = dir * (22 - i * 8);
+      const left = new THREE.Mesh(new THREE.PlaneGeometry(2.2, width), flareMat);
+      left.rotation.x = -Math.PI / 2;
+      left.rotation.z = dir * 0.48;
+      left.position.set(-7.5 - i * 2.5, 0.07, thresholdZ + offsetZ);
+      scene.add(left);
+      window.__landingTraining.push(left);
+      const right = left.clone();
+      right.rotation.z = -dir * 0.48;
+      right.position.x *= -1;
+      scene.add(right);
+      window.__landingTraining.push(right);
+    }
+
+    // Touchdown box on the runway
+    const box = new THREE.Mesh(new THREE.PlaneGeometry(18, 34), touchdownMat);
+    box.rotation.x = -Math.PI / 2;
+    box.position.set(0, 0.06, thresholdZ + dir * 34);
+    scene.add(box);
+    window.__landingTraining.push(box);
+  }
+
+  addApproach(-150, 1);
+  addApproach(150, -1);
 })();
 
 // __world_feature_turn_left_rings__ — Two orange ring gates forcing left turn
@@ -4822,6 +6011,13 @@ window.__ap = {
       terrain_ft: terrH * 3.28,
       throttle: plane.throttle,
       gear: plane.gear,
+      landing_lights: !!plane.landingLights,
+      tod_phase: timeOfDay.phase,
+      tod_label: timeOfDay.label,
+      landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
+      dof_enabled: !!(postFX.enabled && postFX.bokehPass),
+      flare_strength: sunGrp.userData.flareStrength || 0,
+      sun_screen: sunGrp.userData.sunScreen || null,
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
@@ -4834,6 +6030,15 @@ window.__ap = {
         ? Math.round((plane.props[0].rotation.z * 180 / Math.PI) % 360)
         : null,
     };
+  },
+  setTimeOfDay(phase) {
+    if (!Number.isFinite(phase)) return;
+    timeOfDay.phase = ((phase % 1) + 1) % 1;
+    updateTimeOfDay(0);
+  },
+  setLandingLights(on) {
+    plane.landingLights = !!on;
+    if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
   },
   // Dispatch a real KeyboardEvent so the sim's keys[e.code] handler picks it up
   keyDown(code) {

@@ -94,6 +94,22 @@
     font-size: 9px; font-weight: 700; letter-spacing: 0.15em;
     padding: 3px 6px; border-radius: 3px; z-index: 2;
   }
+  .card .hide-btn {
+    position: absolute; top: 6px; right: 6px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(7,10,16,0.85);
+    border: 1px solid var(--border);
+    color: var(--ink-dim);
+    font-size: 12px; line-height: 1;
+    cursor: pointer; z-index: 3;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    transition: all 0.15s ease;
+  }
+  .card .hide-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .card.is-hidden { opacity: 0.4; }
+  .card.is-hidden:hover { opacity: 0.8; }
+  .card.is-hidden .hide-btn { color: var(--good); border-color: var(--good); }
   .preview {
     aspect-ratio: 16 / 10;
     background:
@@ -205,7 +221,10 @@
       <option value="other">Other</option>
     </select>
     <label style="display:flex;align-items:center;gap:6px;color:var(--ink-dim);font-size:11px;">
-      <input id="show-heavy" type="checkbox" checked /> Show heavy (&gt;50 MB)
+      <input id="show-heavy" type="checkbox" /> Show heavy (&gt;11 MB)
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--ink-dim);font-size:11px;">
+      <input id="show-hidden" type="checkbox" /> Show hidden (<span id="hidden-count">0</span>)
     </label>
     <span class="count" id="count"></span>
   </div>
@@ -331,7 +350,7 @@ const MANIFEST = [
 // =============================================================
 //  UTIL
 // =============================================================
-const HEAVY_THRESHOLD = 50 * 1024 * 1024;
+const HEAVY_THRESHOLD = 11 * 1024 * 1024;
 const PREVIEW_MAX_SIZE = 40 * 1024 * 1024; // don't auto-load previews above this
 
 const fmtSize = (b) => {
@@ -351,12 +370,24 @@ const CATEGORY_LABELS = {
 const CATEGORY_ORDER = ["default", "aircraft", "starfighter", "capital", "other"];
 
 // =============================================================
+//  PERSISTENT HIDDEN SET — survives reloads via localStorage
+// =============================================================
+const STORAGE_KEY = 'ships.hangar.hidden';
+const hidden = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
+  catch { return new Set(); }
+})();
+const saveHidden = () => localStorage.setItem(STORAGE_KEY, JSON.stringify([...hidden]));
+
+// =============================================================
 //  RENDER
 // =============================================================
 const main = document.getElementById('main');
 const searchInput = document.getElementById('search');
 const categorySelect = document.getElementById('category');
 const showHeavy = document.getElementById('show-heavy');
+const showHidden = document.getElementById('show-hidden');
+const hiddenCountEl = document.getElementById('hidden-count');
 const countEl = document.getElementById('count');
 const totalSizeEl = document.getElementById('total-size');
 
@@ -366,8 +397,11 @@ function render() {
   const q = searchInput.value.trim().toLowerCase();
   const cat = categorySelect.value;
   const heavy = showHeavy.checked;
+  const showHid = showHidden.checked;
 
-  main.innerHTML = '';
+  hiddenCountEl.textContent = hidden.size;
+
+  main.replaceChildren();
   let total = 0;
 
   for (const c of CATEGORY_ORDER) {
@@ -375,7 +409,8 @@ function render() {
       m.category === c &&
       (!q || m.name.toLowerCase().includes(q) || (m.file || '').toLowerCase().includes(q)) &&
       (!cat || cat === c) &&
-      (heavy || m.size < HEAVY_THRESHOLD || m.category === 'default')
+      (heavy || m.size < HEAVY_THRESHOLD || m.category === 'default') &&
+      (showHid || !hidden.has(m.file))
     );
     if (items.length === 0) continue;
 
@@ -437,6 +472,24 @@ function renderCard(item) {
   card.appendChild(preview);
   card.__item = item;
   if (preview.dataset.autoload === '1') autoObs.observe(preview);
+
+  if (item.file) {
+    const isHidden = hidden.has(item.file);
+    if (isHidden) card.classList.add('is-hidden');
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'hide-btn';
+    hideBtn.type = 'button';
+    hideBtn.textContent = isHidden ? '↺' : '✕';
+    hideBtn.title = isHidden ? 'Restore' : 'Hide';
+    hideBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hidden.has(item.file)) hidden.delete(item.file);
+      else hidden.add(item.file);
+      saveHidden();
+      render();
+    });
+    card.appendChild(hideBtn);
+  }
 
   // — Info pane —
   const info = document.createElement('div');
@@ -648,6 +701,7 @@ function openTweak(item) {
 searchInput.addEventListener('input', render);
 categorySelect.addEventListener('change', render);
 showHeavy.addEventListener('change', render);
+showHidden.addEventListener('change', render);
 render();
 })();
 </script>
