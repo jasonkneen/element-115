@@ -2282,10 +2282,8 @@ scene.add(jet);
         propPivot.userData.__isProceduralProp = true;
         propPivot.userData.__disc = disc;
         props.push(propPivot);
-        plane.props = props; // CRITICAL: ensure plane object has props array
         console.log(`[plane-swap] procedural prop @ (x=${cx.toFixed(1)} y=${cy.toFixed(1)} z=${noseZ.toFixed(1)}) discSize=${discSize.toFixed(2)}`);
       } else {
-        plane.props = props; // ensure plane object has props array even for extracted/named props
         const tagged = props.map(p =>
           p.userData.__isExtractedProp ? 'extracted'
           : p.userData.__isProceduralProp ? 'procedural'
@@ -2293,6 +2291,7 @@ scene.add(jet);
         console.log(`[plane-swap] ${props.length} prop mesh(es): ${tagged}`);
       }
 
+      // CRITICAL: always assign props to plane object so telemetry shows prop_count>0
       plane.props = props;
 
       hud.style.color = '#5df09a';
