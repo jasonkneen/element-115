@@ -3603,6 +3603,19 @@ function updatePhysics(dt) {
 
   // World limits (shouldn't hit — infinite terrain)
   plane.pos.y = Math.max(plane.pos.y, -10);
+
+  // __physics_nan_guard__ — extreme attitudes (near-vertical climb/dive) can
+  // produce NaN in quaternion integration when angVel is large. Detect and
+  // reset to prevent state corruption that crashes the render loop.
+  if (!isFinite(plane.pos.x) || !isFinite(plane.pos.y) || !isFinite(plane.pos.z) ||
+      !isFinite(plane.vel.x) || !isFinite(plane.vel.y) || !isFinite(plane.vel.z) ||
+      !isFinite(plane.quat.x) || !isFinite(plane.quat.y) || !isFinite(plane.quat.z) || !isFinite(plane.quat.w)) {
+    console.warn('[physics] NaN detected at extreme attitude — resetting to safe state');
+    plane.vel.set(0, 0, Math.max(0, plane.vel.length() * 0.5)); // preserve some forward speed
+    plane.angVel.set(0, 0, 0);
+    plane.quat.setFromEuler(new THREE.Euler(0, Math.atan2(plane.pos.x, plane.pos.z), 0));
+    plane.pos.y = Math.max(50, plane.pos.y); // pop up slightly to avoid ground intersection
+  }
 }
 
 // =============================================================
