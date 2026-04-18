@@ -2225,7 +2225,8 @@ scene.add(jet);
       // failed to find any prop geometry. The extracted-prop path above
       // handles the common Sketchfab "baked prop" case; this fallback is
       // here for degenerate models (e.g. no nose verts at all).
-      if (props.length === 0) {
+      // BUGFIX: force fallback when props array is empty (prop_count == 0)
+      if (!props.length) {
         // Use the pre-attach jet-local bounds captured above. The nose of
         // a +Z-natural model that's been rotated 180° around Y sits at
         // modelBoxLocal.min.z in jet-local space, so we place the prop
