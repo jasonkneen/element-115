@@ -23,7 +23,11 @@ import path from 'node:path';
 const exec = promisify(execFile);
 
 // ——— Config ———
-const TARGET_URL = 'http://localhost:55073/flight-sim3#plane=disney_planes_-_dusty_turbo.glb';
+// URL priority: env.TARGET_URL > env.PORT > hardcoded default. The
+// orchestrator (self-evolve.mjs) passes the real port via env after it
+// starts serve, so these always match.
+const TARGET_URL = process.env.TARGET_URL
+  || `http://localhost:${process.env.PORT || 55073}/flight-sim3#plane=disney_planes_-_dusty_turbo.glb`;
 const MODEL = 'accounts/fireworks/models/kimi-k2p5';
 const API_URL = 'https://api.fireworks.ai/inference/v1/chat/completions';
 const API_KEY = process.env.FIREWORKS_API_KEY;
@@ -80,6 +84,26 @@ async function evalPage(js) {
   return v;
 }
 async function pageReady() { return evalPage('JSON.stringify({ hasAp: !!window.__ap, loaded: document.readyState })'); }
+async function waitForBridge(maxTries = 30) {
+  for (let k = 0; k < maxTries; k++) {
+    const r = await pageReady();
+    if (r && r.hasAp) return true;
+    await sleep(400);
+  }
+  console.warn('[autopilot] window.__ap bridge never attached');
+  return false;
+}
+// Force-dismiss the intro overlay and start the simulation via the bridge
+// so the AI never has to click. Handles the initial load and every reload
+// triggered by a world-designer revision bump.
+async function dismissIntro() {
+  await evalPage(`(() => {
+    const t = document.getElementById('title');
+    if (t) t.classList.add('hide');
+    if (window.__ap) window.__ap.resume();
+    "ok";
+  })()`).catch(() => {});
+}
 async function resetPlane() { await evalPage('window.__ap && window.__ap.reset(); "ok"'); }
 async function telemetry() { return evalPage('JSON.stringify(window.__ap.telemetry())'); }
 async function keyDown(code) { await evalPage(`window.__ap.keyDown(${JSON.stringify(code)}); "ok"`); }
@@ -468,7 +492,14 @@ async function executeAction(a, skills) {
         await holdKey(code, 90); effect = `tapped ${code}`; break;
       }
       case 'start':
-      case 'click': { await run('click', 'body'); effect = 'clicked canvas'; break; }
+      case 'click': {
+        // Force-dismiss any intro overlay and resume the sim. Click is a
+        // fallback so the AI can never get stuck on the start screen.
+        await dismissIntro();
+        await run('click', 'body');
+        effect = 'dismissed intro / clicked canvas';
+        break;
+      }
       case 'wait':  { await sleep(Math.min(4000, a.ms || 600)); effect = `waited ${a.ms || 600}ms`; break; }
       case 'reset': { await resetPlane(); skills.resets++; effect = 'reset plane'; break; }
       case 'done':  { effect = 'done (IGNORED — only coordinator can end stages)'; break; }
@@ -524,11 +555,8 @@ function appendRequest(kind, text, currentStage) {
   await run('open', TARGET_URL, '--headed');
   await sleep(2500);
 
-  for (let i = 0; i < 20; i++) {
-    const r = await pageReady();
-    if (r && r.hasAp) break;
-    await sleep(500);
-  }
+  await waitForBridge();
+  await dismissIntro();
 
   // Launch background telemetry poller
   const poller = pollTelemetry();
@@ -550,13 +578,10 @@ function appendRequest(kind, text, currentStage) {
       console.log(`\n[autopilot] world revision bumped ${lastWorldRev}→${worldRev}, reloading`);
       await run('reload');
       await sleep(2500);
-      for (let k = 0; k < 15; k++) {
-        const r = await pageReady();
-        if (r && r.hasAp) break;
-        await sleep(400);
-      }
+      await waitForBridge();
+      await dismissIntro();
       lastWorldRev = worldRev;
-      statusNote = `world was updated to revision ${worldRev}`;
+      statusNote = `world was updated to revision ${worldRev} — intro auto-dismissed, game is live`;
     }
 
     // Evaluate curriculum on every iteration, BEFORE asking the AI

@@ -1,1 +1,8 @@
+# Large model files
 *.glb
+
+# Designer backup (regenerated on first run)
+flight-sim3.html.bak
+
+# Temp autopilot screenshots
+/tmp/ap-frame.png

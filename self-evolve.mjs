@@ -121,21 +121,54 @@ function waitForServePort(proc, timeoutMs = 20000) {
   });
 }
 
-const procs = [];
-const serveProc = launchServe(PORT);
-procs.push(serveProc);
-console.log(`${C.orch}[orch]${C.reset}       launched ‘npx serve’ — waiting for port…`);
-try {
-  PORT = await waitForServePort(serveProc);
-  console.log(`${C.orch}[orch]${C.reset}       server is on :${PORT}`);
-} catch (e) {
-  console.error(`${C.orch}[orch]${C.reset}       ${e.message}`);
-  for (const p of procs) { try { p.kill('SIGTERM'); } catch {} }
-  process.exit(1);
+// Probe common ports for an existing server that actually serves
+// flight-sim3.html so we can reuse it instead of starting a second serve.
+async function findExistingServer() {
+  const candidates = [];
+  if (PORT) candidates.push(PORT);
+  candidates.push(3000, 5000, 55073, 50045, 8080, 8000);
+  const seen = new Set();
+  for (const p of candidates) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    try {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 700);
+      const res = await fetch(`http://localhost:${p}/flight-sim3.html`, {
+        method: 'GET', signal: ctrl.signal, redirect: 'follow',
+      });
+      clearTimeout(to);
+      if (res.ok) {
+        const body = await res.text();
+        if (body.includes('CANYON AIRSTRIP') || body.includes('Flight Sim') || body.includes('flight-sim')) {
+          return p;
+        }
+      }
+    } catch {}
+  }
+  return null;
 }
 
-// Give the HTTP server a beat to finish binding after it prints the URL
-await new Promise(r => setTimeout(r, 500));
+const procs = [];
+const existing = await findExistingServer();
+if (existing) {
+  PORT = existing;
+  console.log(`${C.orch}[orch]${C.reset}       → reusing existing server on :${PORT}`);
+} else {
+  const serveProc = launchServe(PORT);
+  procs.push(serveProc);
+  console.log(`${C.orch}[orch]${C.reset}       launched ‘npx serve’ — waiting for port…`);
+  try {
+    PORT = await waitForServePort(serveProc);
+    console.log(`${C.orch}[orch]${C.reset}       server bound on :${PORT}`);
+  } catch (e) {
+    console.error(`${C.orch}[orch]${C.reset}       ${e.message}`);
+    for (const p of procs) { try { p.kill('SIGTERM'); } catch {} }
+    process.exit(1);
+  }
+  // Give it a beat to finish binding after it prints the URL
+  await new Promise(r => setTimeout(r, 500));
+}
 
 const childEnv = {
   ...process.env,
