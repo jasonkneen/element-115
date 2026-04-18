@@ -33,6 +33,24 @@
   .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
   .warn { color: #ff5533; }
   .ok { color: #66ff99; }
+  .hud-action {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    letter-spacing: inherit;
+  }
+  .hud-action:hover { color: #ffe0a0; }
+  .hud-action:focus-visible {
+    outline: 1px solid rgba(255, 204, 102, 0.75);
+    outline-offset: 3px;
+  }
   #crosshair {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%,-50%);
@@ -57,11 +75,31 @@
   }
   #title h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0.2em; }
   #title p { margin: 4px 0; font-size: 12px; opacity: 0.85; letter-spacing: 0.1em; }
+  #title .start-steps {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 204, 102, 0.18);
+    text-align: left;
+    font-size: 11px;
+    line-height: 1.8;
+    letter-spacing: 0.08em;
+  }
+  #title .meta { margin-top: 12px; font-size: 10px; opacity: 0.6; }
   #title .cta { margin-top: 16px; font-size: 14px; color: #ffe0a0; }
   .hide { opacity: 0; pointer-events: none; }
+  body.preflight #crosshair,
+  body.preflight #instruments,
+  body.preflight #controls-help {
+    opacity: 0;
+  }
+  #crosshair,
+  #instruments,
+  #controls-help {
+    transition: opacity 0.25s ease;
+  }
 </style>
 </head>
-<body>
+<body class="preflight">
 <div id="hud">
   <div id="crosshair"></div>
   <div class="panel" id="instruments">
@@ -77,17 +115,17 @@
     <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
     <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
-      <div id="style-btn" style="cursor:pointer;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></div>
-      <div id="biome-btn" style="cursor:pointer; margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></div>
-      <div id="audio-btn" style="cursor:pointer; margin-top:3px;">SOUND <span id="audio-ind" class="ok">ON</span></div>
+      <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
+      <button type="button" class="hud-action" id="biome-btn" style="margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
+      <button type="button" class="hud-action" id="audio-btn" style="margin-top:3px;">SOUND <span id="audio-ind" class="warn">OFF</span></button>
     </div>
   </div>
   <div class="panel" id="controls-help">
-    <div id="ch-line1">W/S PITCH &nbsp; A/D ROLL &nbsp; Q/E or ←/→ RUDDER</div>
-    <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL DOWN</div>
-    <div id="ch-line3">G GEAR &nbsp; B BRAKE &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
+    <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
+    <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL THROTTLE DOWN &nbsp; B BRAKE</div>
+    <div id="ch-line3">G GEAR &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
-  <div class="panel" id="status-msg">READY FOR DEPARTURE</div>
+  <div class="panel" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
        screenshot. Updated each frame by updateHUD(). -->
   <div id="dev-overlay" style="position:fixed;top:4px;right:50%;transform:translateX(50%);
@@ -98,10 +136,15 @@
   </div>
   <div id="title">
     <h1>CANYON AIRSTRIP</h1>
-    <p>TAKEOFF · NAVIGATE · REGENERATIVE TERRAIN</p>
-    <p>Full throttle (SHIFT) and pull back (S) immediately — plane lifts off at low speed</p>
-    <p style="margin-top:14px; font-size:10px; opacity:0.55;">SEED <span id="seed-display">----</span> · DETERMINISTIC WORLD</p>
-    <div class="cta">&gt; CLICK TO BEGIN &lt;</div>
+    <p>FREE FLIGHT · TRAINING GATES · REGENERATIVE TERRAIN</p>
+    <div class="start-steps">
+      <div>1 · CLICK OR PRESS ANY KEY TO START</div>
+      <div>2 · HOLD SHIFT TO BUILD SPEED</div>
+      <div>3 · PRESS S TO ROTATE AND CLIMB</div>
+      <div>4 · PRESS R ANY TIME TO RESET</div>
+    </div>
+    <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
+    <div class="cta">&gt; CLICK OR PRESS ANY KEY TO FLY &lt;</div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -109,6 +152,15 @@
 <script>
 (() => {
 'use strict';
+
+const bootParamSource = (() => {
+  const hashStr = (window.location.hash || '').replace(/^#/, '');
+  if (hashStr.includes('=')) return hashStr;
+  return (window.location.search || '').replace(/^\?/, '');
+})();
+const bootParams = new URLSearchParams(bootParamSource);
+const DEBUG_UI = bootParams.get('debug') === '1';
+const AUTOPILOT_UI = DEBUG_UI || bootParams.get('autopilot') === '1';
 
 // =============================================================
 //  SEED + NOISE — deterministic worldgen
@@ -383,6 +435,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+renderer.domElement.tabIndex = 0;
+renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
 
 // Sky dome
@@ -3489,13 +3543,14 @@ function updatePhysics(dt) {
   // Thrust
   // Effective throttle includes the flight-idle floor whenever we're
   // airborne. On the ground we let it drop to 0 so brakes + closed
-  // throttle actually stop the plane. Ground check uses the same
-  // airstrip-flat heuristic as the physics below.
+  // throttle actually stop the plane. Use the persistent onGround state
+  // instead of a raw altitude threshold so the parked aircraft does not
+  // creep forward at 0% throttle the instant the sim starts.
   const _thrGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
     ? 0 : getHeight(plane.pos.x, plane.pos.z);
-  const effectiveThrottle = (plane.pos.y - _thrGroundH > 1.5)
-    ? Math.max(IDLE_THRUST_FRAC, plane.throttle)
-    : plane.throttle;
+  const effectiveThrottle = plane.onGround
+    ? plane.throttle
+    : Math.max(IDLE_THRUST_FRAC, plane.throttle);
   const thrust = forward.clone().multiplyScalar(effectiveThrottle * MAX_THRUST);
 
   // Gravity
@@ -3528,7 +3583,7 @@ function updatePhysics(dt) {
   const altAbove = plane.pos.y - groundH;
   const wheelAlt = altAbove - GEAR_HEIGHT * plane.gear;
 
-  if (wheelAlt < 0) {
+  if (wheelAlt <= 0.02) {
     // ——— SLOPE-IMPACT CHECK ———
     // Without this the plane's "touchdown" branch below runs even when
     // driving horizontally into a mountainside, snapping the plane to the
@@ -3775,7 +3830,9 @@ const $seedDisp = document.getElementById('seed-disp');
 const $styleInd = document.getElementById('style-ind');
 const $biomeInd = document.getElementById('biome-ind');
 const statusMsg = document.getElementById('status-msg');
+const $devOverlay = document.getElementById('dev-overlay');
 $seedDisp.textContent = SEED;
+if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 
 // Button click toggles style (in addition to T key)
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
@@ -3783,15 +3840,57 @@ document.getElementById('biome-btn').addEventListener('click', cycleBiome);
 
 // Audio toggle button
 const $audioInd = document.getElementById('audio-ind');
-document.getElementById('audio-btn').addEventListener('click', () => {
-  setAudioEnabled(!audio.enabled);
+function syncAudioIndicator() {
   $audioInd.textContent = audio.enabled ? 'ON' : 'OFF';
   $audioInd.className = audio.enabled ? 'ok' : 'warn';
+}
+document.getElementById('audio-btn').addEventListener('click', () => {
+  setAudioEnabled(!audio.enabled);
+  syncAudioIndicator();
 });
+syncAudioIndicator();
 
 let vsSmoothed = 0;
 let gSmoothed = 1;
 let lastVel = new THREE.Vector3();
+function updateStatusGuidance(speedKts, aoaDeg) {
+  if (plane.crashed) return;
+  if (!running) {
+    statusMsg.textContent = 'CLICK OR PRESS ANY KEY TO START';
+    statusMsg.className = 'panel';
+    return;
+  }
+
+  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000
+    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
+
+  let message = 'FREE FLIGHT — FOLLOW THE GATES OR EXPLORE THE CANYON';
+  let className = 'panel';
+
+  if (Math.abs(aoaDeg) > 17 && speedKts > 45) {
+    message = 'STALL WARNING — RELEASE S AND BUILD SPEED';
+    className = 'panel warn';
+  } else if (plane.onGround && plane.throttle < 0.15) {
+    message = 'HOLD SHIFT TO ADVANCE THROTTLE';
+  } else if (plane.onGround && speedKts < 55) {
+    message = 'TAKEOFF ROLL — USE Q/E TO STAY STRAIGHT';
+  } else if (plane.onGround) {
+    message = 'ROTATE NOW — PRESS S TO LIFT OFF';
+    className = 'panel ok';
+  } else if (aglFt < 80) {
+    message = 'POSITIVE CLIMB — RELAX S AS YOU CLEAR THE RUNWAY';
+    className = 'panel ok';
+  } else if (!plane.fixedGear && plane.gear > 0.95) {
+    message = 'CLIMB STABLE — PRESS G TO RETRACT GEAR';
+  } else if (aglFt < 260) {
+    message = 'AHEAD IS OPEN — FOLLOW THE TRAINING GATES OR FREE-FLY';
+    className = 'panel ok';
+  }
+
+  statusMsg.textContent = message;
+  statusMsg.className = className;
+}
 function updateHUD() {
   // Speed — m/s * ~1.94 = knots
   const sp = plane.vel.length() * 1.94;
@@ -3871,6 +3970,7 @@ function updateHUD() {
   $throttleBar.style.width = tp + '%';
   $abStatus.textContent = tp > 55 ? '◈ AFTERBURNER' : ' ';
   $abStatus.className = tp > 55 ? 'warn' : '';
+  updateStatusGuidance(sp, aoa);
 }
 
 // =============================================================
@@ -3929,20 +4029,30 @@ renderer.render(scene, camera);
 // =============================================================
 const title = document.getElementById('title');
 document.getElementById('seed-display').textContent = SEED;
-title.addEventListener('click', () => {
+function beginFlight() {
   title.classList.add('hide');
+  document.body.classList.remove('preflight');
   running = true;
   setAudioEnabled(true);
+  syncAudioIndicator();
   renderer.domElement.focus();
+}
+title.addEventListener('click', () => {
+  renderer.domElement.focus();
+  beginFlight();
 });
 // Also allow any key to start
 window.addEventListener('keydown', () => {
   if (!running) {
-    title.classList.add('hide');
-    running = true;
-    setAudioEnabled(true);
+    renderer.domElement.focus();
+    beginFlight();
   }
 }, { once: true });
+
+// __overlay_dismiss_focus__ — re-focus game canvas on any click/key
+// so external popups (Twitter/X sign-in, etc.) don't block input
+window.addEventListener('click', () => renderer.domElement.focus());
+window.addEventListener('keydown', () => renderer.domElement.focus());
 
 // =============================================================
 //  RESIZE
@@ -4673,6 +4783,7 @@ window.__ap = {
 // — Autopilot launcher button (visible to humans; the AI treats it as
 //   just another UI element and can ignore it).
 (function addAutopilotButton() {
+  if (!AUTOPILOT_UI) return;
   const btn = document.createElement('button');
   btn.id = 'autopilot-btn';
   btn.textContent = '🤖 AUTOPILOT';
