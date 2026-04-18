@@ -230,8 +230,8 @@ function detLanded() {
 }
 
 const CURRICULUM = [
-  { id: 'takeoff',        name: 'TAKEOFF',         goal: 'Get airborne: climb through 500 ft at > 120 kts, sustained 3s.',
-    check: () => detSustained(t => t.alt_ft > 500 && t.spd_kts > 120 && !t.crashed, 3) },
+  { id: 'takeoff',        name: 'TAKEOFF',         goal: 'Get airborne: reach 300 ft altitude at > 70 kts without crashing. Tip: this prop plane rotates at low speed — hold SHIFT (throttle) and S (pitch up) together from the very start.',
+    check: () => detSustained(t => t.alt_ft > 300 && t.spd_kts > 70 && !t.crashed, 2) },
   { id: 'climb',          name: 'CLIMB',            goal: 'Reach 2000 ft altitude.',
     check: () => detReached(t => t.alt_ft > 2000 && !t.crashed) },
   { id: 'cruise',         name: 'LEVEL CRUISE',     goal: 'Hold altitude within ±150 ft for 15s while moving forward at > 100 kts.',
