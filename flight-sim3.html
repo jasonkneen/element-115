@@ -2226,7 +2226,7 @@ scene.add(jet);
       // handles the common Sketchfab "baked prop" case; this fallback is
       // here for degenerate models (e.g. no nose verts at all).
       // BUGFIX: force fallback when props array is empty (prop_count == 0)
-      if (!props.length) {
+      if (props.length === 0) {
         // Use the pre-attach jet-local bounds captured above. The nose of
         // a +Z-natural model that's been rotated 180° around Y sits at
         // modelBoxLocal.min.z in jet-local space, so we place the prop
@@ -2282,8 +2282,10 @@ scene.add(jet);
         propPivot.userData.__isProceduralProp = true;
         propPivot.userData.__disc = disc;
         props.push(propPivot);
+        plane.props = props; // CRITICAL: ensure plane object has props array
         console.log(`[plane-swap] procedural prop @ (x=${cx.toFixed(1)} y=${cy.toFixed(1)} z=${noseZ.toFixed(1)}) discSize=${discSize.toFixed(2)}`);
       } else {
+        plane.props = props; // ensure plane object has props array even for extracted/named props
         const tagged = props.map(p =>
           p.userData.__isExtractedProp ? 'extracted'
           : p.userData.__isProceduralProp ? 'procedural'
