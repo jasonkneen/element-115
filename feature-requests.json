@@ -1,0 +1,26 @@
+{
+  "pending": [
+    {
+      "id": "mo45x9z7boao",
+      "kind": "bug",
+      "text": "The flight simulator connection to localhost is refusing connection, preventing gameplay.",
+      "stage": "takeoff",
+      "at": "2026-04-18T09:56:41.539Z"
+    },
+    {
+      "id": "mo45xfwy9pbz",
+      "kind": "bug",
+      "text": "Connection to localhost failed, attempting page reload",
+      "stage": "takeoff",
+      "at": "2026-04-18T09:56:49.234Z"
+    },
+    {
+      "id": "mo45xngwu49k",
+      "kind": "bug",
+      "text": "Connection to localhost refused, flight simulator server may not be running or crashed",
+      "stage": "takeoff",
+      "at": "2026-04-18T09:56:59.024Z"
+    }
+  ],
+  "resolved": []
+}

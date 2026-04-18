@@ -1,6 +1,6 @@
 {
   "mission": "Learn to fly the plane: take off, climb, hold level flight for ~30s, land would be a stretch goal.",
-  "iterations": 15,
+  "iterations": 16,
   "crashes": 7,
   "resets": 2,
   "control_map": {
@@ -18,7 +18,8 @@
     "T": "style toggle",
     "KeyS": "pitch up (confirmed)",
     "KeyW": "pitch down (confirmed)",
-    "Y": "biome toggle"
+    "Y": "biome toggle",
+    "ShiftLeft": "throttle up (confirmed)"
   },
   "observations": [
     "Small pitch corrections (150ms) should help fine-tune attitude",
@@ -220,144 +221,188 @@
     "Reached 1928 ft altitude with 181.7 kts speed - excellent climb performance",
     "Gear toggle with G confirmed - gear status changed",
     "Now at safe altitude, need to level off with gentle pitch down (W) for sustained flight",
-    "Successfully achieved sustained level flight at 2602.4 ft altitude with 231.1 kts speed, gear up, stable flight over canyon terrain. All goals completed."
+    "Successfully achieved sustained level flight at 2602.4 ft altitude with 231.1 kts speed, gear up, stable flight over canyon terrain. All goals completed.",
+    "Connection to localhost failed, attempting page reload",
+    "Connection to localhost failed, attempting page reload",
+    "Connection to localhost failed, attempting page reload",
+    "Connection to localhost failed, attempting page reload",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin",
+    "Intro overlay present - must click to begin"
   ],
-  "strategy": "Mission accomplished - sustained level flight achieved at high altitude with excellent speed and stability",
+  "strategy": "Click to dismiss overlay, then full throttle for takeoff",
   "recent_actions": [
     {
       "action": {
         "type": "click",
-        "reason": "Start the game by clicking as instructed"
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505499470,
+      "t0": 1776506243740,
       "effect": "clicked canvas"
     },
     {
       "action": {
         "type": "click",
-        "reason": "Start the game by clicking as instructed"
+        "key": null,
+        "hold_ms": 0,
+        "ms": 500
       },
-      "t0": 1776505517902,
+      "t0": 1776506247577,
       "effect": "clicked canvas"
     },
     {
       "action": {
         "type": "click",
-        "reason": "Start the game by clicking as instructed"
+        "key": null,
+        "hold_ms": 0,
+        "ms": 500
       },
-      "t0": 1776505527344,
+      "t0": 1776506251160,
       "effect": "clicked canvas"
     },
     {
       "action": {
         "type": "click",
-        "reason": "Start the game by clicking as instructed"
+        "ms": 500
       },
-      "t0": 1776505533440,
+      "t0": 1776506254756,
       "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "Enter",
-        "hold_ms": 100
+        "type": "click",
+        "ms": 500
       },
-      "t0": 1776505539866,
-      "effect": "held Enter for 100ms"
+      "t0": 1776506258324,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "Space",
-        "hold_ms": 100
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505544874,
-      "effect": "held Space for 100ms"
+      "t0": 1776506273336,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "Escape",
-        "hold_ms": 100
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505554983,
-      "effect": "held Escape for 100ms"
+      "t0": 1776506277175,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "Escape",
-        "hold_ms": 100
+        "type": "click",
+        "ms": 500
       },
-      "t0": 1776505562745,
-      "effect": "held Escape for 100ms"
+      "t0": 1776506281112,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "ShiftLeft",
-        "hold_ms": 100
+        "type": "click",
+        "ms": 500
       },
-      "t0": 1776505576669,
-      "effect": "held ShiftLeft for 100ms"
+      "t0": 1776506285238,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "ShiftLeft",
-        "hold_ms": 500
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 500
       },
-      "t0": 1776505583286,
-      "effect": "held ShiftLeft for 500ms"
+      "t0": 1776506289068,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "KeyS",
-        "hold_ms": 300
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505596658,
-      "effect": "held KeyS for 300ms"
+      "t0": 1776506293061,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "KeyS",
-        "hold_ms": 200
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505604702,
-      "effect": "held KeyS for 200ms"
+      "t0": 1776506297207,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "tap",
-        "key": "G",
-        "reason": "Retract landing gear for better aerodynamics during climb"
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
       },
-      "t0": 1776505616408,
-      "effect": "tapped KeyG"
+      "t0": 1776506301311,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "press",
-        "key": "KeyW",
-        "hold_ms": 200
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 0
       },
-      "t0": 1776505622127,
-      "effect": "held KeyW for 200ms"
+      "t0": 1776506307512,
+      "effect": "clicked canvas"
     },
     {
       "action": {
-        "type": "done",
-        "reason": "Successfully achieved sustained level flight at 2602 ft altitude with 231 kts speed, gear up, stable flight over canyon terrain. All goals completed: game started, controls learned, takeoff executed, climb to safe altitude, and level flight established."
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 0
       },
-      "t0": 1776505637984,
-      "effect": "done"
+      "t0": 1776506314264,
+      "effect": "clicked canvas"
+    },
+    {
+      "action": {
+        "type": "click",
+        "key": null,
+        "hold_ms": 0,
+        "ms": 200
+      },
+      "t0": 1776506318488,
+      "effect": "clicked canvas"
     }
   ],
   "session_best": {
     "max_altitude": 4082.465279109152,
     "max_speed": 289.8975345880376,
     "longest_flight_s": 75.254
-  }
+  },
+  "stages_mastered": [],
+  "current_stage": "takeoff"
 }

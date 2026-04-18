@@ -77,8 +77,8 @@
     <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
     <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
-      <div id="style-btn" style="cursor:pointer;">STYLE [T] <span id="style-ind" class="ok">REALISTIC</span></div>
-      <div id="biome-btn" style="cursor:pointer; margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">DESERT</span></div>
+      <div id="style-btn" style="cursor:pointer;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></div>
+      <div id="biome-btn" style="cursor:pointer; margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></div>
       <div id="audio-btn" style="cursor:pointer; margin-top:3px;">SOUND <span id="audio-ind" class="ok">ON</span></div>
     </div>
   </div>
@@ -177,7 +177,7 @@ const BIOMES = {
     hasCactus: false, pineChance: 0.7, shrubChance: 0.85,
   },
 };
-const currentBiome = { name: 'desert', ...BIOMES.desert };
+const currentBiome = { name: 'grassland', ...BIOMES.grassland };
 const smoothstep = t => t * t * (3 - 2 * t);
 function vnoise(x, y) {
   const ix = Math.floor(x), iy = Math.floor(y);
@@ -1820,7 +1820,7 @@ scene.add(jet);
 // =============================================================
 //  STYLE TOGGLE — realistic ↔ low-poly stylised
 // =============================================================
-const styleMode = { current: 'realistic' };
+const styleMode = { current: 'lowpoly' };
 
 // Low-poly rock material — Phong supports flatShading (Lambert in r128 does not)
 const rockMatLowPoly = new THREE.MeshPhongMaterial({
@@ -3120,6 +3120,10 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// Apply default style (low-poly) once all HUD refs + scene state exist,
+// so the sky / materials match the HUD indicator from frame one.
+applyStyle();
 
 requestAnimationFrame(animate);
 
