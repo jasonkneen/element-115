@@ -336,6 +336,18 @@ PLANE CONFIG: fixed-wing prop plane with FIXED (non-retractable) landing gear.
 - There is no "retract gear" step. Skip it entirely.
 - The on-screen control legend has already been updated to omit G GEAR.
 
+SELF-HEALING — BUG REPORTS:
+- Your live telemetry includes prop_count, prop_spin_phase, prop_stuck,
+  and fixed_gear. Use them to catch silent bugs:
+    * prop_count == 0      → bug_report: "no prop mesh exists on the plane;
+                               GLB-swap procedural prop fallback didn't fire"
+    * prop_stuck == true   → bug_report: "propeller is not spinning even
+                               though throttle > 0; plane.props[0].rotation.z
+                               isn't changing between frames"
+- Only report a bug ONCE per session (look at your recent observations).
+- Be specific and actionable. The world-designer/bug-fixer will patch it
+  live and the browser will hot-reload.
+
 CURRENT STAGE: ${stage.name}
 GOAL: ${stage.goal}
 
@@ -388,8 +400,20 @@ until airborne.
 Smooth, gentle inputs win. Overcontrol = crash.`;
 }
 
+// Track consecutive samples where the prop is at the same phase — a
+// reliable "prop not spinning" detector across real-time iterations.
+let _lastPropPhase = null;
+let _propStaleFrames = 0;
 function buildUserMessage(skills, frame, liveStatus) {
   const l = latest() || {};
+  // Detect stuck propeller across successive samples
+  const phase = l.prop_spin_phase;
+  if (phase != null) {
+    if (_lastPropPhase === phase) _propStaleFrames++;
+    else { _propStaleFrames = 0; _lastPropPhase = phase; }
+  }
+  const propStuck = (l.prop_count > 0) && (_propStaleFrames > 6) && (l.throttle > 0.05);
+
   const tele = {
     spd_kts: l.spd_kts?.toFixed?.(0),
     alt_ft: l.alt_ft?.toFixed?.(0),
@@ -402,6 +426,10 @@ function buildUserMessage(skills, frame, liveStatus) {
     gear: l.gear > 0.7 ? 'down' : (l.gear < 0.3 ? 'up' : 'moving'),
     crashed: !!l.crashed,
     on_ground: !!l.on_ground,
+    fixed_gear: !!l.fixed_gear,
+    prop_count: l.prop_count ?? 0,
+    prop_spin_phase: phase,
+    prop_stuck: propStuck,   // reliable "prop not spinning" signal
   };
   return [
     { type: 'text', text:

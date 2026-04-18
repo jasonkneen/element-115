@@ -3613,6 +3613,14 @@ window.__ap = {
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
+      // Plane config flags — let the pilot AI notice when something's wrong
+      fixed_gear: !!plane.fixedGear,
+      prop_count: (plane.props && plane.props.length) || 0,
+      // Sum of recent rotation.z increments as a sanity check that props
+      // are actually spinning. Pilot can compare across iterations.
+      prop_spin_phase: plane.props && plane.props[0]
+        ? Math.round((plane.props[0].rotation.z * 180 / Math.PI) % 360)
+        : null,
     };
   },
   // Dispatch a real KeyboardEvent so the sim's keys[e.code] handler picks it up

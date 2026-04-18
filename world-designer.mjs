@@ -229,6 +229,47 @@ STRICT RULES:
 If the request is a BUG report, propose a minimal fix only if you are
 confident; otherwise return edits: [] and explain in summary.`;
 
+// ——— Bug-fix variant: broader authority for targeted surgery ———
+// Bugs can live in zones feature-adds must never touch (GLB-swap,
+// updatePhysics, animate loop). We expand scope here but demand minimal
+// edits. Syntax check + git commit give us an automatic rollback anchor.
+const DESIGNER_SYSTEM_BUG = `You are the BUG FIXER for a Three.js browser flight sim.
+A pilot AI has reported that something is broken or visually wrong.
+Propose a MINIMAL, TARGETED code change that fixes exactly what is
+described and NOTHING MORE.
+
+RULES:
+1. Output ONLY a single JSON object:
+   { "summary": "one-line fix description", "edits": [ { "oldText": "...", "newText": "..." } ] }
+2. oldText must be COPIED EXACTLY from source; small enough to be UNIQUE,
+   large enough that the intent is clear.
+3. You may touch ANY game code INCLUDING makeJet, updatePhysics, the GLB-
+   swap block, and the animate loop — but only to fix the specific bug.
+   No refactoring, no unrelated "improvements". One bug, one patch.
+4. NEVER modify \`window.__ap\` (the pilot depends on it) or the autopilot
+   panel #__ap_thoughts.
+5. plane object has: pos, vel, quat, throttle, gear, fixedGear, props
+   (array of meshes/groups that spin each frame around local Z),
+   suppressJetFX (true for GLB planes), crashed.
+6. If the bug is "prop doesn't spin" on a GLB plane, common causes:
+     a) plane.props is empty — the procedural fallback in the GLB-swap
+        block never fired (check the condition props.length === 0).
+     b) the procedural prop was positioned inside the fuselage mesh —
+        move it further forward along -Z relative to modelBox.min.z.
+     c) geometry is rotationally symmetric — a spinning cylinder looks
+        static. Use two crossed bars or blades.
+     d) pivot was parented to \`model\` (which has ry=180°) instead of to
+        \`jet\`, doubling the rotation and hiding spin visually.
+     e) the rotation axis is wrong — procedural props rotate around Z
+        in jet-local space; verify updateJetVisual() increments z.
+7. If you're unsure or the fix would touch too much, return
+   edits: [] with a summary explaining why you abstained.
+8. Three.js r128 (global THREE). +Y up, -Z forward, metres.`;
+
+function pickSystemPrompt(request) {
+  return request.kind === 'bug' ? DESIGNER_SYSTEM_BUG : DESIGNER_SYSTEM;
+}
+
 function buildDesignerUserMessage(html, request, skills) {
   return `Pilot progress: mastered=[${(skills.stages_mastered||[]).join(', ')}] current=${skills.current_stage}.
 
@@ -286,9 +327,10 @@ function applyEdits(html, edits) {
     let spec;
     try {
       const reply = await askLLM([
-        { role: 'system', content: DESIGNER_SYSTEM },
+        { role: 'system', content: pickSystemPrompt(request) },
         { role: 'user', content: buildDesignerUserMessage(html, request, skills) },
       ]);
+      console.log(`[designer] using ${request.kind === 'bug' ? 'BUG-FIXER' : 'FEATURE'} system prompt`);
       spec = parseEdits(reply);
     } catch (e) {
       console.error('[designer] LLM failed:', e.message);
