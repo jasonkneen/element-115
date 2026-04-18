@@ -1796,8 +1796,36 @@ scene.add(jet);
       plane.gear = 1;
       plane.gearTarget = 1;
 
+      // ——— Kill jet-specific FX on swapped-in planes ———
+      // The procedural afterburner + engine contrail + heat-haze only
+      // make sense for fighter jets. Hide them; suppress their emitters.
+      if (jet.userData.afterburner) jet.userData.afterburner.visible = false;
+      if (jet.userData.ab2)         jet.userData.ab2.visible = false;
+      plane.suppressJetFX = true;
+
+      // ——— Find propeller meshes to spin ———
+      // Most prop-plane GLBs name their spinning parts with substrings
+      // like 'prop', 'blade', 'spinner', 'rotor'. Collect every match; we
+      // spin them in updateJetVisual() based on throttle.
+      const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
+      const props = [];
+      model.traverse(o => {
+        if (!o.isMesh && !o.isObject3D) return;
+        if (o === model) return;
+        if (propNames.test(o.name || '')) {
+          // Axis guess: most prop meshes spin around their local Z (forward).
+          // We'll detect later from the parent orientation, but default to Z.
+          o.userData.__propAxis = 'z';
+          props.push(o);
+        }
+      });
+      plane.props = props;
+      if (props.length) {
+        console.log(`[plane-swap] found ${props.length} propeller mesh(es): ${props.map(p => p.name).join(', ')}`);
+      }
+
       hud.style.color = '#5df09a';
-      hud.textContent = `✓ ${planeFile} · scale ×${s.toFixed(2)} · FIXED GEAR`;
+      hud.textContent = `✓ ${planeFile} · ×${s.toFixed(2)} · fixed gear${props.length ? ' · '+props.length+' prop(s)' : ''}`;
       console.log('[plane-swap] loaded', planeFile,
         'size=', size.toArray().map(v => v.toFixed(2)).join('×'),
         'scale=', s.toFixed(3));
@@ -2110,7 +2138,7 @@ function updateAtmospheric(dt) {
   const altAGL = plane.pos.y - getHeight(plane.pos.x, plane.pos.z);
   contrailTimer += dt;
   const emitInterval = plane.throttle > 0.55 ? 0.04 : 0.09;
-  if (plane.throttle > 0.25 && altAGL > 4 && contrailTimer > emitInterval) {
+  if (!plane.suppressJetFX && plane.throttle > 0.25 && altAGL > 4 && contrailTimer > emitInterval) {
     contrailTimer = 0;
     contrail.emit(wlE, 1.0, 0.7 + plane.throttle * 0.5);
   }
@@ -2424,7 +2452,7 @@ function updateHeat(dt) {
     // Add small randomness for wobble
     ex.x += (Math.random() - 0.5) * 0.6;
     ex.y += (Math.random() - 0.5) * 0.6;
-    heatPool.emit(ex, 0.6 + plane.throttle * 0.4, 0.5 + plane.throttle * 0.6);
+    if (!plane.suppressJetFX) heatPool.emit(ex, 0.6 + plane.throttle * 0.4, 0.5 + plane.throttle * 0.6);
   }
   heatPool.update(dt);
 }
@@ -2925,26 +2953,35 @@ function updateJetVisual() {
   jet.userData.gearL.rotation.z = (1 - g) * (Math.PI * 0.5);
   jet.userData.gearR.rotation.z = -(1 - g) * (Math.PI * 0.5);
 
-  // Afterburner — active at high throttle
-  const ab = jet.userData.afterburner;
-  const ab2 = jet.userData.ab2;
-  const burn = Math.max(0, (plane.throttle - 0.55) / 0.45);
-  ab.material.opacity = burn * 0.85;
-  ab.scale.set(
-    0.7 + burn * 0.7,
-    0.7 + burn * 0.7,
-    1.0 + burn * 2.4
-  );
-  ab2.material.opacity = burn * 1.0;
-  ab2.scale.set(
-    0.55 + burn * 0.5,
-    0.55 + burn * 0.5,
-    0.7 + burn * 1.7
-  );
-  // Flicker
-  const fl = 0.92 + Math.sin(performance.now() * 0.08) * 0.04 + Math.random() * 0.05;
-  ab.scale.z *= fl;
-  ab2.scale.z *= fl;
+  // Afterburner — only for jets; swapped-in GLB planes skip this
+  if (!plane.suppressJetFX) {
+    const ab = jet.userData.afterburner;
+    const ab2 = jet.userData.ab2;
+    const burn = Math.max(0, (plane.throttle - 0.55) / 0.45);
+    ab.material.opacity = burn * 0.85;
+    ab.scale.set(
+      0.7 + burn * 0.7,
+      0.7 + burn * 0.7,
+      1.0 + burn * 2.4
+    );
+    ab2.material.opacity = burn * 1.0;
+    ab2.scale.set(
+      0.55 + burn * 0.5,
+      0.55 + burn * 0.5,
+      0.7 + burn * 1.7
+    );
+    // Flicker
+    const fl = 0.92 + Math.sin(performance.now() * 0.08) * 0.04 + Math.random() * 0.05;
+    ab.scale.z *= fl;
+    ab2.scale.z *= fl;
+  }
+
+  // Propeller spin — GLB planes with detected prop meshes rotate with
+  // throttle (plus a trickle at idle so they never look frozen).
+  if (plane.props && plane.props.length) {
+    const rpm = 6 + plane.throttle * 55; // visual spin rate rad/s
+    for (const p of plane.props) p.rotation.z += rpm * 0.016;
+  }
 
   // Strobe blink (~1.2 Hz with short pulse)
   const tNow = performance.now() * 0.001;
