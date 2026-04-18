@@ -347,6 +347,7 @@ OUTPUT SCHEMA (single JSON object, no prose):
   "action": {
     "type": "press"|"tap"|"click"|"wait"|"reset",
     "key":  "W"|"S"|"A"|"D"|"Q"|"E"|"ShiftLeft"|"ControlLeft"|"G"|"B"|"T"|"Y"|"R"|"ArrowLeft"|"ArrowRight",
+    "keys": ["ShiftLeft", "KeyS"],    // OPTIONAL — use instead of "key" to hold multiple keys simultaneously (e.g. throttle+pitch for takeoff)
     "hold_ms": 100-3000,
     "ms": 200-2000
   },
@@ -360,11 +361,20 @@ OUTPUT SCHEMA (single JSON object, no prose):
 }
 
 Action semantics:
-- press : hold key for hold_ms (W/S/A/D/Shift/Ctrl — typical 200-1500 ms; short bursts for fine control)
-- tap   : quick press (G, B, T, Y, R)
+- press : hold key(s) for hold_ms. Use "keys":["ShiftLeft","KeyS"] to hold
+          multiple simultaneously (essential for takeoff: SHIFT+S together
+          throttles up AND pitches up in one motion).
+- tap   : quick press (G, B, T, Y, R). Also supports "keys":[...] for
+          combos if ever needed.
 - click : click the canvas once (only needed to dismiss intro overlay)
 - wait  : observe for ms
 - reset : press R to reset after a crash
+
+Throttle note: holding SHIFT ramps the throttle TARGET up over time. Once
+you release SHIFT, the throttle STAYS at whatever it reached — it doesn't
+snap back to zero. So a common pattern is: press SHIFT+S together for 1-2
+seconds (throttle climbs while you pitch up), then keep holding S alone
+until airborne.
 
 Smooth, gentle inputs win. Overcontrol = crash.`;
 }
@@ -395,9 +405,12 @@ function buildUserMessage(skills, frame, liveStatus) {
 
 function actionLabel(a) {
   if (!a) return 'noop';
+  const keyStr = Array.isArray(a.keys) && a.keys.length
+    ? a.keys.join('+').replace(/(Left|Right)$/g, '').replace(/^Key/, '')
+    : (a.key || '').replace(/(Left|Right)$/g, '').replace(/^Key/, '');
   switch (a.type) {
-    case 'press': return `HOLD ${a.key} ${a.hold_ms || 600}ms`;
-    case 'tap':   return `TAP ${a.key}`;
+    case 'press': return `HOLD ${keyStr} ${a.hold_ms || 600}ms`;
+    case 'tap':   return `TAP ${keyStr}`;
     case 'click': return 'CLICK';
     case 'wait':  return `WAIT ${a.ms || 800}ms`;
     case 'reset': return 'RESET (R)';
@@ -490,13 +503,29 @@ async function executeAction(a, skills) {
   try {
     switch (t) {
       case 'press': {
-        const code = toCode(a.key); if (!code) { effect = 'bad key'; break; }
-        await holdKey(code, Math.max(80, a.hold_ms || 400));
-        effect = `held ${code} for ${a.hold_ms || 400}ms`; break;
+        // Accept either single `key` or an array `keys` for simultaneous
+        // holds (e.g. Shift+S for throttle-up + pitch-up during takeoff).
+        const keyList = Array.isArray(a.keys) ? a.keys : (a.key ? [a.key] : []);
+        const codes = keyList.map(toCode).filter(Boolean);
+        if (!codes.length) { effect = 'bad key'; break; }
+        const ms = Math.max(80, a.hold_ms || 400);
+        for (const c of codes) await keyDown(c);
+        await sleep(Math.min(MAX_HOLD_MS, ms));
+        for (const c of codes) await keyUp(c);
+        effect = codes.length > 1
+          ? `held ${codes.join('+')} for ${ms}ms`
+          : `held ${codes[0]} for ${ms}ms`;
+        break;
       }
       case 'tap': {
-        const code = toCode(a.key); if (!code) { effect = 'bad key'; break; }
-        await holdKey(code, 90); effect = `tapped ${code}`; break;
+        const keyList = Array.isArray(a.keys) ? a.keys : (a.key ? [a.key] : []);
+        const codes = keyList.map(toCode).filter(Boolean);
+        if (!codes.length) { effect = 'bad key'; break; }
+        for (const c of codes) await keyDown(c);
+        await sleep(90);
+        for (const c of codes) await keyUp(c);
+        effect = `tapped ${codes.join('+')}`;
+        break;
       }
       case 'start':
       case 'click': {
