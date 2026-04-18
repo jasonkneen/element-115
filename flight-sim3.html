@@ -252,6 +252,125 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG_COLOR);
 scene.fog = new THREE.Fog(FOG_COLOR, 600, 8500);
 
+// =============================================================
+//  WATER — flat shader plane at WATER_LEVEL. Any terrain below this
+//  height appears submerged. Follows the player horizontally so the
+//  plane can fly in any direction without running out of water.
+//  Runway exception built into the fragment shader so the airstrip
+//  doesn't flood.
+// =============================================================
+const WATER_LEVEL = 4.0;
+const WATER_EXTENT = 24000;     // size of the water plane
+const WATER_RUNWAY_R = 280;     // no water within this radius of origin
+
+const waterMat = new THREE.ShaderMaterial({
+  uniforms: {
+    time:      { value: 0 },
+    shallow:   { value: new THREE.Color(0x4ea68a) },   // lake-edge teal
+    deep:      { value: new THREE.Color(0x143a46) },   // lake centre
+    fogColor:  { value: new THREE.Color(FOG_COLOR) },
+    fogNear:   { value: 600 },
+    fogFar:    { value: 8500 },
+    sunDir:    { value: new THREE.Vector3(0.6, 0.75, 0.3).normalize() },
+    runwayR:   { value: WATER_RUNWAY_R },
+  },
+  vertexShader: `
+    varying vec3 vWorldPos;
+    varying float vDist;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      vec4 mv = viewMatrix * wp;
+      vDist = -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    precision highp float;
+    uniform float time;
+    uniform vec3 shallow;
+    uniform vec3 deep;
+    uniform vec3 fogColor;
+    uniform float fogNear;
+    uniform float fogFar;
+    uniform vec3 sunDir;
+    uniform float runwayR;
+    varying vec3 vWorldPos;
+    varying float vDist;
+
+    // Cheap 2D value noise
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(
+        mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+        u.y
+      );
+    }
+
+    void main() {
+      // Runway punch-out: kill water within the airstrip clearing.
+      float rw = length(vWorldPos.xz);
+      if (rw < runwayR) discard;
+      float rwFade = smoothstep(runwayR, runwayR + 60.0, rw);
+
+      // Two layers of slow ripple — gives drifting highlights without
+      // moving the geometry.
+      vec2 uv = vWorldPos.xz * 0.012;
+      float r1 = noise(uv + vec2(time * 0.05, time * 0.03));
+      float r2 = noise(uv * 2.3 - vec2(time * 0.07, time * 0.04));
+      float ripple = r1 * 0.65 + r2 * 0.35;
+
+      // Fake normal from ripple gradient for sun-glint term
+      vec2 eps = vec2(0.5, 0.0);
+      float rN = noise(uv + eps.xy) - noise(uv - eps.xy);
+      float rE = noise(uv + eps.yx) - noise(uv - eps.yx);
+      vec3 norm = normalize(vec3(-rN * 0.6, 1.0, -rE * 0.6));
+      float sun = pow(max(0.0, dot(norm, sunDir)), 32.0);
+
+      // Depth-ish tint: shallower tint near shoreline (where terrain is
+      // close to the surface) deepens toward the centre. We don't have
+      // true depth here, so fake it with a gentle radial falloff from
+      // the player using camera-space distance — good enough for lakes.
+      vec3 col = mix(deep, shallow, ripple * 0.65 + 0.25);
+      col += vec3(1.0, 0.98, 0.9) * sun * 0.55;
+
+      // Subtle low-poly banding so it fits the art style at distance
+      col = floor(col * 10.0) / 10.0;
+
+      // Linear fog so water fades into the horizon haze like terrain
+      float fogF = clamp((vDist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+      col = mix(col, fogColor, fogF);
+
+      gl_FragColor = vec4(col, 0.88 * rwFade);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
+const waterGeo = new THREE.PlaneGeometry(WATER_EXTENT, WATER_EXTENT, 1, 1);
+waterGeo.rotateX(-Math.PI / 2);
+const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+waterMesh.position.y = WATER_LEVEL;
+waterMesh.renderOrder = 3;   // after terrain, before clouds/sky
+scene.add(waterMesh);
+
+function updateWater(dt, px, pz) {
+  waterMat.uniforms.time.value += dt;
+  // Snap position to a coarse grid so the ripple pattern doesn't
+  // stutter as the player moves. Step = 40m.
+  const step = 40;
+  waterMesh.position.x = Math.round(px / step) * step;
+  waterMesh.position.z = Math.round(pz / step) * step;
+}
+
 const camera = new THREE.PerspectiveCamera(
   72, window.innerWidth / window.innerHeight, 0.8, 14000
 );
@@ -3146,16 +3265,19 @@ const plane = {
 };
 
 const GRAVITY = 9.81;
-const MAX_THRUST = 28;         // m/s² (≈ 2.8 G — arcade fighter punch)
-// Flight-idle thrust floor. Real prop engines at idle in flight still
-// produce ~25–30 % of max thrust — enough to hold ≈ 185 kts in level
-// flight against drag with gear down. Without this, throttle 0 = engine
-// off, and the AI bleeds airspeed to near-stall (40 kts) in seconds.
-// When the plane is on the ground we zero this out so parked & braked
-// behaviour still works (see updatePhysics where it's applied).
-const IDLE_THRUST_FRAC = 0.30;
-const LIFT_K = 0.012;          // 0.5·ρ·S/m, tuned for cruise balance
-const CL0 = 0.06;              // base lift coefficient at AoA = 0
+const MAX_THRUST = 32;         // m/s² (≈ 3.3 G)
+// Flight-idle thrust floor. Tuned so steady-state trim at idle sits
+// ≈ 150 kts (77 m/s) in level flight — just above cruise target so the
+// plane lazily sheds speed toward cruise rather than either bleeding
+// to stall OR rocketing to 290 kts with no input. Previously 0.45
+// caused runaway acceleration.
+const IDLE_THRUST_FRAC = 0.13;
+// Wing loading — higher LIFT_K than stock (0.012) so the plane needs
+// less AoA to stay up, but CL0 kept moderate so zero-AoA lift is LESS
+// than gravity at cruise (otherwise plane auto-climbs, as we saw).
+// Equilibrium cruise AoA is now ≈1° at 155 kts, 5° at 100 kts.
+const LIFT_K = 0.017;
+const CL0 = 0.07;              // was 0.10, causing uncommanded climb
 const CL_ALPHA = 4.5;          // lift slope per radian of AoA
 const DRAG_PARASITE = 0.00028; // gives terminal ≈ 580 kts at sea level
 const DRAG_INDUCED = 0.018;    // multiplied by CL²
@@ -3250,21 +3372,38 @@ function updatePhysics(dt) {
     aoa = Math.atan2(-localVel.y, Math.max(1, forwardSpeed));
   }
 
-  // Control authority scales with airspeed (surfaces need airflow), then
-  // FALLS OFF at high speed so a prop-plane autopilot can't over-rotate
-  // at 300+ kts. Curve: rises linearly to 1.0 between 0 and ~35 m/s
-  // (≈ 70 kts), holds through cruise, and damps toward 0.5 past 80 m/s
-  // (≈ 155 kts). This gives consistent feel across the flight envelope
-  // and prevents the 'one pitch tap → 15° attitude change' death spiral.
+  // Control authority scales with airspeed (surfaces need airflow),
+  // then FALLS OFF at both ends so a prop-plane can't over-rotate at
+  // high speed AND can't aggressively pitch itself into a deeper stall
+  // once airspeed is already dangerously low. Curve:
+  //   v < 18 m/s (≈35 kts):    authority 0 → 0.3  (pre-flying mush)
+  //   18..50 m/s (35..97 kts):   authority 0.3 → 1.0 normal
+  //   50..80 m/s:                authority ≈ 1.0 (control sweet spot)
+  //   > 80 m/s:                  gentle taper toward 0.5
+  // Combined with the softer post-stall CL curve above, this means a
+  // stall no longer compounds into a spiral — the pilot (or AI) can
+  // nose down and recover.
   const q = Math.max(0, forwardSpeed);
-  const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012); // ≈0.5 @ 140m/s
-  const authPitch = Math.min(1.0, q / 35) * hiSpeedDamp;
-  const authRoll  = Math.min(1.3, q / 30) * hiSpeedDamp;
-  const authYaw   = Math.min(1.0, q / 50) * hiSpeedDamp;
+  const loSpeedFade = Math.max(0.25, Math.min(1, (q - 14) / 28)); // 0.25..1
+  const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012);    // 1..0.5
+  // Roll + pitch get the lighter low-speed fade (sqrt) and a weaker
+  // hi-speed damp — these are the primary manoeuvring inputs and need
+  // to stay crisp. Pitch in particular should snap the nose up when S
+  // is held. Stall protection is still active at very low speed +
+  // high AoA (see below) so crisp pitch won't spiral the AI.
+  const rollScale  = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp);
+  const pitchScale = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp);
+  const yawScale   = loSpeedFade * hiSpeedDamp;
+  const authPitch = Math.min(1.2, q / 28) * pitchScale;
+  const authRoll  = Math.min(1.5, q / 22) * rollScale;
+  const authYaw   = Math.min(1.0, q / 50) * yawScale;
 
-  // Apply torque (pitch=X, yaw=Y, roll=Z in local frame)
-  plane.angVel.x += pitchIn * 1.8 * authPitch * dt;
-  plane.angVel.z += -rollIn * 3.2 * authRoll * dt;
+  // Apply torque (pitch=X, yaw=Y, roll=Z in local frame).
+  //   pitch  1.8 → 3.4 — S/W now flicks the nose around ≈55°/s at cruise
+  //   roll   3.2 → 5.0 — banks snap in ≈45° per key-press
+  //   yaw    unchanged (rudder stays a fine-tuning input)
+  plane.angVel.x += pitchIn * 3.4 * authPitch * dt;
+  plane.angVel.z += -rollIn * 5.0 * authRoll * dt;
   plane.angVel.y += -yawIn * 0.9 * authYaw * dt;
 
   // ----- AUTO-RUDDER (turn coordination) -----
@@ -3308,7 +3447,12 @@ function updatePhysics(dt) {
   plane.quat.multiply(dQ).normalize();
 
   // ----- Aerodynamic forces -----
-  // Lift coefficient: linear in AoA below stall, collapses past STALL_AOA
+  // Lift coefficient. Below stall: linear CL vs AoA like a real wing.
+  // Past stall: instead of snapping to 0.2 (which produced a sudden
+  // "fall out of the sky" effect), degrade smoothly toward ~55% of
+  // peak over the next 15°. Real wings are messy past stall but keep
+  // producing meaningful lift until deep stall — this matches how a
+  // student pilot is actually taught to recover.
   let cl;
   const aoaAbs = Math.abs(aoa);
   if (aoaAbs <= STALL_AOA) {
@@ -3316,11 +3460,21 @@ function updatePhysics(dt) {
   } else {
     const peak = CL_ALPHA * STALL_AOA;
     const excess = aoaAbs - STALL_AOA;
-    cl = CL0 + Math.sign(aoa) * Math.max(0.2, peak - excess * 5.0);
+    // Fade from peak down to 0.55×peak over 0.26 rad (≈15°), then hold.
+    const fade = Math.min(1, excess / 0.26);
+    const degraded = peak * (1 - fade * 0.45);
+    cl = CL0 + Math.sign(aoa) * Math.max(peak * 0.55, degraded);
   }
   // Lift only when moving forward through the air
   const v = Math.max(0, forwardSpeed);
-  const liftMag = LIFT_K * v * v * cl;
+  // --- Ground effect ---
+  // Within ~1 wingspan of the ground, induced drag drops and effective
+  // lift rises — the cushion that lets a stalled plane float to the
+  // runway instead of face-planting. Scales from 0 (high AGL) to 1.35×
+  // lift at 0 AGL, decaying exponentially over ~12 m.
+  const aglForGE = Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z));
+  const groundEffect = 1 + 0.35 * Math.exp(-aglForGE / 12);
+  const liftMag = LIFT_K * v * v * cl * groundEffect;
   const lift = up.clone().multiplyScalar(liftMag);
 
   // Drag: parasitic + induced (∝ CL²) + gear
@@ -3344,6 +3498,17 @@ function updatePhysics(dt) {
 
   // Gravity
   const gravity = new THREE.Vector3(0, -GRAVITY, 0);
+
+  // --- STALL PROTECTION / AUTO-TRIM ---
+  // When the plane is slow AND high-alpha AND falling, the pilot might
+  // be panic-pulling. Apply an automatic pitch-down torque that nudges
+  // the nose below the horizon so airspeed can recover. Real GA stall
+  // protection does similar ("stick pusher"). Only active in the
+  // danger zone — elsewhere the pilot has full authority.
+  if (q < 35 && aoa > 0.22 && plane.vel.y < 0 && plane.pos.y > _thrGroundH + 3) {
+    const urgency = Math.min(1, (0.32 - Math.min(aoa, 0.32)) / 0.10 + (35 - q) / 15);
+    plane.angVel.x += -1.6 * Math.max(0.3, urgency) * dt;  // force nose down
+  }
 
   const accel = new THREE.Vector3()
     .add(thrust)
@@ -3713,6 +3878,7 @@ function animate(now) {
   updateBirds(now);
   updateDustDevils(now, plane.pos.x, plane.pos.z);
   updateTraffic(dt);
+  updateWater(dt, plane.pos.x, plane.pos.z);
   updateAudio(dt);
   updateHUD();
 
@@ -4143,6 +4309,7 @@ function pathTransit(p1, p2, halfPeriod) {
 function updateTraffic(dt) {
   for (const t of traffic) {
     if (!t.loaded) continue;
+    if (!t.group) continue; // __traffic_safety__ skip entries missing group (async load race)
     t.phase += dt * t.speed;
     const { pos, yaw, bank } = t.pathFn(t.phase);
     t.group.position.copy(pos);
