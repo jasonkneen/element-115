@@ -3355,6 +3355,64 @@ applyStyle();
   window._ringPulsePhase = 0;
 })();
 
+// __world_feature_cruise_rings__ — 6 floating ring gates for cruise curriculum
+(function addCruiseRings() {
+  const ringCount = 6;
+  const startZ = -1200;
+  const endZ = -3000;
+  const altitude = 180;
+  const radius = 28;
+  const tubeRadius = 1.2;
+  
+  const ringGeo = new THREE.TorusGeometry(radius, tubeRadius, 16, 64);
+  
+  // Cyan and magenta materials with emissive glow
+  const cyanMat = new THREE.MeshStandardMaterial({
+    color: 0x00ffff,
+    emissive: 0x00ffff,
+    emissiveIntensity: 0.7,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85
+  });
+  
+  const magentaMat = new THREE.MeshStandardMaterial({
+    color: 0xff00ff,
+    emissive: 0xff00ff,
+    emissiveIntensity: 0.7,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85
+  });
+  
+  // S-curve: gentle sine wave in X as Z progresses
+  const zStep = (endZ - startZ) / (ringCount - 1);
+  const sCurveAmp = 120; // amplitude of S-curve in X
+  
+  for (let i = 0; i < ringCount; i++) {
+    const t = i / (ringCount - 1); // 0 to 1
+    const z = startZ + i * zStep;
+    // S-curve: sine wave that starts at 0, goes positive, then negative
+    const x = Math.sin(t * Math.PI * 1.5) * sCurveAmp * (1 - t * 0.3);
+    
+    const mat = i % 2 === 0 ? cyanMat : magentaMat;
+    const ring = new THREE.Mesh(ringGeo, mat);
+    
+    // Vertical rings (facing forward, slight bank for visual interest)
+    ring.position.set(x, altitude, z);
+    ring.rotation.y = Math.PI / 2; // face along Z
+    ring.rotation.z = t * 0.15; // slight bank increasing with distance
+    
+    ring.userData.ringType = 'cruise';
+    ring.userData.ringIndex = i;
+    ring.userData.baseScale = 1.0;
+    
+    scene.add(ring);
+  }
+})();
+
 requestAnimationFrame(animate);
 
 // =============================================================
