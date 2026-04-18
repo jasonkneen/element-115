@@ -3371,6 +3371,71 @@ applyStyle();
   window._ringPulsePhase = 0;
 })();
 
+// __world_feature_cruise_rings__ — 6 floating ring gates for cruise curriculum
+(function addCruiseRings() {
+  const RING_COUNT = 6;
+  const RING_RADIUS = 28;
+  const TUBE_RADIUS = 1.2;
+  const ALTITUDE = 180;
+  const START_Z = -1200;
+  const END_Z = -3000;
+  
+  const cyanMat = new THREE.MeshStandardMaterial({
+    color: 0x00ffff,
+    emissive: 0x00ffff,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85
+  });
+  
+  const magentaMat = new THREE.MeshStandardMaterial({
+    color: 0xff00ff,
+    emissive: 0xff00ff,
+    emissiveIntensity: 0.9,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85
+  });
+  
+  const ringGeo = new THREE.TorusGeometry(RING_RADIUS, TUBE_RADIUS, 12, 48);
+  
+  // S-curve parameters: gentle horizontal snake
+  const S_AMPLITUDE = 80; // max x offset from centerline
+  
+  for (let i = 0; i < RING_COUNT; i++) {
+    const t = i / (RING_COUNT - 1); // 0 to 1
+    const z = START_Z + t * (END_Z - START_Z);
+    
+    // S-curve: sine wave with half period over the full distance
+    // starts at x=0, curves right, then back to x=0
+    const x = Math.sin(t * Math.PI) * S_AMPLITUDE * (i % 2 === 0 ? 1 : -1);
+    
+    // Slight altitude variation for visual interest (±15m)
+    const y = ALTITUDE + Math.sin(t * Math.PI * 2) * 15;
+    
+    const mat = i % 2 === 0 ? cyanMat : magentaMat;
+    const ring = new THREE.Mesh(ringGeo, mat);
+    ring.position.set(x, y, z);
+    
+    // Rings tilt slightly to follow the curve tangent
+    const tangentX = Math.cos(t * Math.PI) * S_AMPLITUDE * Math.PI / (END_Z - START_Z) * (END_Z - START_Z);
+    const tiltAngle = Math.atan2(tangentX, 1) * 0.3; // subtle bank
+    ring.rotation.x = Math.PI / 2 + tiltAngle * (i % 2 === 0 ? 1 : -1);
+    ring.rotation.y = tiltAngle * 0.5;
+    
+    ring.userData.ringIndex = i;
+    ring.userData.baseY = y;
+    ring.userData.phase = i * 0.7; // for animation offset
+    scene.add(ring);
+  }
+  
+  // Store for potential animation updates
+  window._cruiseRingsAdded = true;
+})();
+
 requestAnimationFrame(animate);
 
 // =============================================================
