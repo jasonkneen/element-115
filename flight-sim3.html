@@ -4054,6 +4054,17 @@ window.addEventListener('keydown', () => {
 window.addEventListener('click', () => renderer.domElement.focus());
 window.addEventListener('keydown', () => renderer.domElement.focus());
 
+// __popup_focus_recovery__ — detect when browser UI/popups steal focus
+// and aggressively reclaim it for the game canvas so flight controls
+// remain responsive during all flight stages
+window.addEventListener('blur', () => {
+  // Delay slightly to let popup finish opening, then reclaim focus
+  setTimeout(() => renderer.domElement.focus(), 50);
+});
+window.addEventListener('focus', () => {
+  renderer.domElement.focus();
+});
+
 // =============================================================
 //  RESIZE
 // =============================================================
