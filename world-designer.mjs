@@ -27,6 +27,12 @@ import path from 'node:path';
 
 const exec = promisify(execFile);
 
+// Run a shell command and return stdout (or '' on error). Used for git ops.
+async function sh(cmd, args, opts = {}) {
+  try { const { stdout } = await exec(cmd, args, { ...opts, maxBuffer: 8 << 20 }); return stdout; }
+  catch (e) { return (e.stdout || '') + (e.stderr || ''); }
+}
+
 // ——— Config ———
 const HTML_PATH      = path.resolve(process.cwd(), 'flight-sim3.html');
 const HTML_BACKUP    = path.resolve(process.cwd(), 'flight-sim3.html.bak');
@@ -338,6 +344,24 @@ function applyEdits(html, edits) {
     writeBuildLog(log);
 
     if (request.id) markRequestResolved(request.id, `built @ rev${world.revision}`);
+
+    // — Git commit the new revision so there's an evolution trail —
+    // We only track flight-sim3.html in git (runtime json state is
+    // gitignored). Every successful build produces one commit tagged with
+    // the world revision so `git log` shows the evolution chronologically.
+    try {
+      await sh('git', ['add', 'flight-sim3.html']);
+      const msg = `world rev${world.revision} (${skills.current_stage}): ${(spec.summary || request.text).slice(0, 140)}`;
+      const out = await sh('git', ['commit', '-m', msg, '--no-verify']);
+      if (out.includes('nothing to commit')) {
+        console.log('[designer] git: no HTML changes to commit (unexpected)');
+      } else {
+        await sh('git', ['tag', `world-rev${world.revision}`, '-m', msg]);
+        console.log(`[designer] git: committed + tagged world-rev${world.revision}`);
+      }
+    } catch (e) {
+      console.warn('[designer] git commit failed (non-fatal):', e.message);
+    }
 
     console.log(`✅ [designer] built @ rev${world.revision}: ${spec.summary || request.text.slice(0, 80)}`);
     builds++;

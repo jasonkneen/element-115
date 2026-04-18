@@ -30,18 +30,44 @@ const FILES_TO_RESET = [
 ];
 
 if (wantReset) {
+  // Wipe all runtime experiment state
   for (const f of FILES_TO_RESET) {
     const p = path.join(ROOT, f);
     if (existsSync(p)) {
       try { unlinkSync(p); console.log('[orch] wiped', f); } catch {}
     }
   }
-  const bak = path.join(ROOT, 'flight-sim3.html.bak');
-  const html = path.join(ROOT, 'flight-sim3.html');
-  if (existsSync(bak)) {
-    copyFileSync(bak, html);
-    console.log('[orch] restored flight-sim3.html from .bak');
+
+  // Restore flight-sim3.html + nuke any world-revN tags so the next run
+  // starts numbering from 1 again. Prefer the git tag 'experiment-start'
+  // as the source of truth; fall back to .bak if git isn't available.
+  const { execSync } = await import('node:child_process');
+  let restored = false;
+  try {
+    execSync('git rev-parse experiment-start', { cwd: ROOT, stdio: 'ignore' });
+    execSync('git checkout experiment-start -- flight-sim3.html', { cwd: ROOT, stdio: 'inherit' });
+    console.log('[orch] restored flight-sim3.html from tag experiment-start');
+    // Delete any world-rev* tags from previous runs
+    const tags = execSync('git tag -l "world-rev*"', { cwd: ROOT }).toString().trim().split(/\s+/).filter(Boolean);
+    for (const t of tags) {
+      try { execSync(`git tag -d ${t}`, { cwd: ROOT, stdio: 'ignore' }); } catch {}
+    }
+    if (tags.length) console.log(`[orch] deleted ${tags.length} previous world-rev* tag(s)`);
+    restored = true;
+  } catch (e) {
+    console.warn('[orch] git reset failed, falling back to .bak:', e.message.split('\n')[0]);
   }
+  if (!restored) {
+    const bak = path.join(ROOT, 'flight-sim3.html.bak');
+    const html = path.join(ROOT, 'flight-sim3.html');
+    if (existsSync(bak)) {
+      copyFileSync(bak, html);
+      console.log('[orch] restored flight-sim3.html from .bak');
+    }
+  }
+  // Drop the backup too so the designer creates a fresh one on first run
+  const bak = path.join(ROOT, 'flight-sim3.html.bak');
+  if (existsSync(bak)) { try { unlinkSync(bak); console.log('[orch] wiped .bak'); } catch {} }
 }
 
 if (!process.env.FIREWORKS_API_KEY) {
