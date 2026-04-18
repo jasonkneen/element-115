@@ -3795,8 +3795,10 @@ function updateHUD() {
   const sp = plane.vel.length() * 1.94;
   $speed.textContent = Math.round(sp);
 
-  // Altitude in feet (y in m × 3.28)
-  const ft = Math.max(0, Math.round(plane.pos.y * 3.28));
+  // Altitude in feet (y in m × 3.28), clamped to realistic ceiling
+  // __altitude_clamp__ — prevents physics overflow from displaying impossible values
+  const rawFt = plane.pos.y * 3.28;
+  const ft = Math.max(0, Math.min(50000, Math.round(rawFt)));
   $alt.textContent = ft;
 
   // Heading from forward vector
