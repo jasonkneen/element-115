@@ -1787,8 +1787,17 @@ scene.add(jet);
 
       jet.add(model);
 
+      // Swapped-in GLB planes are visual models only — their rigs have no
+      // retractable-gear animation. Treat them as fixed-gear: gear stays
+      // at 1 forever, G-key toggles are ignored (see updatePhysics + key
+      // handler). This prevents the gear-up crash path from firing when
+      // the pilot lands with gear still "down".
+      plane.fixedGear = true;
+      plane.gear = 1;
+      plane.gearTarget = 1;
+
       hud.style.color = '#5df09a';
-      hud.textContent = `✓ ${planeFile} · scale ×${s.toFixed(2)}`;
+      hud.textContent = `✓ ${planeFile} · scale ×${s.toFixed(2)} · FIXED GEAR`;
       console.log('[plane-swap] loaded', planeFile,
         'size=', size.toArray().map(v => v.toFixed(2)).join('×'),
         'scale=', s.toFixed(3));
@@ -2687,7 +2696,9 @@ function updatePhysics(dt) {
 
   if (keys['KeyG']) {
     if (!gearPressed) {
-      plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
+      // Fixed-gear aircraft (e.g. the swapped-in Disney Dusty prop) ignore
+      // the retract toggle — their gear is always down.
+      if (!plane.fixedGear) plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
       gearPressed = true;
     }
   } else gearPressed = false;
@@ -2705,7 +2716,8 @@ function updatePhysics(dt) {
   } else biomePressed = false;
 
   // Animate gear
-  plane.gear += (plane.gearTarget - plane.gear) * Math.min(1, dt * 1.8);
+  if (plane.fixedGear) { plane.gear = 1; plane.gearTarget = 1; }
+  else plane.gear += (plane.gearTarget - plane.gear) * Math.min(1, dt * 1.8);
 
   // ----- Forces & rotations -----
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
@@ -2820,7 +2832,31 @@ function updatePhysics(dt) {
   const wheelAlt = altAbove - GEAR_HEIGHT * plane.gear;
 
   if (wheelAlt < 0) {
-    if (plane.gear < 0.4) {
+    // ——— SLOPE-IMPACT CHECK ———
+    // Without this the plane's "touchdown" branch below runs even when
+    // driving horizontally into a mountainside, snapping the plane to the
+    // terrain every frame so it climbs the slope like a rally car.
+    // If we're hitting a steep slope with real horizontal velocity
+    // pointed into it, that is a crash, gear or no gear.
+    const EPS = 3;
+    const sampleH = (x, z) =>
+      (x * x + z * z < 40000) ? 0 : getHeight(x, z);
+    const hC = sampleH(plane.pos.x, plane.pos.z);
+    const hX = sampleH(plane.pos.x + EPS, plane.pos.z) - hC;
+    const hZ = sampleH(plane.pos.x, plane.pos.z + EPS) - hC;
+    const slopeMag = Math.hypot(hX, hZ) / EPS;
+    const slopeDeg = Math.atan(slopeMag) * 180 / Math.PI;
+    const horizSpd = Math.hypot(plane.vel.x, plane.vel.z);
+    // Velocity component along the uphill gradient (positive = running into it)
+    const intoSlope = (plane.vel.x * hX + plane.vel.z * hZ) / EPS;
+
+    if (slopeDeg > 22 && intoSlope > 10 && horizSpd > 15) {
+      plane.crashed = true;
+      statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
+      statusMsg.className = 'panel warn';
+      plane.vel.set(0, 0, 0);
+      audioThud(0.95);
+    } else if (plane.gear < 0.4) {
       // Gear up — crash
       plane.crashed = true;
       statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
@@ -3124,6 +3160,95 @@ window.addEventListener('resize', () => {
 // Apply default style (low-poly) once all HUD refs + scene state exist,
 // so the sky / materials match the HUD indicator from frame one.
 applyStyle();
+
+// __world_feature_runway_markers__ — Runway threshold markers and corner pylons
+(function addRunwayEndMarkers() {
+  const markerGroup = new THREE.Group();
+  
+  // Threshold stripe dimensions
+  const stripeWidth = 2.0;
+  const stripeLength = 9.0;
+  const stripeGap = 2.4;
+  const runwayHalfWidth = 14; // runway is 28 wide
+  
+  // Materials
+  const whiteMat = new THREE.MeshBasicMaterial({ color: 0xfff0cc });
+  const orangeMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+  const coneMat = new THREE.MeshStandardMaterial({ 
+    color: 0xff4400, 
+    emissive: 0x882200, 
+    emissiveIntensity: 0.3,
+    roughness: 0.4 
+  });
+  
+  // Create threshold stripes (chevron pattern) at both ends
+  const ends = [-150, 150];
+  ends.forEach((zPos, endIdx) => {
+    // Direction: stripes point inward toward runway center
+    const dir = endIdx === 0 ? 1 : -1; // -150 end points +Z, +150 end points -Z
+    
+    // 5 stripes per side, angled in a V toward center
+    for (let i = 0; i < 5; i++) {
+      const xOffset = (i + 1) * stripeGap;
+      
+      // Left side stripe
+      const leftStripe = new THREE.Mesh(
+        new THREE.PlaneGeometry(stripeWidth, stripeLength),
+        whiteMat
+      );
+      leftStripe.rotation.x = -Math.PI / 2;
+      leftStripe.rotation.z = dir * 0.3; // angle inward
+      leftStripe.position.set(-xOffset, 0.04, zPos + dir * (i * 1.5));
+      markerGroup.add(leftStripe);
+      
+      // Right side stripe
+      const rightStripe = new THREE.Mesh(
+        new THREE.PlaneGeometry(stripeWidth, stripeLength),
+        whiteMat
+      );
+      rightStripe.rotation.x = -Math.PI / 2;
+      rightStripe.rotation.z = -dir * 0.3; // angle inward
+      rightStripe.position.set(xOffset, 0.04, zPos + dir * (i * 1.5));
+      markerGroup.add(rightStripe);
+    }
+    
+    // Corner pylons (4 per end = 8 total)
+    const cornerOffsets = [
+      { x: -runwayHalfWidth - 3, z: zPos + (endIdx === 0 ? -8 : 8) },
+      { x: runwayHalfWidth + 3, z: zPos + (endIdx === 0 ? -8 : 8) },
+      { x: -runwayHalfWidth - 6, z: zPos + (endIdx === 0 ? 8 : -8) },
+      { x: runwayHalfWidth + 6, z: zPos + (endIdx === 0 ? 8 : -8) }
+    ];
+    
+    cornerOffsets.forEach((off, ci) => {
+      // Pylon base
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.4, 0.6, 0.8, 8),
+        new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 })
+      );
+      base.position.set(off.x, 0.4, off.z);
+      markerGroup.add(base);
+      
+      // Cone
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.5, 2.5, 8),
+        coneMat
+      );
+      cone.position.set(off.x, 1.65, off.z);
+      markerGroup.add(cone);
+      
+      // White reflective band
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.35, 0.4, 8),
+        whiteMat
+      );
+      band.position.set(off.x, 2.0, off.z);
+      markerGroup.add(band);
+    });
+  });
+  
+  scene.add(markerGroup);
+})();
 
 requestAnimationFrame(animate);
 

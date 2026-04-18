@@ -6,3 +6,10 @@ flight-sim3.html.bak
 
 # Temp autopilot screenshots
 /tmp/ap-frame.png
+
+# Experiment runtime state — committed per-feature by the world-designer
+# (see world-designer.mjs), never part of the baseline.
+autopilot-skills.json
+world-state.json
+feature-requests.json
+build-log.json

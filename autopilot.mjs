@@ -43,9 +43,16 @@ const HISTORY_SECONDS = 45;        // ring buffer length
 
 if (!API_KEY) { console.error('FIREWORKS_API_KEY is not set.'); process.exit(1); }
 
+// Spawn agent-browser with a hard timeout so a stuck CDP connection can't
+// freeze the whole agent. Returns stdout (possibly empty) on success or
+// failure.
 const run = async (...args) => {
-  try { const { stdout } = await exec('agent-browser', args, { maxBuffer: 16 << 20 }); return stdout; }
-  catch (e) { return e.stdout || ''; }
+  const opts = { maxBuffer: 16 << 20, timeout: 20_000 };
+  try { const { stdout } = await exec('agent-browser', args, opts); return stdout; }
+  catch (e) {
+    if (e && e.killed) console.warn(`[autopilot] agent-browser ${args.join(' ')} TIMED OUT`);
+    return e.stdout || '';
+  }
 };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -551,12 +558,39 @@ function appendRequest(kind, text, currentStage) {
   console.log(`[autopilot] target=${TARGET_URL}`);
   console.log(`[autopilot] notebook=${SKILLS_PATH}`);
 
+  // Preflight: is the server actually up?
+  try {
+    const url = new URL(TARGET_URL);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch(`${url.protocol}//${url.host}/flight-sim3.html`, { signal: ctrl.signal });
+    clearTimeout(to);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log(`[autopilot] ✓ server reachable at ${url.host}`);
+  } catch (e) {
+    console.error(`[autopilot] ✗ cannot reach ${TARGET_URL}: ${e.message}`);
+    console.error(`[autopilot]   start the server first, e.g.:`);
+    console.error(`[autopilot]     npx serve -l 55073 .            # in another terminal`);
+    console.error(`[autopilot]   or run the orchestrator which handles it:`);
+    console.error(`[autopilot]     node self-evolve.mjs`);
+    process.exit(1);
+  }
+
+  console.log('[autopilot] closing any stale browser sessions...');
   await run('close', '--all').catch(() => {});
+  console.log(`[autopilot] opening ${TARGET_URL} (headed)...`);
   await run('open', TARGET_URL, '--headed');
   await sleep(2500);
 
-  await waitForBridge();
+  console.log('[autopilot] waiting for window.__ap bridge...');
+  const bridgeOk = await waitForBridge();
+  if (!bridgeOk) {
+    console.error('[autopilot] bridge never attached. Is flight-sim3.html serving correctly?');
+    process.exit(1);
+  }
+  console.log('[autopilot] ✓ bridge attached, dismissing intro overlay...');
   await dismissIntro();
+  console.log('[autopilot] ✓ game is live, entering main loop');
 
   // Launch background telemetry poller
   const poller = pollTelemetry();
