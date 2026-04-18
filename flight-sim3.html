@@ -299,10 +299,13 @@ function getHeight(x, z) {
 const SKY_TOP = new THREE.Color(currentBiome.skyTop);
 const SKY_BOT = new THREE.Color(currentBiome.skyBottom);
 const FOG_COLOR = currentBiome.fogColor;
+const SUN_DIR = new THREE.Vector3(0.58, 0.76, 0.28).normalize();
+const ATMOS_REALISTIC = Object.freeze({ fogNear: 420, fogFar: 7200, hazeStrength: 0.72, hazeExponent: 1.65 });
+const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 520, fogFar: 6200, hazeStrength: 0.94, hazeExponent: 1.35 });
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG_COLOR);
-scene.fog = new THREE.Fog(FOG_COLOR, 600, 8500);
+scene.fog = new THREE.Fog(FOG_COLOR, ATMOS_LOWPOLY.fogNear, ATMOS_LOWPOLY.fogFar);
 
 // =============================================================
 //  WATER — flat shader plane at WATER_LEVEL. Any terrain below this
@@ -321,9 +324,9 @@ const waterMat = new THREE.ShaderMaterial({
     shallow:   { value: new THREE.Color(0x4ea68a) },   // lake-edge teal
     deep:      { value: new THREE.Color(0x143a46) },   // lake centre
     fogColor:  { value: new THREE.Color(FOG_COLOR) },
-    fogNear:   { value: 600 },
-    fogFar:    { value: 8500 },
-    sunDir:    { value: new THREE.Vector3(0.6, 0.75, 0.3).normalize() },
+    fogNear:   { value: ATMOS_LOWPOLY.fogNear },
+    fogFar:    { value: ATMOS_LOWPOLY.fogFar },
+    sunDir:    { value: SUN_DIR.clone() },
     runwayR:   { value: WATER_RUNWAY_R },
   },
   vertexShader: `
@@ -434,7 +437,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
@@ -470,11 +475,27 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(12000, 32, 16), skyMat);
 scene.add(sky);
 
 // Lights
-const sun = new THREE.DirectionalLight(0xfff1d4, 1.35);
-sun.position.set(400, 500, 200);
+const sunTarget = new THREE.Object3D();
+scene.add(sunTarget);
+const sun = new THREE.DirectionalLight(0xfff1d4, 1.65);
+sun.position.copy(SUN_DIR).multiplyScalar(650);
+sun.target = sunTarget;
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.00018;
+sun.shadow.normalBias = 0.02;
+sun.shadow.radius = 3;
+sun.shadow.camera.near = 80;
+sun.shadow.camera.far = 1400;
+sun.shadow.camera.left = -230;
+sun.shadow.camera.right = 230;
+sun.shadow.camera.top = 230;
+sun.shadow.camera.bottom = -230;
 scene.add(sun);
-scene.add(new THREE.HemisphereLight(0x8aaacc, 0xc68855, 0.5));
-scene.add(new THREE.AmbientLight(0x5a4a3a, 0.35));
+const hemiLight = new THREE.HemisphereLight(0x9cbfe0, 0x8f6745, 0.42);
+scene.add(hemiLight);
+const ambientLight = new THREE.AmbientLight(0x4a3d32, 0.16);
+scene.add(ambientLight);
 
 // =============================================================
 //  SAND SHADER — custom material for terrain
@@ -4726,13 +4747,27 @@ requestAnimationFrame(animate);
 
 // __popup_focus_recovery__ — detect when browser UI/popups steal focus
 // and aggressively reclaim it for the game canvas so flight controls
-// remain responsive during all flight stages
+// remain responsive during all flight stages. Also handles visibility
+// changes to pause/resume gracefully when tab is backgrounded.
 window.addEventListener('blur', () => {
   // Delay slightly to let popup finish opening, then reclaim focus
   setTimeout(() => renderer.domElement.focus(), 50);
 });
 window.addEventListener('focus', () => {
   renderer.domElement.focus();
+});
+
+// __visibility_pause__ — pause physics when tab hidden to prevent runaway state
+// __visibility_pause_end__
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Tab hidden — pause to prevent runaway physics
+    if (running) window.__ap && window.__ap.pause();
+  } else {
+    // Tab visible — resume and reclaim focus immediately
+    if (window.__ap && window.__ap.isPaused()) window.__ap.resume();
+    renderer.domElement.focus();
+  }
 });
 
 // =============================================================
