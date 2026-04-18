@@ -426,13 +426,16 @@ async function setStatus(update) {
       el = document.createElement('div');
       el.id = '__ap_thoughts';
       el.style.cssText = [
-        'position:fixed','top:0','left:0','right:0',
-        'background:linear-gradient(180deg,rgba(8,14,25,0.96),rgba(8,14,25,0.82))',
-        'color:#cfe3ff','border-bottom:1px solid #2a4060',
+        // Center-docked: leave left HUD (~240px) and right throttle/style
+        // panel (~200px) visible so the AI can read its own telemetry from
+        // the screenshot.
+        'position:fixed','top:6px','left:260px','right:260px',
+        'background:rgba(8,14,25,0.78)',
+        'color:#cfe3ff','border:1px solid #2a4060','border-radius:6px',
         'font:12px/1.45 ui-monospace,Menlo,monospace',
-        'padding:8px 18px 12px','z-index:9998',
+        'padding:8px 14px 10px','z-index:9998',
         'pointer-events:none','backdrop-filter:blur(6px)',
-        'max-height:45vh','overflow:hidden'
+        'max-height:38vh','overflow:hidden'
       ].join(';');
       el.innerHTML = [
         '<div style="display:flex;gap:14px;align-items:baseline;margin-bottom:5px;">',
