@@ -610,8 +610,29 @@ function appendRequest(kind, text, currentStage) {
 
   console.log('[autopilot] closing any stale browser sessions...');
   await run('close', '--all').catch(() => {});
+
+  // Window placement — configurable via env so you can stream from any
+  // screen without editing code.
+  //   BROWSER_POS     "x,y"       e.g. "3024,0" for second screen on right
+  //   BROWSER_SIZE    "w,h"       e.g. "1600,1000"
+  //   SECOND_SCREEN   "1"          shortcut: primary-right external @ 1920x1080
+  const chromeArgs = [];
+  let pos = process.env.BROWSER_POS;
+  let size = process.env.BROWSER_SIZE;
+  if (process.env.SECOND_SCREEN === '1' && !pos) {
+    // macOS reports the main display x=0..primaryWidth. An external screen
+    // to the right starts at x=primaryWidth. Default MBP retina is ~3024.
+    pos  = process.env.MAIN_WIDTH ? `${process.env.MAIN_WIDTH},0` : '3024,0';
+    size = size || '1600,1000';
+  }
+  if (pos)  chromeArgs.push(`--window-position=${pos}`);
+  if (size) chromeArgs.push(`--window-size=${size}`);
+  if (chromeArgs.length) console.log('[autopilot] chrome args:', chromeArgs.join(' '));
+
   console.log(`[autopilot] opening ${TARGET_URL} (headed)...`);
-  await run('open', TARGET_URL, '--headed');
+  const openArgs = ['open', TARGET_URL, '--headed'];
+  if (chromeArgs.length) openArgs.push('--args', chromeArgs.join(','));
+  await run(...openArgs);
   await sleep(2500);
 
   console.log('[autopilot] waiting for window.__ap bridge...');

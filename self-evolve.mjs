@@ -14,58 +14,67 @@
 // =============================================================
 
 import { spawn } from 'node:child_process';
-import { existsSync, unlinkSync, copyFileSync } from 'node:fs';
+import { existsSync, unlinkSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
-const wantReset = args.includes('--reset');
+const wantReset  = args.includes('--reset');     // only the pilot's flight experience
+const wantRewind = args.includes('--rewind');    // full nuke, rewind game to baseline
 const only = args.find(a => !a.startsWith('--'));
 
 const ROOT = process.cwd();
-const FILES_TO_RESET = [
-  'autopilot-skills.json',
-  'world-state.json',
-  'feature-requests.json',
-  'build-log.json',
-];
 
-if (wantReset) {
-  // Wipe all runtime experiment state
-  for (const f of FILES_TO_RESET) {
+// ——— Reset semantics ———
+//   --reset  :  wipes ONLY the pilot's flight experience (notebook, stage
+//               progress, pending feedback). The game itself keeps every
+//               evolution the designer has ever made — flight-sim3.html,
+//               world-state.json, build-log.json, world-rev* git tags all
+//               stay intact. This is an evolving game.
+//   --rewind :  full nuke back to git tag 'experiment-start' — restores
+//               pristine flight-sim3.html, wipes world-state + build-log,
+//               deletes all world-rev* tags. Use when you want to rewatch
+//               evolution from the very beginning.
+const PILOT_ONLY_FILES = ['autopilot-skills.json'];
+const WORLD_FILES      = ['world-state.json', 'build-log.json'];
+
+if (wantReset || wantRewind) {
+  for (const f of PILOT_ONLY_FILES) {
     const p = path.join(ROOT, f);
-    if (existsSync(p)) {
-      try { unlinkSync(p); console.log('[orch] wiped', f); } catch {}
-    }
+    if (existsSync(p)) { try { unlinkSync(p); console.log('[orch] wiped (pilot)', f); } catch {} }
   }
+  // Pilot's pending feature requests are now stale; keep resolved history
+  const reqPath = path.join(ROOT, 'feature-requests.json');
+  if (existsSync(reqPath)) {
+    try {
+      const cur = JSON.parse(readFileSync(reqPath, 'utf8'));
+      cur.pending = [];
+      writeFileSync(reqPath, JSON.stringify(cur, null, 2));
+      console.log('[orch] cleared pending feature requests (kept resolved history)');
+    } catch {}
+  }
+}
 
-  // Restore flight-sim3.html + nuke any world-revN tags so the next run
-  // starts numbering from 1 again. Prefer the git tag 'experiment-start'
-  // as the source of truth; fall back to .bak if git isn't available.
+if (wantRewind) {
+  console.log('[orch] REWIND: restoring game to experiment-start baseline');
+  for (const f of WORLD_FILES) {
+    const p = path.join(ROOT, f);
+    if (existsSync(p)) { try { unlinkSync(p); console.log('[orch] wiped (world)', f); } catch {} }
+  }
+  const reqPath = path.join(ROOT, 'feature-requests.json');
+  if (existsSync(reqPath)) { try { unlinkSync(reqPath); console.log('[orch] wiped feature-requests.json'); } catch {} }
   const { execSync } = await import('node:child_process');
-  let restored = false;
   try {
     execSync('git rev-parse experiment-start', { cwd: ROOT, stdio: 'ignore' });
     execSync('git checkout experiment-start -- flight-sim3.html', { cwd: ROOT, stdio: 'inherit' });
     console.log('[orch] restored flight-sim3.html from tag experiment-start');
-    // Delete any world-rev* tags from previous runs
     const tags = execSync('git tag -l "world-rev*"', { cwd: ROOT }).toString().trim().split(/\s+/).filter(Boolean);
     for (const t of tags) {
       try { execSync(`git tag -d ${t}`, { cwd: ROOT, stdio: 'ignore' }); } catch {}
     }
-    if (tags.length) console.log(`[orch] deleted ${tags.length} previous world-rev* tag(s)`);
-    restored = true;
+    if (tags.length) console.log(`[orch] deleted ${tags.length} world-rev* tag(s)`);
   } catch (e) {
-    console.warn('[orch] git reset failed, falling back to .bak:', e.message.split('\n')[0]);
+    console.warn('[orch] git rewind failed:', e.message.split('\n')[0]);
   }
-  if (!restored) {
-    const bak = path.join(ROOT, 'flight-sim3.html.bak');
-    const html = path.join(ROOT, 'flight-sim3.html');
-    if (existsSync(bak)) {
-      copyFileSync(bak, html);
-      console.log('[orch] restored flight-sim3.html from .bak');
-    }
-  }
-  // Drop the backup too so the designer creates a fresh one on first run
   const bak = path.join(ROOT, 'flight-sim3.html.bak');
   if (existsSync(bak)) { try { unlinkSync(bak); console.log('[orch] wiped .bak'); } catch {} }
 }

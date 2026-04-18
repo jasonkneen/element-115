@@ -1804,74 +1804,25 @@ scene.add(jet);
       plane.suppressJetFX = true;
 
       // ——— Find propeller meshes to spin ———
+      // Most prop-plane GLBs name their spinning parts with substrings
+      // like 'prop', 'blade', 'spinner', 'rotor'. Collect every match; we
+      // spin them in updateJetVisual() based on throttle.
       const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
       const props = [];
       model.traverse(o => {
         if (!o.isMesh && !o.isObject3D) return;
         if (o === model) return;
         if (propNames.test(o.name || '')) {
+          // Axis guess: most prop meshes spin around their local Z (forward).
+          // We'll detect later from the parent orientation, but default to Z.
           o.userData.__propAxis = 'z';
           props.push(o);
         }
       });
-
-      // ——— Procedural prop disc fallback ———
-      // Most Sketchfab GLBs (incl. Disney Dusty) bake the prop into one
-      // unnamed mesh, so name detection finds nothing. Spawn a visible
-      // spinning disc at the nose so there's always propeller feedback.
-      if (props.length === 0) {
-        const modelBox = new THREE.Box3().setFromObject(model);
-        // The model is a child of jet; scene/jet haven't rendered yet so
-        // jet.matrixWorld == identity. world coords == jet-local coords.
-        const cx = (modelBox.min.x + modelBox.max.x) / 2;
-        const cy = (modelBox.min.y + modelBox.max.y) / 2;
-        const noseZ = modelBox.min.z - 0.35;  // nose points toward -Z
-        const span = modelBox.max.x - modelBox.min.x;
-        const discSize = Math.max(0.8, Math.min(2.4, span * 0.18));
-
-        const propPivot = new THREE.Group();
-        propPivot.position.set(cx, cy, noseZ);
-
-        // Two crossed blade-shaped boxes
-        const bladeGeo = new THREE.BoxGeometry(discSize * 2.2, 0.07, 0.14);
-        const bladeMat = new THREE.MeshStandardMaterial({
-          color: 0x1a1a1a, metalness: 0.3, roughness: 0.5
-        });
-        const blade1 = new THREE.Mesh(bladeGeo, bladeMat);
-        const blade2 = new THREE.Mesh(bladeGeo, bladeMat);
-        blade2.rotation.z = Math.PI / 2;
-        propPivot.add(blade1); propPivot.add(blade2);
-
-        // Motion-blur translucent disc (fades in at higher throttle)
-        const discGeo = new THREE.CircleGeometry(discSize * 1.05, 28);
-        const discMat = new THREE.MeshBasicMaterial({
-          color: 0xcccccc, transparent: true, opacity: 0.12,
-          side: THREE.DoubleSide, depthWrite: false,
-        });
-        const disc = new THREE.Mesh(discGeo, discMat);
-        propPivot.add(disc);
-
-        // White spinner cone
-        const hubGeo = new THREE.ConeGeometry(discSize * 0.18, discSize * 0.45, 12);
-        const hubMat = new THREE.MeshStandardMaterial({
-          color: 0xeeeeee, metalness: 0.3, roughness: 0.4
-        });
-        const hub = new THREE.Mesh(hubGeo, hubMat);
-        hub.rotation.x = -Math.PI / 2;    // cone axis -> forward (-Z)
-        hub.position.z = -discSize * 0.18;
-        propPivot.add(hub);
-
-        jet.add(propPivot);
-        propPivot.userData.__propAxis = 'z';
-        propPivot.userData.__isProceduralProp = true;
-        propPivot.userData.__disc = disc;
-        props.push(propPivot);
-        console.log(`[plane-swap] procedural prop added at nose (${cx.toFixed(1)}, ${cy.toFixed(1)}, ${noseZ.toFixed(1)}) size=${discSize.toFixed(2)}`);
-      } else {
-        console.log(`[plane-swap] found ${props.length} named prop mesh(es): ${props.map(p => p.name).join(', ')}`);
-      }
-
       plane.props = props;
+      if (props.length) {
+        console.log(`[plane-swap] found ${props.length} propeller mesh(es): ${props.map(p => p.name).join(', ')}`);
+      }
 
       hud.style.color = '#5df09a';
       hud.textContent = `✓ ${planeFile} · ×${s.toFixed(2)} · fixed gear${props.length ? ' · '+props.length+' prop(s)' : ''}`;
@@ -3025,17 +2976,11 @@ function updateJetVisual() {
     ab2.scale.z *= fl;
   }
 
-  // Propeller spin — real mesh OR procedural disc, both rotate around
-  // local Z (the plane's forward axis). Small idle trickle + throttle
-  // scaling. Procedural disc also fades in its motion-blur circle.
+  // Propeller spin — GLB planes with detected prop meshes rotate with
+  // throttle (plus a trickle at idle so they never look frozen).
   if (plane.props && plane.props.length) {
-    const rpm = 8 + plane.throttle * 60;
-    for (const p of plane.props) {
-      p.rotation.z += rpm * 0.016;
-      if (p.userData.__isProceduralProp && p.userData.__disc) {
-        p.userData.__disc.material.opacity = 0.12 + plane.throttle * 0.35;
-      }
-    }
+    const rpm = 6 + plane.throttle * 55; // visual spin rate rad/s
+    for (const p of plane.props) p.rotation.z += rpm * 0.016;
   }
 
   // Strobe blink (~1.2 Hz with short pulse)
