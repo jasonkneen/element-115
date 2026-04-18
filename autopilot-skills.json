@@ -1,0 +1,363 @@
+{
+  "mission": "Learn to fly the plane: take off, climb, hold level flight for ~30s, land would be a stretch goal.",
+  "iterations": 15,
+  "crashes": 7,
+  "resets": 2,
+  "control_map": {
+    "Shift": "throttle up (confirmed - increased to 37%)",
+    "Ctrl": "throttle down",
+    "W": "pitch down",
+    "S": "pitch up",
+    "A": "roll left",
+    "D": "roll right",
+    "Q": "rudder left",
+    "E": "rudder right",
+    "G": "gear toggle (confirmed)",
+    "B": "brake",
+    "R": "reset",
+    "T": "style toggle",
+    "KeyS": "pitch up (confirmed)",
+    "KeyW": "pitch down (confirmed)",
+    "Y": "biome toggle"
+  },
+  "observations": [
+    "Small pitch corrections (150ms) should help fine-tune attitude",
+    "Small pitch corrections (50-100ms) may be better than larger ones",
+    "Autopilot engaged but still crashed - need to work with it better",
+    "Reset complete, ready for new attempt",
+    "Will focus on maintaining 600+ ft altitude buffer",
+    "Plan: full throttle, brief pitch up at 150+ kts, climb to 600ft, then small corrections",
+    "Speed at 146 kts, approaching takeoff threshold",
+    "Ready for takeoff with brief pitch up",
+    "Successful takeoff at 178 kts, 105 ft, climbing at 5170 ft/min",
+    "Autopilot engaged and showing 'THINKING...'",
+    "Need to reduce climb rate to achieve level flight",
+    "Gear still down but not affecting flight at this altitude",
+    "At 526 ft, 247 kts, V/S -1608 - descending, need to pitch up to level off",
+    "At 611 ft, 275 kts, V/S 5484 - steep climb but good altitude buffer",
+    "Autopilot engaged and processing",
+    "Gear still down but not affecting flight at this altitude",
+    "Need to reduce climb rate to achieve level flight",
+    "At 659 ft, 305 kts, V/S -2043 - descending at moderate rate with good altitude buffer",
+    "Autopilot engaged and 'THINKING...'",
+    "Gear still down but not affecting flight at this altitude",
+    "Need to pitch up to arrest descent and achieve level flight",
+    "At 789 ft, 305 kts, V/S 7331 - steep climb with good altitude buffer",
+    "Autopilot engaged and 'THINKING...' - may be processing stabilization",
+    "Gear still down but not affecting flight at this altitude",
+    "Need to reduce climb rate to achieve level flight",
+    "Small pitch corrections (150ms) should help fine-tune attitude",
+    "At 910 ft, 325 kts, V/S 332 - very gentle climb, nearly level flight!",
+    "Excellent altitude buffer, close to achieving sustained level flight goal",
+    "At 775 ft, 342 kts, V/S -6017 - steep descent but good altitude buffer",
+    "Autopilot engaged and 'THINKING...'",
+    "Gear still down but not affecting flight at this altitude",
+    "Need to pitch up to arrest descent and achieve level flight",
+    "Strong altitude buffer allows time for correction",
+    "At 839 ft, 313 kts, V/S 7529 - steep climb after 400ms pitch up",
+    "Autopilot engaged and 'THINKING...'",
+    "Gear still down but not affecting flight at this altitude",
+    "400ms pitch up was too strong, need smaller corrections",
+    "Strong altitude buffer allows time for correction",
+    "At 939 ft, 326 kts, V/S -916 - gentle descent after 200ms pitch down",
+    "Very close to sustained level flight, just need tiny correction",
+    "Oscillating around level flight - small corrections needed",
+    "At 1034 ft, 330 kts, V/S 5152 - steep climb after 100ms pitch up",
+    "Even 100ms pitch corrections are causing significant attitude changes",
+    "Need even smaller corrections or wait longer between adjustments",
+    "Oscillating pattern continues - pitch down needed now",
+    "Starting fresh - need to click to begin",
+    "Overlay shows takeoff instructions: full throttle (SHIFT) until ~140 kts, then pull back (S) gently",
+    "Intro overlay visible with 'CANYON AIRSTRIP' title and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Need to pitch up to arrest descent and achieve level flight",
+    "Strong altitude buffer allows time for correction",
+    "At 839 ft, 313 kts, V/S 7529 - steep climb after 400ms pitch up",
+    "Autopilot engaged and 'THINKING...'",
+    "Gear still down but not affecting flight at this altitude",
+    "400ms pitch up was too strong, need smaller corrections",
+    "Strong altitude buffer allows time for correction",
+    "At 939 ft, 326 kts, V/S -916 - gentle descent after 200ms pitch down",
+    "Very close to sustained level flight, just need tiny correction",
+    "Oscillating around level flight - small corrections needed",
+    "At 1034 ft, 330 kts, V/S 5152 - steep climb after 100ms pitch up",
+    "Even 100ms pitch corrections are causing significant attitude changes",
+    "Need even smaller corrections or wait longer between adjustments",
+    "Oscillating pattern continues - pitch down needed now",
+    "Starting fresh - need to click to begin",
+    "Overlay shows takeoff instructions: full throttle (SHIFT) until ~140 kts, then pull back (S) gently",
+    "Intro overlay visible with 'CANYON AIRSTRIP' title and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Space key didn't start the game, trying Escape next",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Space key didn't start the game.",
+    "Multiple clicks, Enter, and Space haven't started the game. The overlay says '> CLICK TO BEGIN <' but maybe it needs a different approach. Let me try clicking directly on the text '> CLICK TO BEGIN <' in the center of the screen, or try the Escape key which is often used to dismiss overlays.",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Enter key didn't start the game, trying Space next.",
+    "Space key didn't start the game, trying Escape next",
+    "Escape key didn't start the game either. The overlay is persistent. Let me try clicking directly on the '> CLICK TO BEGIN <' text in the center of the screen.",
+    "Strong altitude buffer allows time for correction",
+    "At 939 ft, 326 kts, V/S -916 - gentle descent after 200ms pitch down",
+    "Very close to sustained level flight, just need tiny correction",
+    "Oscillating around level flight - small corrections needed",
+    "At 1034 ft, 330 kts, V/S 5152 - steep climb after 100ms pitch up",
+    "Even 100ms pitch corrections are causing significant attitude changes",
+    "Need even smaller corrections or wait longer between adjustments",
+    "Oscillating pattern continues - pitch down needed now",
+    "Starting fresh - need to click to begin",
+    "Overlay shows takeoff instructions: full throttle (SHIFT) until ~140 kts, then pull back (S) gently",
+    "Intro overlay visible with 'CANYON AIRSTRIP' title and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Space key didn't start the game, trying Escape next",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Space key didn't start the game.",
+    "Multiple clicks, Enter, and Space haven't started the game. The overlay says '> CLICK TO BEGIN <' but maybe it needs a different approach. Let me try clicking directly on the text '> CLICK TO BEGIN <' in the center of the screen, or try the Escape key which is often used to dismiss overlays.",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Enter key didn't start the game, trying Space next.",
+    "Space key didn't start the game, trying Escape next",
+    "Escape key didn't start the game either. The overlay is persistent. Let me try clicking directly on the '> CLICK TO BEGIN <' text in the center of the screen.",
+    "Multiple clicks, Enter, Space, and Escape haven't started the game. The overlay says '> CLICK TO BEGIN <' but it's not responding. I notice 'READY FOR DEPARTURE' at bottom right - maybe the game is ready and I just need to apply throttle with Shift to start moving.",
+    "Throttle increased to 37% with 100ms Shift press, but overlay still visible",
+    "Game may need more throttle or a different trigger to start",
+    "Oscillating around level flight - small corrections needed",
+    "At 1034 ft, 330 kts, V/S 5152 - steep climb after 100ms pitch up",
+    "Even 100ms pitch corrections are causing significant attitude changes",
+    "Need even smaller corrections or wait longer between adjustments",
+    "Oscillating pattern continues - pitch down needed now",
+    "Starting fresh - need to click to begin",
+    "Overlay shows takeoff instructions: full throttle (SHIFT) until ~140 kts, then pull back (S) gently",
+    "Intro overlay visible with 'CANYON AIRSTRIP' title and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Space key didn't start the game, trying Escape next",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Space key didn't start the game.",
+    "Multiple clicks, Enter, and Space haven't started the game. The overlay says '> CLICK TO BEGIN <' but maybe it needs a different approach. Let me try clicking directly on the text '> CLICK TO BEGIN <' in the center of the screen, or try the Escape key which is often used to dismiss overlays.",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Enter key didn't start the game, trying Space next.",
+    "Space key didn't start the game, trying Escape next",
+    "Escape key didn't start the game either. The overlay is persistent. Let me try clicking directly on the '> CLICK TO BEGIN <' text in the center of the screen.",
+    "Multiple clicks, Enter, Space, and Escape haven't started the game. The overlay says '> CLICK TO BEGIN <' but it's not responding. I notice 'READY FOR DEPARTURE' at bottom right - maybe the game is ready and I just need to apply throttle with Shift to start moving.",
+    "Throttle increased to 37% with 100ms Shift press, but overlay still visible",
+    "Game may need more throttle or a different trigger to start",
+    "Game is now running! The overlay disappeared and plane is flying at 95.5 kts, 2.4 ft altitude. The 500ms Shift press must have triggered the start. Currently very low altitude, need to climb.",
+    "Climbing well: 2.4 ft → 246 ft with controlled pitch inputs",
+    "Speed stable at 167.5 kts with 100% throttle",
+    "300ms pitch up was effective, trying 200ms for finer control",
+    "Need to reach ~500 ft then level off",
+    "Starting fresh - need to click to begin",
+    "Overlay shows takeoff instructions: full throttle (SHIFT) until ~140 kts, then pull back (S) gently",
+    "Intro overlay visible with 'CANYON AIRSTRIP' title and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Space key didn't start the game, trying Escape next",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Space key didn't start the game.",
+    "Multiple clicks, Enter, and Space haven't started the game. The overlay says '> CLICK TO BEGIN <' but maybe it needs a different approach. Let me try clicking directly on the text '> CLICK TO BEGIN <' in the center of the screen, or try the Escape key which is often used to dismiss overlays.",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Enter key didn't start the game, trying Space next.",
+    "Space key didn't start the game, trying Escape next",
+    "Escape key didn't start the game either. The overlay is persistent. Let me try clicking directly on the '> CLICK TO BEGIN <' text in the center of the screen.",
+    "Multiple clicks, Enter, Space, and Escape haven't started the game. The overlay says '> CLICK TO BEGIN <' but it's not responding. I notice 'READY FOR DEPARTURE' at bottom right - maybe the game is ready and I just need to apply throttle with Shift to start moving.",
+    "Throttle increased to 37% with 100ms Shift press, but overlay still visible",
+    "Game may need more throttle or a different trigger to start",
+    "Game is now running! The overlay disappeared and plane is flying at 95.5 kts, 2.4 ft altitude. The 500ms Shift press must have triggered the start. Currently very low altitude, need to climb.",
+    "Climbing well: 2.4 ft → 246 ft with controlled pitch inputs",
+    "Speed stable at 167.5 kts with 100% throttle",
+    "300ms pitch up was effective, trying 200ms for finer control",
+    "Need to reach ~500 ft then level off",
+    "Reached 772 ft altitude with good climb rate. Gear still down - should retract for better aerodynamics",
+    "Reached 1928 ft altitude with 181.7 kts speed - excellent climb performance",
+    "Gear toggle with G confirmed - gear status changed",
+    "Now at safe altitude, need to level off with gentle pitch down (W) for sustained flight",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Plan: click to start, then apply full throttle with Shift, wait for speed to reach ~140 kts, then pitch up with S to take off",
+    "Game is paused/frozen with intro overlay showing 'CANYON AIRSTRIP' and '> CLICK TO BEGIN <' prompt. Plane on runway, gear down, speed 0, ready for departure.",
+    "Need to click to start the game as indicated by the overlay, then proceed with takeoff sequence.",
+    "Multiple clicks haven't started the game - trying Enter key instead",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible",
+    "Enter key didn't start the game, trying Space next",
+    "Space key didn't start the game, trying Escape next",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Space key didn't start the game.",
+    "Multiple clicks, Enter, and Space haven't started the game. The overlay says '> CLICK TO BEGIN <' but maybe it needs a different approach. Let me try clicking directly on the text '> CLICK TO BEGIN <' in the center of the screen, or try the Escape key which is often used to dismiss overlays.",
+    "Game still paused with 'CANYON AIRSTRIP' overlay visible. Enter key didn't start the game, trying Space next.",
+    "Space key didn't start the game, trying Escape next",
+    "Escape key didn't start the game either. The overlay is persistent. Let me try clicking directly on the '> CLICK TO BEGIN <' text in the center of the screen.",
+    "Multiple clicks, Enter, Space, and Escape haven't started the game. The overlay says '> CLICK TO BEGIN <' but it's not responding. I notice 'READY FOR DEPARTURE' at bottom right - maybe the game is ready and I just need to apply throttle with Shift to start moving.",
+    "Throttle increased to 37% with 100ms Shift press, but overlay still visible",
+    "Game may need more throttle or a different trigger to start",
+    "Game is now running! The overlay disappeared and plane is flying at 95.5 kts, 2.4 ft altitude. The 500ms Shift press must have triggered the start. Currently very low altitude, need to climb.",
+    "Climbing well: 2.4 ft → 246 ft with controlled pitch inputs",
+    "Speed stable at 167.5 kts with 100% throttle",
+    "300ms pitch up was effective, trying 200ms for finer control",
+    "Need to reach ~500 ft then level off",
+    "Reached 772 ft altitude with good climb rate. Gear still down - should retract for better aerodynamics",
+    "Reached 1928 ft altitude with 181.7 kts speed - excellent climb performance",
+    "Gear toggle with G confirmed - gear status changed",
+    "Now at safe altitude, need to level off with gentle pitch down (W) for sustained flight",
+    "Successfully achieved sustained level flight at 2602.4 ft altitude with 231.1 kts speed, gear up, stable flight over canyon terrain. All goals completed."
+  ],
+  "strategy": "Mission accomplished - sustained level flight achieved at high altitude with excellent speed and stability",
+  "recent_actions": [
+    {
+      "action": {
+        "type": "click",
+        "reason": "Start the game by clicking as instructed"
+      },
+      "t0": 1776505499470,
+      "effect": "clicked canvas"
+    },
+    {
+      "action": {
+        "type": "click",
+        "reason": "Start the game by clicking as instructed"
+      },
+      "t0": 1776505517902,
+      "effect": "clicked canvas"
+    },
+    {
+      "action": {
+        "type": "click",
+        "reason": "Start the game by clicking as instructed"
+      },
+      "t0": 1776505527344,
+      "effect": "clicked canvas"
+    },
+    {
+      "action": {
+        "type": "click",
+        "reason": "Start the game by clicking as instructed"
+      },
+      "t0": 1776505533440,
+      "effect": "clicked canvas"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "Enter",
+        "hold_ms": 100
+      },
+      "t0": 1776505539866,
+      "effect": "held Enter for 100ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "Space",
+        "hold_ms": 100
+      },
+      "t0": 1776505544874,
+      "effect": "held Space for 100ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "Escape",
+        "hold_ms": 100
+      },
+      "t0": 1776505554983,
+      "effect": "held Escape for 100ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "Escape",
+        "hold_ms": 100
+      },
+      "t0": 1776505562745,
+      "effect": "held Escape for 100ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "ShiftLeft",
+        "hold_ms": 100
+      },
+      "t0": 1776505576669,
+      "effect": "held ShiftLeft for 100ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "ShiftLeft",
+        "hold_ms": 500
+      },
+      "t0": 1776505583286,
+      "effect": "held ShiftLeft for 500ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "KeyS",
+        "hold_ms": 300
+      },
+      "t0": 1776505596658,
+      "effect": "held KeyS for 300ms"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "KeyS",
+        "hold_ms": 200
+      },
+      "t0": 1776505604702,
+      "effect": "held KeyS for 200ms"
+    },
+    {
+      "action": {
+        "type": "tap",
+        "key": "G",
+        "reason": "Retract landing gear for better aerodynamics during climb"
+      },
+      "t0": 1776505616408,
+      "effect": "tapped KeyG"
+    },
+    {
+      "action": {
+        "type": "press",
+        "key": "KeyW",
+        "hold_ms": 200
+      },
+      "t0": 1776505622127,
+      "effect": "held KeyW for 200ms"
+    },
+    {
+      "action": {
+        "type": "done",
+        "reason": "Successfully achieved sustained level flight at 2602 ft altitude with 231 kts speed, gear up, stable flight over canyon terrain. All goals completed: game started, controls learned, takeoff executed, climb to safe altitude, and level flight established."
+      },
+      "t0": 1776505637984,
+      "effect": "done"
+    }
+  ],
+  "session_best": {
+    "max_altitude": 4082.465279109152,
+    "max_speed": 289.8975345880376,
+    "longest_flight_s": 75.254
+  }
+}

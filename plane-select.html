@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Flight Sim · Plane Select</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #070a10;
+    --bg2: #0d1320;
+    --panel: #111829;
+    --panel2: #0a1020;
+    --ink: #cfe3ff;
+    --ink-dim: #7a8aa8;
+    --accent: #4ecbff;
+    --accent2: #ff4e7a;
+    --border: #1f2a44;
+    --good: #5df09a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background:
+      radial-gradient(circle at 20% 10%, #142036 0%, transparent 55%),
+      radial-gradient(circle at 85% 85%, #1a1224 0%, transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+  }
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(20,30,55,0.6), rgba(7,10,16,0));
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  header h1 {
+    margin: 0 0 6px; font-size: 22px; font-weight: 600;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 12px rgba(78, 203, 255, 0.25);
+  }
+  header p { margin: 0; color: var(--ink-dim); font-size: 12px; }
+  .toolbar {
+    margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  }
+  .toolbar input, .toolbar select, .toolbar button {
+    background: var(--panel2); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font: inherit; outline: none;
+  }
+  .toolbar input { width: 260px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
+  .toolbar button { cursor: pointer; }
+  .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  .count { color: var(--ink-dim); margin-left: auto; font-size: 11px; }
+
+  main { padding: 24px 32px 80px; }
+  section { margin-bottom: 36px; }
+  section h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.3em;
+    color: var(--ink-dim); text-transform: uppercase;
+    margin: 0 0 14px; padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--panel2));
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgba(78, 203, 255, 0.12);
+  }
+  .card.default {
+    border-color: var(--good);
+  }
+  .card.default::before {
+    content: "DEFAULT";
+    position: absolute; top: 8px; right: 8px;
+    background: var(--good); color: #062014;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.15em;
+    padding: 3px 6px; border-radius: 3px; z-index: 2;
+  }
+  .preview {
+    aspect-ratio: 16 / 10;
+    background:
+      linear-gradient(180deg, #0a1222 0%, #06080f 100%);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .preview canvas { width: 100%; height: 100%; display: block; }
+  .preview .placeholder {
+    color: var(--ink-dim);
+    font-size: 10px; letter-spacing: 0.25em;
+    text-align: center;
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+  }
+  .preview .placeholder .glyph {
+    font-size: 32px; opacity: 0.4; color: var(--accent);
+  }
+  .preview .placeholder button {
+    margin-top: 6px;
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 10px; font: inherit; font-size: 10px;
+    letter-spacing: 0.2em; cursor: pointer;
+  }
+  .preview .placeholder button:hover { border-color: var(--accent); }
+  .preview .loading {
+    color: var(--accent); font-size: 10px; letter-spacing: 0.2em;
+  }
+  .info {
+    padding: 12px 14px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    flex: 1;
+  }
+  .name {
+    font-size: 13px; color: var(--ink); font-weight: 500;
+    line-height: 1.3;
+  }
+  .meta {
+    font-size: 10px; color: var(--ink-dim); letter-spacing: 0.1em;
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .meta .dot { opacity: 0.4; }
+  .actions {
+    margin-top: auto; display: flex; gap: 8px;
+  }
+  .btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    color: var(--ink-dim);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+  }
+  .btn:hover {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(78, 203, 255, 0.05);
+  }
+  .btn.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(78, 203, 255, 0.08);
+  }
+  .btn.primary:hover {
+    background: var(--accent); color: #041018;
+  }
+  .card.heavy .btn.primary { border-color: var(--accent2); color: var(--accent2); }
+  .card.heavy .btn.primary:hover { background: var(--accent2); color: #1a0611; }
+  .empty {
+    text-align: center; color: var(--ink-dim);
+    padding: 60px 20px; font-size: 12px;
+  }
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(7,10,16,0.85); backdrop-filter: blur(6px);
+    border-top: 1px solid var(--border);
+    padding: 8px 32px;
+    font-size: 10px; color: var(--ink-dim); letter-spacing: 0.1em;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  footer kbd {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 3px; padding: 1px 5px; font-size: 9px;
+    color: var(--ink);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>◈ Flight Sim · Hangar</h1>
+  <p>Select an aircraft to launch. Hit the default procedural jet if you just want to fly.</p>
+  <div class="toolbar">
+    <input id="search" type="text" placeholder="Filter by name…" autocomplete="off" />
+    <select id="category">
+      <option value="">All categories</option>
+      <option value="default">Default</option>
+      <option value="aircraft">Aircraft & Fighters</option>
+      <option value="starfighter">Starfighters</option>
+      <option value="capital">Capital Ships</option>
+      <option value="other">Other</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--ink-dim);font-size:11px;">
+      <input id="show-heavy" type="checkbox" checked /> Show heavy (&gt;50 MB)
+    </label>
+    <span class="count" id="count"></span>
+  </div>
+</header>
+
+<main id="main"></main>
+
+<footer>
+  <span>Click a card to preview · <kbd>FLY</kbd> launches the sim</span>
+  <span id="total-size"></span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+(() => {
+'use strict';
+
+// =============================================================
+//  FILE LIST — hand-curated from directory listing
+//  category: aircraft | starfighter | capital | other | default
+// =============================================================
+const MANIFEST = [
+  // — Default —
+  { file: null, name: "Procedural Jet (Default)", category: "default", size: 0 },
+
+  // — Aircraft & Fighters —
+  { file: "a-10_thunderbolt_ii_warthog_plane__avion.glb", name: "A-10 Thunderbolt II Warthog", category: "aircraft", size: 1325432 },
+  { file: "a-10c_thunderbolt_ii.glb", name: "A-10C Thunderbolt II", category: "aircraft", size: 41147088 },
+  { file: "a-10c_thunderbolt_ii (1).glb", name: "A-10C Thunderbolt II (HD)", category: "aircraft", size: 46978796 },
+  { file: "low_poly_a-10_warthog.glb", name: "A-10 Warthog · Low-Poly", category: "aircraft", size: 1178084 },
+  { file: "low_poly_f14_tomcat.glb", name: "F-14 Tomcat · Low-Poly", category: "aircraft", size: 569424 },
+  { file: "low_poly_plane.glb", name: "Generic Plane · Low-Poly", category: "aircraft", size: 310028 },
+  { file: "disney_planes_-_dusty_turbo.glb", name: "Disney Planes · Dusty Turbo", category: "aircraft", size: 1096748 },
+  { file: "call_of_duty_advanced_warfare_-_f52_2.glb", name: "CoD AW · F-52", category: "aircraft", size: 13486428 },
+  { file: "call_of_duty_advanced_warfare_-_f52_2 (1).glb", name: "CoD AW · F-52 (HD)", category: "aircraft", size: 28761608 },
+  { file: "cf-117.glb", name: "CF-117", category: "aircraft", size: 10049064 },
+  { file: "cf-117_rapier.glb", name: "CF-117 Rapier", category: "aircraft", size: 14437040 },
+  { file: "cf-117_rapier (1).glb", name: "CF-117 Rapier (HD)", category: "aircraft", size: 45397696 },
+  { file: "cf-117_rapier (2).glb", name: "CF-117 Rapier (UHD)", category: "aircraft", size: 135913596 },
+  { file: "f-44_rapier_ii.glb", name: "F-44 Rapier II", category: "aircraft", size: 106334436 },
+  { file: "f-44_rapier_ii (1).glb", name: "F-44 Rapier II (UHD)", category: "aircraft", size: 406535276 },
+  { file: "f-54_sabre.glb", name: "F-54 Sabre", category: "aircraft", size: 31510192 },
+  { file: "f-54_sabre (1).glb", name: "F-54 Sabre (HD)", category: "aircraft", size: 103233364 },
+  { file: "f-54_sabre (2).glb", name: "F-54 Sabre (UHD)", category: "aircraft", size: 184567460 },
+  { file: "dralthi.glb", name: "Dralthi", category: "aircraft", size: 8038108 },
+  { file: "dralthi (1).glb", name: "Dralthi (HD)", category: "aircraft", size: 58637816 },
+  { file: "dralthi (2).glb", name: "Dralthi (UHD)", category: "aircraft", size: 82247928 },
+  { file: "excalibur_starfighter.glb", name: "Excalibur Starfighter", category: "aircraft", size: 397904 },
+  { file: "excalibur_-_wing_commander_4_variant..glb", name: "Excalibur · WC4 Variant", category: "aircraft", size: 5387384 },
+  { file: "excalibur_-_wing_commander_4_variant. (1).glb", name: "Excalibur · WC4 (HD)", category: "aircraft", size: 25528812 },
+  { file: "sci-fi_aircraft__spaceship_fighter.glb", name: "Sci-Fi Fighter", category: "aircraft", size: 4871492 },
+  { file: "sci-fi_aircraft__spaceship_fighter (1).glb", name: "Sci-Fi Fighter (HD)", category: "aircraft", size: 43521528 },
+  { file: "phoenix_sci-fi_spaceship.glb", name: "Phoenix Sci-Fi Spaceship", category: "aircraft", size: 33585984 },
+  { file: "phoenix_sci-fi_spaceship (1).glb", name: "Phoenix Sci-Fi (HD)", category: "aircraft", size: 7950100 },
+
+  // — Starfighters —
+  { file: "chibi_x-wing.glb", name: "Chibi X-Wing", category: "starfighter", size: 7781016 },
+  { file: "chibi_x-wing (1).glb", name: "Chibi X-Wing (HD)", category: "starfighter", size: 59363288 },
+  { file: "rebels_x-wing_starfighter.glb", name: "Rebels X-Wing", category: "starfighter", size: 44268176 },
+  { file: "rebels_x-wing_starfighter (1).glb", name: "Rebels X-Wing (HD)", category: "starfighter", size: 59363288 },
+  { file: "naboo_n1_starfighter.glb", name: "Naboo N-1 Starfighter", category: "starfighter", size: 75456964 },
+  { file: "naboo_n1_starfighter (1).glb", name: "Naboo N-1 (Lite)", category: "starfighter", size: 29767528 },
+  { file: "nubian_n1_naboo_starfighter_black.glb", name: "Nubian N-1 Black", category: "starfighter", size: 640456 },
+  { file: "jedi_star_fighter.glb", name: "Jedi Starfighter", category: "starfighter", size: 22359748 },
+  { file: "jedi_star_fighter (1).glb", name: "Jedi Starfighter (HD)", category: "starfighter", size: 31721432 },
+  { file: "imperial_nu_class_attack_shuttle.glb", name: "Imperial Nu-Class Shuttle", category: "starfighter", size: 7158888 },
+  { file: "liberator-class_starfighter_astro_interceptor.glb", name: "Liberator-Class Interceptor", category: "starfighter", size: 3182072 },
+  { file: "last_starfighter_rylan_gunstar.glb", name: "Last Starfighter · Gunstar", category: "starfighter", size: 4841760 },
+  { file: "low_poly_snowspeeder_star_wars.glb", name: "Snowspeeder · Low-Poly", category: "starfighter", size: 163752 },
+  { file: "t-47_airspeeder_snowspeeder.glb", name: "T-47 Snowspeeder", category: "starfighter", size: 1212040 },
+  { file: "t-47_airspeeder_snowspeeder (1).glb", name: "T-47 Snowspeeder (HD)", category: "starfighter", size: 1659676 },
+  { file: "star_wars_galaxies_-_belbullab-22.glb", name: "SWG · Belbullab-22", category: "starfighter", size: 3365112 },
+  { file: "star_wars_galaxies_-_eta-2_actis_interceptor.glb", name: "SWG · Eta-2 Actis", category: "starfighter", size: 3827240 },
+  { file: "star_wars_galaxies_-_koro-2_exodrive_airspeeder.glb", name: "SWG · Koro-2 Airspeeder", category: "starfighter", size: 996992 },
+  { file: "star_wars_galaxies_-_yt1300_outside.glb", name: "SWG · YT-1300 Falcon", category: "starfighter", size: 6902272 },
+  { file: "star_wars_galaxies_-_yt1300_inside.glb", name: "SWG · YT-1300 (Interior)", category: "starfighter", size: 9131508 },
+  { file: "star_wars_galaxies_-_yt1300_inside (1).glb", name: "SWG · YT-1300 Interior (HD)", category: "starfighter", size: 9131508 },
+  { file: "starfighters.glb", name: "Starfighters Pack", category: "starfighter", size: 3710232 },
+  { file: "the_mandalorian_razor_crest_full_interior.glb", name: "Razor Crest · Mandalorian", category: "starfighter", size: 18427364 },
+  { file: "the_ultimate_star_wars_fleet.glb", name: "Ultimate Star Wars Fleet", category: "starfighter", size: 24219744 },
+  { file: "jade_shadow.glb", name: "Jade Shadow", category: "starfighter", size: 3174624 },
+  { file: "jade_shadow (1).glb", name: "Jade Shadow (HD)", category: "starfighter", size: 20653304 },
+  { file: "eagle_transporter_-_passenger_pod_-_space_1999.glb", name: "Eagle Transporter · Space 1999", category: "starfighter", size: 27055540 },
+  { file: "nms_starship.glb", name: "No Man's Sky · Starship", category: "starfighter", size: 27793824 },
+  { file: "nms_starship (1).glb", name: "NMS · Starship (HD)", category: "starfighter", size: 26581016 },
+  { file: "no_mans_sky_-_golden_vector.glb", name: "NMS · Golden Vector", category: "starfighter", size: 13899700 },
+  { file: "no_mans_sky_-_radiant_pillar_bc1.glb", name: "NMS · Radiant Pillar BC1", category: "starfighter", size: 12469148 },
+  { file: "no_mans_sky_-_radiant_pillar_bc1 (1).glb", name: "NMS · Radiant Pillar (HD)", category: "starfighter", size: 12469148 },
+  { file: "spaceship_-_cb1.glb", name: "Spaceship CB1", category: "starfighter", size: 11434768 },
+  { file: "spaceship_-_cb1 (1).glb", name: "Spaceship CB1 (HD)", category: "starfighter", size: 34233032 },
+  { file: "spaceship_colaid1_50k.glb", name: "Spaceship Colaid1 50k", category: "starfighter", size: 8597576 },
+  { file: "spaceship_colaid1_50k (1).glb", name: "Spaceship Colaid1 (HD)", category: "starfighter", size: 31564384 },
+  { file: "star_trek_-_delta_flyer.glb", name: "Star Trek · Delta Flyer", category: "starfighter", size: 1752704 },
+  { file: "star_trek_-_delta_flyer (1).glb", name: "Delta Flyer (HD)", category: "starfighter", size: 2234800 },
+  { file: "star_trek_-_type_6_shuttle.glb", name: "Star Trek · Type-6 Shuttle", category: "starfighter", size: 1893368 },
+  { file: "star_trek_-_type_6_shuttle (1).glb", name: "Type-6 Shuttle (HD)", category: "starfighter", size: 16460480 },
+
+  // — Capital Ships —
+  { file: "star_trek_-_constitution_refit.glb", name: "ST · Constitution Refit", category: "capital", size: 5100500 },
+  { file: "star_trek_-_constitution_refit (1).glb", name: "Constitution Refit (HD)", category: "capital", size: 6718316 },
+  { file: "star_trek_-_constitution_refit (2).glb", name: "Constitution Refit v2", category: "capital", size: 5100500 },
+  { file: "star_trek_-_constitution_refit (3).glb", name: "Constitution Refit v3", category: "capital", size: 6718316 },
+  { file: "star_trek_-_excelsior_class.glb", name: "ST · Excelsior Class", category: "capital", size: 5903584 },
+  { file: "star_trek_-_excelsior_class (1).glb", name: "Excelsior Class (HD)", category: "capital", size: 4134364 },
+  { file: "star_trek_-_galaxy_class.glb", name: "ST · Galaxy Class", category: "capital", size: 20517996 },
+  { file: "star_trek_-_galaxy_class (1).glb", name: "Galaxy Class (Lite)", category: "capital", size: 6068912 },
+  { file: "star_trek_-_saber_class.glb", name: "ST · Saber Class", category: "capital", size: 6917212 },
+  { file: "star_trek_-_saber_class (1).glb", name: "Saber Class (HD)", category: "capital", size: 11679340 },
+  { file: "star_trek_online__odessey_class__enterprise_f.glb", name: "STO · Odyssey Enterprise-F", category: "capital", size: 8096060 },
+  { file: "star_trek_online__odessey_class__enterprise_f (1).glb", name: "Odyssey Enterprise-F (HD)", category: "capital", size: 14052180 },
+  { file: "uss_enterprise_refit_battle_damage.glb", name: "USS Enterprise Refit", category: "capital", size: 5501716 },
+  { file: "uss_enterprise_refit_battle_damage (1).glb", name: "Enterprise Refit (HD)", category: "capital", size: 11598328 },
+  { file: "uss_stargazer_constellation-class_star_trekzeo.glb", name: "USS Stargazer · Constellation", category: "capital", size: 69778052 },
+  { file: "uss_stargazer_constellation-class_star_trekzeo (1).glb", name: "USS Stargazer (HD)", category: "capital", size: 70121612 },
+  { file: "invictus_class_star_cruiser.glb", name: "Invictus Class Cruiser", category: "capital", size: 12462832 },
+  { file: "invictus_class_star_cruiser (1).glb", name: "Invictus Class (HD)", category: "capital", size: 19003256 },
+  { file: "metther-class_star_destroyer.glb", name: "Metther-Class Star Destroyer", category: "capital", size: 257511420 },
+  { file: "metther-class_star_destroyer (1).glb", name: "Metther-Class (HD)", category: "capital", size: 256060572 },
+  { file: "venator-class_star_destroyer.glb", name: "Venator-Class Star Destroyer", category: "capital", size: 36736324 },
+];
+
+// =============================================================
+//  UTIL
+// =============================================================
+const HEAVY_THRESHOLD = 50 * 1024 * 1024;
+const PREVIEW_MAX_SIZE = 40 * 1024 * 1024; // don't auto-load previews above this
+
+const fmtSize = (b) => {
+  if (!b) return "—";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
+  if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + " MB";
+  return (b / 1024 / 1024 / 1024).toFixed(2) + " GB";
+};
+
+const CATEGORY_LABELS = {
+  default: "Default",
+  aircraft: "Aircraft & Fighters",
+  starfighter: "Starfighters",
+  capital: "Capital Ships",
+  other: "Other",
+};
+const CATEGORY_ORDER = ["default", "aircraft", "starfighter", "capital", "other"];
+
+// =============================================================
+//  RENDER
+// =============================================================
+const main = document.getElementById('main');
+const searchInput = document.getElementById('search');
+const categorySelect = document.getElementById('category');
+const showHeavy = document.getElementById('show-heavy');
+const countEl = document.getElementById('count');
+const totalSizeEl = document.getElementById('total-size');
+
+totalSizeEl.textContent = `${MANIFEST.length - 1} models · ${fmtSize(MANIFEST.reduce((a, m) => a + m.size, 0))}`;
+
+function render() {
+  const q = searchInput.value.trim().toLowerCase();
+  const cat = categorySelect.value;
+  const heavy = showHeavy.checked;
+
+  main.innerHTML = '';
+  let total = 0;
+
+  for (const c of CATEGORY_ORDER) {
+    const items = MANIFEST.filter(m =>
+      m.category === c &&
+      (!q || m.name.toLowerCase().includes(q) || (m.file || '').toLowerCase().includes(q)) &&
+      (!cat || cat === c) &&
+      (heavy || m.size < HEAVY_THRESHOLD || m.category === 'default')
+    );
+    if (items.length === 0) continue;
+
+    const sec = document.createElement('section');
+    const h2 = document.createElement('h2');
+    h2.textContent = `${CATEGORY_LABELS[c]} · ${items.length}`;
+    sec.appendChild(h2);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    for (const item of items) grid.appendChild(renderCard(item));
+    sec.appendChild(grid);
+    main.appendChild(sec);
+    total += items.length;
+  }
+
+  if (total === 0) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'No matches. Try clearing the filter.';
+    main.appendChild(e);
+  }
+  countEl.textContent = `${total} shown`;
+}
+
+function renderCard(item) {
+  const card = document.createElement('div');
+  card.className = 'card' + (item.category === 'default' ? ' default' : '') +
+                   (item.size > HEAVY_THRESHOLD ? ' heavy' : '');
+
+  // — Preview pane —
+  const preview = document.createElement('div');
+  preview.className = 'preview';
+
+  if (item.category === 'default') {
+    preview.innerHTML = `<div class="placeholder">
+      <div class="glyph">✈</div>
+      <div>PROCEDURAL JET</div>
+    </div>`;
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'placeholder';
+    ph.innerHTML = `<div class="glyph">◇</div><div>${item.size > PREVIEW_MAX_SIZE ? 'HEAVY · CLICK TO LOAD' : 'PREVIEW'}</div>`;
+    const btn = document.createElement('button');
+    btn.textContent = 'LOAD';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      loadPreview(preview, item);
+    });
+    ph.appendChild(btn);
+    preview.appendChild(ph);
+
+    // Auto-load small previews when they scroll into view
+    if (item.size < PREVIEW_MAX_SIZE) {
+      preview.dataset.autoload = '1';
+    }
+  }
+
+  card.appendChild(preview);
+  card.__item = item;
+  if (preview.dataset.autoload === '1') autoObs.observe(preview);
+
+  // — Info pane —
+  const info = document.createElement('div');
+  info.className = 'info';
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = item.name;
+  info.appendChild(name);
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.innerHTML = `<span>${CATEGORY_LABELS[item.category]}</span>` +
+                   (item.file ? `<span class="dot">·</span><span>${fmtSize(item.size)}</span>` : '');
+  info.appendChild(meta);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+
+  // Use URL hash (#plane=X) instead of query string — survives servers like
+  // `npx serve` that strip .html extensions and drop the query on redirect.
+  const flyUrl = item.file
+    ? `flight-sim3.html#plane=${encodeURIComponent(item.file)}`
+    : `flight-sim3.html`;
+  const fly = document.createElement('a');
+  fly.className = 'btn primary';
+  fly.href = flyUrl;
+  fly.textContent = '▶ Fly';
+  actions.appendChild(fly);
+
+  if (item.file) {
+    const tweak = document.createElement('button');
+    tweak.className = 'btn';
+    tweak.textContent = '⚙ Tweak';
+    tweak.title = 'Adjust scale / rotation';
+    tweak.addEventListener('click', () => openTweak(item));
+    actions.appendChild(tweak);
+  }
+
+  info.appendChild(actions);
+  card.appendChild(info);
+  return card;
+}
+
+// =============================================================
+//  INLINE 3D PREVIEW (lazy)
+// =============================================================
+const previewCache = new WeakMap();
+
+function loadPreview(container, item) {
+  if (previewCache.has(container)) return;
+  previewCache.set(container, true);
+
+  container.innerHTML = '<div class="loading">LOADING…</div>';
+
+  const w = container.clientWidth || 300;
+  const h = container.clientHeight || 190;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 2000);
+  camera.position.set(4, 2.5, 6);
+  camera.lookAt(0, 0, 0);
+
+  scene.add(new THREE.HemisphereLight(0x88aaff, 0x1a1028, 0.9));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(4, 6, 3);
+  scene.add(dir);
+  const rim = new THREE.DirectionalLight(0x4ecbff, 0.5);
+  rim.position.set(-4, 2, -3);
+  scene.add(rim);
+
+  const loader = new THREE.GLTFLoader();
+  loader.load(item.file, (gltf) => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3(); box.getSize(size);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const s = 3 / maxDim;
+    model.scale.setScalar(s);
+    model.position.set(-center.x * s, -center.y * s, -center.z * s);
+
+    // Parent in a pivot so we can apply the same 180° Y-flip the sim uses
+    // (most GLB planes face +Z; the sim flies -Z forward). Spin clockwise
+    // when viewed from above so the plane looks like it's banking into a
+    // right turn rather than reversing tail-first through the air.
+    const pivot = new THREE.Group();
+    pivot.add(model);
+    pivot.rotation.y = Math.PI;
+    scene.add(pivot);
+
+    container.innerHTML = '';
+    container.appendChild(renderer.domElement);
+
+    let t = 0;
+    let running = true;
+    const tick = () => {
+      if (!running) return;
+      t += 0.006;
+      pivot.rotation.y = Math.PI - t;
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    };
+    tick();
+
+    // Pause when offscreen to save CPU
+    const pauseObs = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting && !running) { running = true; tick(); }
+        else if (!e.isIntersecting) { running = false; }
+      }
+    });
+    pauseObs.observe(container);
+  }, undefined, (err) => {
+    console.warn('preview failed', item.file, err);
+    container.innerHTML = `<div class="placeholder"><div class="glyph" style="color:var(--accent2)">✕</div><div>LOAD FAILED</div></div>`;
+  });
+}
+
+// Auto-load previews as they scroll into view
+const autoObs = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting && e.target.dataset.autoload === '1') {
+      const card = e.target.closest('.card');
+      const item = card && card.__item;
+      if (item) loadPreview(e.target, item);
+      autoObs.unobserve(e.target);
+    }
+  }
+}, { rootMargin: '200px' });
+
+// =============================================================
+//  TWEAK MODAL (scale + rotation + dy)
+// =============================================================
+function openTweak(item) {
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed; inset: 0; background: rgba(5,8,15,0.85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(8px);
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px;
+                padding:24px; width:min(460px, 92vw); color:var(--ink);">
+      <h3 style="margin:0 0 16px; font-size:13px; letter-spacing:0.2em; color:var(--accent); text-transform:uppercase;">
+        Tweak · ${item.name}
+      </h3>
+      <div style="display:grid; grid-template-columns: 100px 1fr 60px; gap:10px; align-items:center; font-size:11px;">
+        <label>Scale</label>
+        <input type="range" id="tw-s" min="0.1" max="5" step="0.05" value="1" />
+        <span id="tw-s-v">auto</span>
+
+        <label>Rot X (°)</label>
+        <input type="range" id="tw-rx" min="-180" max="180" step="5" value="0" />
+        <span id="tw-rx-v">0</span>
+
+        <label>Rot Y (°)</label>
+        <input type="range" id="tw-ry" min="-180" max="180" step="5" value="180" />
+        <span id="tw-ry-v">180</span>
+
+        <label>Rot Z (°)</label>
+        <input type="range" id="tw-rz" min="-180" max="180" step="5" value="0" />
+        <span id="tw-rz-v">0</span>
+
+        <label>Y offset</label>
+        <input type="range" id="tw-dy" min="-5" max="5" step="0.1" value="0" />
+        <span id="tw-dy-v">0</span>
+      </div>
+      <div style="margin-top:18px; display:flex; gap:8px; justify-content:flex-end;">
+        <button id="tw-cancel" class="btn">Cancel</button>
+        <button id="tw-fly" class="btn primary">▶ Fly</button>
+      </div>
+      <div style="margin-top:10px; font-size:10px; color:var(--ink-dim);">
+        Tip: most models face +Z; keep Rot Y at 180° so they point forward.
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const bind = (id) => {
+    const el = modal.querySelector('#' + id);
+    const v = modal.querySelector('#' + id + '-v');
+    el.addEventListener('input', () => v.textContent = el.value);
+    return el;
+  };
+  const s = bind('tw-s'), rx = bind('tw-rx'), ry = bind('tw-ry'), rz = bind('tw-rz'), dy = bind('tw-dy');
+
+  modal.querySelector('#tw-cancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#tw-fly').addEventListener('click', () => {
+    const params = new URLSearchParams();
+    params.set('plane', item.file);
+    if (s.value !== '1') params.set('s', s.value);
+    if (rx.value !== '0') params.set('rx', rx.value);
+    if (ry.value !== '180') params.set('ry', ry.value);
+    if (rz.value !== '0') params.set('rz', rz.value);
+    if (dy.value !== '0') params.set('dy', dy.value);
+    window.location.href = 'flight-sim3.html#' + params.toString();
+  });
+}
+
+// =============================================================
+//  WIRE UP
+// =============================================================
+searchInput.addEventListener('input', render);
+categorySelect.addEventListener('change', render);
+showHeavy.addEventListener('change', render);
+render();
+})();
+</script>
+</body>
+</html>
