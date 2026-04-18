@@ -14,7 +14,7 @@
 // =============================================================
 
 import { spawn } from 'node:child_process';
-import { existsSync, unlinkSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, unlinkSync, copyFileSync, readFileSync, writeFileSync, statSync, watch } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -223,6 +223,40 @@ function launchNodeWithEnv(name, script) {
 
 if (!only || only === 'pilot')    procs.push(launchNodeWithEnv('pilot',    'autopilot.mjs'));
 if (!only || only === 'designer') procs.push(launchNodeWithEnv('designer', 'world-designer.mjs'));
+
+// ——— HOT RELOAD WATCHER ———
+// Any change to flight-sim3.html (from the designer, from manual edits, or
+// from a git checkout) bumps world-state.json's revision. The pilot polls
+// that file every iteration and calls `agent-browser reload` when the
+// revision moves, so game tweaks appear live without restarting the
+// browser. Debounced so a rapid save-save-save only fires once.
+const HTML_PATH  = path.join(ROOT, 'flight-sim3.html');
+const WORLD_PATH = path.join(ROOT, 'world-state.json');
+let lastHtmlMtime = existsSync(HTML_PATH) ? statSync(HTML_PATH).mtimeMs : 0;
+let reloadTimer = null;
+function bumpWorldRevision(reason) {
+  let w = { revision: 0, features: [] };
+  if (existsSync(WORLD_PATH)) {
+    try { w = JSON.parse(readFileSync(WORLD_PATH, 'utf8')); } catch {}
+  }
+  w.revision = (w.revision || 0) + 1;
+  w.note = reason;
+  w.updated = new Date().toISOString();
+  writeFileSync(WORLD_PATH, JSON.stringify(w, null, 2));
+  console.log(`${C.orch}[orch]${C.reset}       hot-reload: bumped world-state to rev ${w.revision} (${reason})`);
+}
+try {
+  watch(HTML_PATH, { persistent: false }, () => {
+    const mt = existsSync(HTML_PATH) ? statSync(HTML_PATH).mtimeMs : 0;
+    if (mt === lastHtmlMtime) return;
+    lastHtmlMtime = mt;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => bumpWorldRevision('flight-sim3.html changed on disk'), 500);
+  });
+  console.log(`${C.orch}[orch]${C.reset}       watching flight-sim3.html — saves hot-reload the browser`);
+} catch (e) {
+  console.warn(`${C.orch}[orch]${C.reset}       watch failed: ${e.message}`);
+}
 
 console.log(`${C.orch}[orch]${C.reset}       self-evolving flight sim launched · ${procs.length} agent(s)`);
 console.log(`${C.orch}[orch]${C.reset}       Ctrl+C to stop all`);
