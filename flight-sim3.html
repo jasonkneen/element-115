@@ -3284,6 +3284,40 @@ applyStyle();
   window._ringPulsePhase = 0;
 })();
 
+// __world_feature_climb_rings__ — Glowing magenta ring gates for climb curriculum
+(function addClimbRings() {
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0xff00ff,
+    emissive: 0xff00ff,
+    emissiveIntensity: 0.8,
+    roughness: 0.2,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.9
+  });
+  
+  const ringGeo = new THREE.TorusGeometry(30, 1.5, 16, 64);
+  
+  const positions = [
+    { x: 0, y: 60, z: -400 },
+    { x: 0, y: 150, z: -800 },
+    { x: 0, y: 250, z: -1200 }
+  ];
+  
+  positions.forEach((pos, i) => {
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(pos.x, pos.y, pos.z);
+    ring.rotation.x = Math.PI / 2; // horizontal orientation
+    ring.userData.ringIndex = i;
+    ring.userData.baseY = pos.y;
+    scene.add(ring);
+  });
+  
+  // Simple pulse animation in the animate loop via a helper
+  const originalAnimate = animate;
+  window._ringPulsePhase = 0;
+})();
+
 requestAnimationFrame(animate);
 
 // =============================================================
