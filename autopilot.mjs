@@ -305,11 +305,37 @@ function loadSkills() {
     strategy: '',
     recent_actions: [],
     stages_mastered: [],
+    stage_playbooks: {},   // per-stage 3–5 bullet "what worked" summary
     current_stage: 'takeoff',
     session_best: { max_altitude: 0, max_speed: 0, longest_flight_s: 0 },
   };
 }
 function saveSkills(s) { writeFileSync(SKILLS_PATH, JSON.stringify(s, null, 2)); }
+
+// ——— Observation clustering ———
+// Append-only notebooks drown in near-duplicate lines like "Inverted
+// flight at X° roll...". This dedups by keyword-signature so the
+// notebook stays dense. Keeps at most `perKey` unique observations per
+// semantic bucket, and caps total size too.
+function clusterObservations(list, perKey = 2, totalMax = 60) {
+  const sigOf = (s) => {
+    const lower = (s || '').toLowerCase();
+    // Strip numbers and punctuation — what's left is a semantic key.
+    return lower.replace(/-?\d+(\.\d+)?/g, '#').replace(/[^a-z# ]/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, 60);
+  };
+  const buckets = new Map();
+  // Walk newest-first so the freshest copy of each lesson wins.
+  for (let i = list.length - 1; i >= 0; i--) {
+    const s = list[i]; if (typeof s !== 'string') continue;
+    const k = sigOf(s); if (!k) continue;
+    const arr = buckets.get(k) || [];
+    if (arr.length < perKey) { arr.push(s); buckets.set(k, arr); }
+  }
+  const out = [];
+  for (const arr of buckets.values()) out.push(...arr);
+  return out.slice(0, totalMax);
+}
 
 // ——— Prompt ———
 function buildSystem(skills) {
@@ -352,11 +378,36 @@ CURRENT STAGE: ${stage.name}
 GOAL: ${stage.goal}
 
 STAGES MASTERED: ${mastered.length ? mastered.join(', ') : '(none yet)'}
+
+STAGE PLAYBOOKS (what actually worked last time — use these patterns):
+${(() => {
+  const pb = skills.stage_playbooks || {};
+  const keys = Object.keys(pb);
+  if (!keys.length) return '  (none yet — first attempt)';
+  return keys.map(id => {
+    const s = CURRICULUM.find(c => c.id === id);
+    const p = pb[id];
+    const obs = (p.key_observations || []).slice(0, 3).map(o => '      - ' + o.slice(0, 120)).join('\n');
+    const acts = (p.action_shape || []).slice(-6).join(', ');
+    return `  ${s?.name || id}:\n${obs}\n      actions near success: ${acts}`;
+  }).join('\n');
+})()}
 REMAINING STAGES:
 ${remaining.map((s,i)=> (i===0?'> ':'  ') + s).join('\n')}
 
 CONTROLS (you discovered these by reading the legend in screenshots):
 ${Object.entries(skills.control_map).map(([k,v]) => `  ${k} = ${v}`).join('\n') || '  (none yet, read the bottom-left legend)'}
+
+CANONICAL CONTROL MEANINGS (do not second-guess these):
+  ShiftLeft   = throttle UP (ramps target, stays where you leave it)
+  ControlLeft = throttle DOWN (USE THIS at cruise — target 120–180 kts)
+  KeyW        = pitch DOWN (nose toward ground)
+  KeyS        = pitch UP   (nose toward sky)
+  KeyA        = roll LEFT  — for TURNING, not just recovery
+  KeyD        = roll RIGHT — for TURNING, not just recovery
+  KeyQ / ArrowLeft  = yaw left  (rudder only — weak, use A to turn)
+  KeyE / ArrowRight = yaw right (rudder only — weak, use D to turn)
+  KeyR        = reset after crash
 
 TIPS you've learned so far:
 ${skills.observations.slice(-10).map(o => '  · ' + o).join('\n') || '  (none)'}
@@ -396,6 +447,95 @@ you release SHIFT, the throttle STAYS at whatever it reached — it doesn't
 snap back to zero. So a common pattern is: press SHIFT+S together for 1-2
 seconds (throttle climbs while you pitch up), then keep holding S alone
 until airborne.
+
+================================================================
+PILOT MANUAL — READ AND FOLLOW, DO NOT IMPROVISE
+================================================================
+
+AIRSPEED IS LIFE. Every stage below has a minimum safe speed.
+Below that speed the wing stalls, lift collapses, the plane drops.
+You CANNOT out-pitch a stall. Pulling S (pitch up) when slow makes
+the stall DEEPER.
+
+V-SPEEDS (this airframe — crop duster class):
+  stall clean       Vs   = 55 kts   → NEVER fly below this in the air
+  rotation          Vr   = 65 kts
+  best climb        Vy   = 85 kts
+  approach          Vref = 85 kts
+  cruise target          = 140–160 kts
+  maneuver          Va   = 130 kts  → full-deflection inputs OK below this
+  never-exceed      Vne  = 220 kts
+
+GOLDEN RULES:
+  1. PITCH CONTROLS AIRSPEED. Nose down → faster. Nose up → slower.
+  2. THROTTLE CONTROLS ALTITUDE (in level trim). More throttle → climbs.
+  3. If spd_kts < 80 and descending: push W (nose down) AND hold
+     SHIFT (throttle up). Do NOT press S.
+  4. In a turn: BANK with A/D. Auto-rudder handles coordination.
+     NEVER use rudder (Q/E/arrows) to turn — only for final-approach
+     alignment.
+  5. If you see the status say CRASHED, press R (reset) immediately.
+
+STALL RECOVERY (MEMORIZE THIS):
+  Symptoms: spd < 70 kts AND pitch_deg > 10 AND vs_ft_min negative/falling.
+  Procedure:
+    (a) Release S immediately.
+    (b) TAP W for 200–400ms — get the nose BELOW the horizon.
+    (c) Hold SHIFT for 1–2s — add power.
+    (d) Wait. Let the plane fly itself back to speed.
+    (e) Once spd > 100 kts, level wings with A or D as needed.
+  Do NOT pull up until speed is back above 100 kts. You will stall
+  again ("secondary stall").
+
+LANDING PROCEDURE (when on landing stage):
+  1. Set up 3 nautical-mile final: altitude ≈ 1000 ft AGL, aligned
+     with runway heading 0° (north, since runway runs along ±Z).
+  2. Reduce throttle to ≈40% (tap ControlLeft repeatedly) for
+     target approach speed 85 kts.
+  3. Nose pitch ≈ -3° for a 500 ft/min descent.
+  4. Cross threshold at 50 ft AGL, 85 kts.
+  5. Flare: tap S gently at 20 ft AGL to arrest the descent rate.
+  6. Touch down at < 80 kts. Hold B (brake) until stopped.
+  Gear is fixed-down — no G press needed.
+
+COORDINATED TURN (to change heading by N degrees):
+  1. Tap A (left) or D (right) 500ms to bank ≈30°.
+  2. Tap S lightly (100–200ms) to hold altitude through the turn.
+  3. WAIT. The nose swings around on its own (it's auto-rudder).
+  4. When heading within 15° of target, tap opposite rudder-roll
+     (D if banked left, A if banked right) 400ms to level wings.
+  5. Micro-adjust with short pitch taps to regain cruise altitude.
+
+ALTITUDE DISCIPLINE:
+  Every stage has a band. STAY in the band.
+  climb  stage: target 2000 ft, DO NOT exceed 3000 ft.
+  cruise stage: target 1500–2500 ft. If you're above 4000 ft, you've
+                overshot — descend FIRST, then cruise.
+  descend:      target 300–500 ft. Arrest descent rate to < 1500 ft/min.
+  Do not climb to 20000 ft. That is a bug report in itself.
+
+================================================================
+
+CRUISE NOTE — READ THIS IF YOU KEEP CRASHING / OSCILLATING:
+Control authority grows with airspeed. At 300+ kts a 400ms pitch press
+becomes a 15–20° pitch change — far too aggressive. If you're oscillating
+between steep climbs and steep dives, THE FIX IS NOT MORE PITCH INPUT.
+The fix is:
+  1) Tap CONTROL (ControlLeft) for 1–2s to BLEED THROTTLE back to ~50–60%.
+     Your target cruise speed is 120–180 kts, NOT 400 kts.
+  2) Then use SHORT pitch taps — hold_ms of 80–150, not 400+.
+  3) Wait 600–1000ms between pitch inputs so you can see the effect.
+
+TURNING — READ THIS IF YOU NEED TO CHANGE HEADING:
+A/D do not just 'recover from inverted'. They BANK the plane, and a banked
+wing turns the aircraft via auto-rudder (built-in coordinated turn). To
+turn 180° left:
+  1) Tap A for 400–600ms to roll into a ~25–35° left bank.
+  2) Hold a tiny S (pitch up, 100–200ms) to keep the nose from dropping.
+  3) WAIT — the nose swings around on its own. Don't keep pressing A.
+  4) When heading is reached, tap D for ~400ms to roll back to level.
+ArrowLeft/ArrowRight yaw the rudder only — much weaker than banking.
+Prefer A/D for real turns.
 
 Smooth, gentle inputs win. Overcontrol = crash.`;
 }
@@ -716,6 +856,21 @@ function appendRequest(kind, text, currentStage) {
       if (result.passed) {
         skills.stages_mastered.push(stage.id);
         console.log(`\n🎉 [coordinator] STAGE MASTERED: ${stage.name} ${result.note ? '('+result.note+')' : ''}`);
+        // Snapshot a playbook for this stage from the last 12 actions and
+        // observations so the next stage starts with concrete "what
+        // worked" notes in the prompt rather than 300 lines of narration.
+        try {
+          const recentObs = clusterObservations(skills.observations.slice(-40), 1, 6)
+            .slice(0, 6);
+          const recentActs = (skills.recent_actions || []).slice(-10)
+            .map(a => actionLabel(a.action));
+          skills.stage_playbooks[stage.id] = {
+            passed_at_iter: skills.iterations,
+            note: result.note || '',
+            key_observations: recentObs,
+            action_shape: recentActs,
+          };
+        } catch {}
         const next = CURRICULUM[stageIdx + 1];
         if (next) {
           skills.current_stage = next.id;
@@ -764,7 +919,11 @@ function appendRequest(kind, text, currentStage) {
     if (u.control_map && typeof u.control_map === 'object') Object.assign(skills.control_map, u.control_map);
     if (Array.isArray(u.observations)) {
       for (const o of u.observations) if (typeof o === 'string') skills.observations.push(o);
-      if (skills.observations.length > 300) skills.observations.splice(0, skills.observations.length - 300);
+      // Cluster on every write so the notebook stays meaningful instead
+      // of becoming 300 near-duplicates.
+      if (skills.observations.length > 60) {
+        skills.observations = clusterObservations(skills.observations, 2, 60);
+      }
     }
     if (typeof u.strategy === 'string') skills.strategy = u.strategy;
 

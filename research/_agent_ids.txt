@@ -1,0 +1,4 @@
+research-physics     f675665a-10b6-4538-a6a0-a549e191ae11
+research-control     3709a3fa-74a0-40c4-a0e0-75fce915ce70
+research-llm-pilot   2559d4c9-5f7c-4911-ba76-ab01da455a6c
+research-dusty-spec  8e5a295d-f008-445c-aa6c-0315fb2ff0a7
