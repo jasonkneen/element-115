@@ -2368,7 +2368,9 @@ function buildAirfield() {
     for (const wx of [-1.45, 1.15]) {
       for (const wz of [-0.82, 0.82]) {
         const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.28, 12), serviceDark);
-        wheel.rotation.z = Math.PI / 2;
+        // Ground vehicles run along +X here, so the axle spans across Z.
+        // CylinderGeometry is Y-up by default → rotate around X, not Z.
+        wheel.rotation.x = Math.PI / 2;
         wheel.position.set(wx, 0.3, wz);
         truck.add(wheel);
       }
@@ -2390,7 +2392,7 @@ function buildAirfield() {
     for (const wx of [-0.8, 0.8]) {
       for (const wz of [-0.58, 0.58]) {
         const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 10), serviceDark);
-        wheel.rotation.z = Math.PI / 2;
+        wheel.rotation.x = Math.PI / 2;
         wheel.position.set(wx, 0.18, wz);
         cart.add(wheel);
       }
