@@ -3471,29 +3471,51 @@ function updateMultiplayer(dt) {
         const panel = document.createElement('div');
         panel.id = 'tweak-hud';
         panel.style.cssText = [
-          'position:fixed','bottom:80px','right:12px','z-index:9998','width:252px',
-          'background:rgba(8,14,25,0.88)','color:#cfe3ff',
-          'border:1px solid #1f2a44','border-radius:8px','padding:10px 12px',
-          'font:11px/1.4 ui-monospace, Menlo, monospace','backdrop-filter:blur(6px)',
+          'position:fixed','left:18px','bottom:108px','z-index:9998',
+          'font:11px/1.4 ui-monospace, Menlo, monospace','pointer-events:auto',
+          'max-width:calc(100vw - 36px)'
         ].join(';');
 
-        // Swallow keystrokes so typing in the inputs doesn't pilot the jet
+        // Swallow keystrokes so typing in the inputs doesn't pilot the jet.
         for (const ev of ['keydown','keyup','keypress']) {
           panel.addEventListener(ev, e => e.stopPropagation());
         }
 
-        const title = document.createElement('div');
-        title.style.cssText = 'color:#4ecbff;letter-spacing:0.2em;font-weight:600;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;';
+        const title = document.createElement('button');
+        title.type = 'button';
+        title.style.cssText = [
+          'display:flex','align-items:center','justify-content:space-between','gap:10px',
+          'width:fit-content','min-width:176px','padding:8px 12px',
+          'border:1px solid rgba(255,204,102,0.35)','border-radius:999px',
+          'background:rgba(20,10,5,0.78)','color:#ffcc66',
+          'letter-spacing:0.16em','cursor:pointer','text-align:left',
+          'backdrop-filter:blur(10px)','box-shadow:0 10px 24px rgba(0,0,0,0.26)'
+        ].join(';');
+        const titleWrap = document.createElement('div');
+        titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:1px;';
         const titleText = document.createElement('span');
-        titleText.textContent = '◈ TWEAK';
+        titleText.textContent = 'MODEL TUNE [;]';
+        titleText.style.cssText = 'font-size:11px;color:#ffe0a0;';
+        const titleMeta = document.createElement('span');
+        titleMeta.textContent = 'hidden until needed';
+        titleMeta.style.cssText = 'font-size:9px;letter-spacing:0.08em;opacity:0.58;';
+        titleWrap.appendChild(titleText);
+        titleWrap.appendChild(titleMeta);
         const collapseBtn = document.createElement('span');
-        collapseBtn.textContent = '−';
-        collapseBtn.style.color = '#7a8aa8';
-        title.appendChild(titleText);
+        collapseBtn.textContent = 'EDIT';
+        collapseBtn.style.cssText = 'font-size:9px;letter-spacing:0.14em;color:#ffcc66;opacity:0.82;';
+        title.appendChild(titleWrap);
         title.appendChild(collapseBtn);
         panel.appendChild(title);
 
         const body = document.createElement('div');
+        body.style.cssText = [
+          'margin-top:8px','width:228px','max-width:calc(100vw - 36px)',
+          'background:rgba(20,10,5,0.84)','color:#ffe0a0',
+          'border:1px solid rgba(255,204,102,0.24)','border-radius:14px',
+          'padding:10px 12px 12px','backdrop-filter:blur(12px)',
+          'box-shadow:0 16px 38px rgba(0,0,0,0.34)'
+        ].join(';');
         panel.appendChild(body);
 
         const DEG = Math.PI / 180;
@@ -3508,22 +3530,25 @@ function updateMultiplayer(dt) {
         ];
 
         const fmt = (step, v) => v.toFixed(step < 0.1 ? 2 : 1);
-        const refreshFns = [];
         for (const [label, id, min, max, step, getter, setter] of rows) {
           const row = document.createElement('div');
-          row.style.cssText = 'display:grid;grid-template-columns:44px 1fr 54px;gap:6px;align-items:center;margin-bottom:4px;';
+          row.style.cssText = 'display:grid;grid-template-columns:48px 1fr 58px;gap:6px;align-items:center;margin-bottom:5px;';
 
           const lab = document.createElement('label');
           lab.textContent = label;
-          lab.style.color = '#7a8aa8';
+          lab.style.cssText = 'color:rgba(255,204,102,0.66);font-size:10px;letter-spacing:0.08em;';
 
           const slider = document.createElement('input');
-          slider.type = 'range'; slider.min = String(min); slider.max = String(max); slider.step = String(step);
+          slider.type = 'range';
+          slider.min = String(min); slider.max = String(max); slider.step = String(step);
           slider.value = String(getter());
+          slider.style.width = '100%';
+          slider.style.accentColor = '#ffcc66';
 
           const num = document.createElement('input');
-          num.type = 'number'; num.min = String(min); num.max = String(max); num.step = String(step);
-          num.style.cssText = 'width:54px;background:#0a1020;border:1px solid #1f2a44;color:#cfe3ff;font:inherit;border-radius:3px;padding:2px 4px;';
+          num.type = 'number';
+          num.min = String(min); num.max = String(max); num.step = String(step);
+          num.style.cssText = 'width:58px;background:rgba(12,8,6,0.95);border:1px solid rgba(255,204,102,0.2);color:#ffe0a0;font:inherit;border-radius:6px;padding:3px 5px;';
           num.value = fmt(step, +getter());
 
           slider.addEventListener('input', () => {
@@ -3535,33 +3560,39 @@ function updateMultiplayer(dt) {
             if (Number.isFinite(v)) { setter(v); slider.value = String(v); }
           });
 
-          row.appendChild(lab); row.appendChild(slider); row.appendChild(num);
+          row.appendChild(lab);
+          row.appendChild(slider);
+          row.appendChild(num);
           body.appendChild(row);
-          refreshFns.push(() => { slider.value = String(getter()); num.value = fmt(step, +getter()); });
         }
 
         const status = document.createElement('div');
-        status.style.cssText = 'margin-top:8px;min-height:14px;font-size:10px;color:#7a8aa8;letter-spacing:0.1em;';
+        status.style.cssText = 'margin-top:8px;min-height:14px;font-size:10px;color:rgba(255,204,102,0.55);letter-spacing:0.1em;';
         body.appendChild(status);
 
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+        btnRow.style.cssText = 'display:flex;gap:6px;margin-top:8px;';
         body.appendChild(btnRow);
 
         const mkBtn = (label, onClick, color) => {
           const b = document.createElement('button');
           b.textContent = label;
           b.type = 'button';
-          b.style.cssText = 'flex:1;background:transparent;border:1px solid #1f2a44;border-radius:4px;padding:5px 6px;font:inherit;font-size:10px;letter-spacing:0.15em;cursor:pointer;color:' + (color || '#4ecbff') + ';';
+          const accent = color || '#ffcc66';
+          b.style.cssText = [
+            'flex:1','background:rgba(255,204,102,0.06)','border:1px solid rgba(255,204,102,0.22)',
+            'border-radius:8px','padding:6px 7px','font:inherit','font-size:10px',
+            'letter-spacing:0.15em','cursor:pointer',`color:${accent}`
+          ].join(';');
           b.addEventListener('click', onClick);
-          b.addEventListener('mouseenter', () => b.style.borderColor = color || '#4ecbff');
-          b.addEventListener('mouseleave', () => b.style.borderColor = '#1f2a44');
+          b.addEventListener('mouseenter', () => { b.style.borderColor = accent; b.style.background = 'rgba(255,204,102,0.12)'; });
+          b.addEventListener('mouseleave', () => { b.style.borderColor = 'rgba(255,204,102,0.22)'; b.style.background = 'rgba(255,204,102,0.06)'; });
           return b;
         };
 
         if (hostIsLocal) {
-          btnRow.appendChild(mkBtn('▲ SAVE', async () => {
-            status.textContent = 'saving…'; status.style.color = '#7a8aa8';
+          btnRow.appendChild(mkBtn('SAVE', async () => {
+            status.textContent = 'saving…'; status.style.color = 'rgba(255,204,102,0.65)';
             try {
               const res = await fetch('/api/tweaks/' + encodeURIComponent(planeFile), {
                 method: 'PUT',
@@ -3569,22 +3600,22 @@ function updateMultiplayer(dt) {
                 body: JSON.stringify(snapshotTweak()),
               });
               if (!res.ok) throw new Error('HTTP ' + res.status);
-              status.textContent = '✓ saved to server';
-              status.style.color = '#5df09a';
+              status.textContent = 'saved locally';
+              status.style.color = '#9cf2b0';
             } catch (err) {
-              status.textContent = '✕ save failed — is tweaks-server running?';
-              status.style.color = '#ff4e7a';
+              status.textContent = 'save failed';
+              status.style.color = '#ff7a8e';
               console.warn('[tweak-save]', err);
             }
-          }, '#5df09a'));
+          }, '#9cf2b0'));
         } else {
           const lock = document.createElement('div');
-          lock.textContent = '🔒 save: localhost only';
-          lock.style.cssText = 'flex:1;font-size:9px;color:#7a8aa8;letter-spacing:0.1em;padding:5px 0;text-align:center;';
+          lock.textContent = 'LOCAL SAVE ONLY';
+          lock.style.cssText = 'flex:1;font-size:9px;color:rgba(255,204,102,0.46);letter-spacing:0.1em;padding:6px 0;text-align:center;';
           btnRow.appendChild(lock);
         }
 
-        btnRow.appendChild(mkBtn('⧉ URL', () => {
+        btnRow.appendChild(mkBtn('COPY URL', () => {
           const t = snapshotTweak();
           const qs = new URLSearchParams({
             plane: planeFile,
@@ -3592,16 +3623,40 @@ function updateMultiplayer(dt) {
           });
           const url = location.origin + location.pathname + '#' + qs.toString();
           navigator.clipboard?.writeText(url);
-          status.textContent = 'URL copied'; status.style.color = '#4ecbff';
+          status.textContent = 'URL copied';
+          status.style.color = '#ffcc66';
         }));
 
-        let collapsed = false;
-        title.addEventListener('click', () => {
-          collapsed = !collapsed;
+        let collapsed = true;
+        const setCollapsed = (next) => {
+          collapsed = !!next;
           body.style.display = collapsed ? 'none' : '';
-          collapseBtn.textContent = collapsed ? '+' : '−';
+          titleMeta.textContent = collapsed ? 'hidden until needed' : 'tap outside to hide';
+          collapseBtn.textContent = collapsed ? 'EDIT' : 'HIDE';
+          panel.style.width = collapsed ? 'auto' : '228px';
+        };
+        title.addEventListener('click', (e) => {
+          e.preventDefault();
+          setCollapsed(!collapsed);
         });
 
+        const __tweakHUDOutsideClose = (e) => {
+          if (collapsed) return;
+          if (!panel.contains(e.target)) setCollapsed(true);
+        };
+        document.addEventListener('pointerdown', __tweakHUDOutsideClose, true);
+        window.addEventListener('keydown', (e) => {
+          const tgt = e.target;
+          if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
+          if (e.code === 'Semicolon' && !e.ctrlKey && !e.metaKey) {
+            setCollapsed(!collapsed);
+            e.preventDefault();
+          } else if (e.code === 'Escape' && !collapsed) {
+            setCollapsed(true);
+          }
+        });
+
+        setCollapsed(true);
         document.body.appendChild(panel);
       }
     },
