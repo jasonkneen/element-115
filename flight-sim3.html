@@ -4168,10 +4168,11 @@ function fireProjectileBurst() {
   }
   combatState.ammo = Math.max(0, combatState.ammo - 2);
   combatState.lastFiredAt = performance.now();
-  // Machine-gun burst sample — throttled so rapid-fire doesn't pile up
-  // identical buffers on top of each other. Volume modestly varied so it
-  // doesn't feel metronomic.
-  playSfx('mg-burst', { throttleMs: 120, volume: 0.55 + Math.random() * 0.2, rate: 0.95 + Math.random() * 0.12 });
+  // Machine-gun burst sample — capped to a very short burst so the gun
+  // doesn't keep sounding like it's firing after the trigger is released.
+  // The source clips are ~1.5s long, so without this they keep ringing on
+  // long after the actual firing state has ended.
+  playSfx('mg-burst', { throttleMs: 120, maxMs: 95, volume: 0.55 + Math.random() * 0.2, rate: 0.95 + Math.random() * 0.12 });
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const muzzles = [jet.userData.gunL, jet.userData.gunR];
   for (const muzzle of muzzles) {
@@ -5436,7 +5437,8 @@ async function loadSfxEvent(event) {
 // Fire-and-forget one-shot playback. `opts`:
 //   volume (0..1, default 1), rate (playbackRate, default 1),
 //   throttleMs (skip if same event played within this window),
-//   variantIndex (pick a specific variant; otherwise random).
+//   variantIndex (pick a specific variant; otherwise random),
+//   maxMs (optionally cap playback length with a short fade-out).
 function playSfx(event, opts = {}) {
   if (!audio.ctx || !audio.enabled) return;
   const now = performance.now();
@@ -5457,9 +5459,20 @@ function playSfx(event, opts = {}) {
   src.buffer = buf;
   src.playbackRate.value = opts.rate || 1;
   const g = audio.ctx.createGain();
-  g.gain.value = opts.volume != null ? opts.volume : 1;
+  const baseVol = opts.volume != null ? opts.volume : 1;
+  const ct = audio.ctx.currentTime;
+  g.gain.setValueAtTime(baseVol, ct);
   src.connect(g).connect(audio.master);
   src.start();
+
+  if (opts.maxMs) {
+    const maxSec = Math.max(0.02, opts.maxMs / 1000);
+    const fadeSec = Math.min(0.04, maxSec * 0.45);
+    g.gain.setValueAtTime(baseVol, ct + Math.max(0, maxSec - fadeSec));
+    g.gain.linearRampToValueAtTime(0.0001, ct + maxSec);
+    try { src.stop(ct + maxSec + 0.005); } catch {}
+  }
+
   // Clean up when done
   src.onended = () => { try { src.disconnect(); g.disconnect(); } catch {} };
 }
