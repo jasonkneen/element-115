@@ -475,6 +475,87 @@
     color: rgba(255, 231, 176, 0.62);
     line-height: 1.4;
   }
+  #title .plane-selection-card {
+    position: relative;
+    margin-top: 14px;
+    padding: 14px 14px 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: linear-gradient(180deg, rgba(14,18,26,0.38), rgba(8,10,16,0.14));
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    pointer-events: auto;
+  }
+  #title .plane-selection-card::before {
+    content: 'FLIGHT LINE';
+    display: block;
+    margin-bottom: 10px;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: rgba(255, 231, 176, 0.7);
+  }
+  #title .plane-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #title .plane-picker-btn {
+    display: grid;
+    gap: 4px;
+    min-height: 74px;
+    padding: 10px 11px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,215,150,0.12);
+    background: rgba(255,255,255,0.035);
+    color: #fff2cf;
+    font: 600 11px/1.15 var(--game-font-ui);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  #title .plane-picker-btn:hover {
+    border-color: rgba(255,225,170,0.28);
+    background: rgba(255,204,102,0.08);
+    transform: translateY(-1px);
+  }
+  #title .plane-picker-btn.active {
+    border-color: rgba(255,225,170,0.42);
+    background: linear-gradient(180deg, rgba(255,204,102,0.16), rgba(255,255,255,0.05));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.18);
+  }
+  #title .plane-picker-name {
+    font-size: 12px;
+    line-height: 1.15;
+    letter-spacing: 0.03em;
+    color: #fff3d8;
+  }
+  #title .plane-picker-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 231, 176, 0.58);
+  }
+  #title .plane-picker-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,225,170,0.2);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255, 242, 207, 0.9);
+  }
+  #title .plane-picker-note {
+    margin-top: 10px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(255, 231, 176, 0.62);
+    line-height: 1.4;
+  }
   #title .meta {
     position: relative;
     margin-top: 14px; font-size: 10px; opacity: 0.62; letter-spacing: 0.12em;
@@ -633,6 +714,7 @@
     #title.flight-briefing-card { padding: 22px 20px 20px; }
     #title .start-steps,
     #title .multiplayer-setup-grid { grid-template-columns: 1fr; }
+    #title .plane-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
@@ -831,13 +913,17 @@
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
-      <div>2 · PRESS M TO CYCLE PROP MODELS</div>
+      <div>2 · PICK AN AIRFRAME BELOW OR PRESS M TO CYCLE</div>
       <div>3 · HOLD SHIFT OR ↑ TO BUILD SPEED</div>
       <div>4 · PRESS S TO ROTATE AND CLIMB</div>
       <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
       <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
       <div>7 · PRESS R ANY TIME TO RESET</div>
       <div>8 · PRESS P FOR OPTIONS · H FOR HELP · ; FOR MODEL TUNE</div>
+    </div>
+    <div class="plane-selection-card">
+      <div class="plane-picker-grid" id="plane-picker-grid"></div>
+      <div class="plane-picker-note" id="plane-picker-note">Recent aircraft from Downloads are now available directly in the briefing card. The old blue hangar stays in the repo, but it no longer needs to be the launch path.</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -948,8 +1034,20 @@ function persistPlayerProfile() {
   } catch {}
 }
 const PROP_MODEL_PRESETS = [
-  { key: 'dusty', label: 'DUSTY TURBO', file: 'models/disney_planes_-_dusty_turbo.glb' },
-  { key: 'lowprop', label: 'LOW-POLY PROP', file: 'models/low_poly_plane.glb' },
+  { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
+  { key: 'scruggs', label: 'CLAUDE SCRUGGS', name: 'Claude Scruggs', hudLabel: 'SCRUGGS', type: 'Racing Prop', badge: 'NEW', file: 'models/claude_scruggs.glb' },
+  { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIPSLINGER', type: 'Racing Prop', badge: 'NEW', file: 'models/ripslinger.glb' },
+  { key: 'bush', label: 'CRANK BUSH', name: 'Crank Bush Plane', hudLabel: 'BUSH', type: 'Utility Prop', badge: 'NEW', file: 'models/crank_bush_plane.glb' },
+  { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Tucano', hudLabel: 'TUCANO', type: 'Trainer / Attack', badge: 'NEW', file: 'models/colombian_emb_314_tucano.glb' },
+  { key: 'avenger', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'AVENGER', type: 'Warbird', badge: 'NEW', file: 'models/p-100_avenger_-_free.glb' },
+  { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
+  { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Warbird', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
+  { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird', badge: 'HEAVY', file: 'models/yak-9.glb' },
+  { key: 'krogulec', label: 'AH250 KROGULEC', name: 'AH250 Krogulec', hudLabel: 'KROGULEC', type: 'Rotorcraft', badge: 'NEW', file: 'models/ah250_krogulec.glb' },
+  { key: 'apachemk1', label: 'AH MK.1 APACHE', name: 'AH Mk.1 Apache', hudLabel: 'APACHE MK1', type: 'Rotorcraft', badge: 'NEW', file: 'models/ah_mk.1_apache.glb' },
+  { key: 'apache64', label: 'AH-64E GUARDIAN', name: 'AH-64E Apache Guardian', hudLabel: 'AH-64E', type: 'Rotorcraft', badge: 'ULTRA', file: 'models/ah-64e_apache_guardian.glb' },
+  { key: 't47', label: 'T-47 AIRSPEEDER', name: 'T-47 Airspeeder', hudLabel: 'T-47', type: 'Speeder', badge: 'NEW', file: 'models/star_wars_t-47_airspeeder__snowspeeder.glb' },
+  { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
 const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
 
@@ -8767,6 +8865,8 @@ const mpUrlInput = document.getElementById('mp-url');
 const mpRoomInput = document.getElementById('mp-room');
 const mpSpawnRow = document.getElementById('mp-spawn-row');
 const mpSetupNote = document.getElementById('mp-setup-note');
+const planePickerGrid = document.getElementById('plane-picker-grid');
+const planePickerNote = document.getElementById('plane-picker-note');
 const helpStripState = {
   collapsed: false,
   autoCollapsed: false,
@@ -9042,8 +9142,29 @@ document.getElementById('prop-model-btn').addEventListener('click', () => cycleP
 function syncPropModelIndicator() {
   if (!$propModelInd) return;
   const preset = getActivePropPreset();
-  $propModelInd.textContent = preset.label;
+  $propModelInd.textContent = preset.hudLabel || preset.label;
   $propModelInd.className = 'ok';
+}
+function syncPropModelPicker() {
+  const active = getActivePropPreset();
+  if (planePickerGrid) {
+    while (planePickerGrid.firstChild) planePickerGrid.removeChild(planePickerGrid.firstChild);
+    PROP_MODEL_PRESETS.forEach((preset) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'plane-picker-btn' + (preset.key === active.key ? ' active' : '');
+      btn.innerHTML = `<span class="plane-picker-name">${preset.name || preset.label}</span><span class="plane-picker-meta"><span>${preset.type || 'Airframe'}</span><span class="plane-picker-badge">${preset.badge || 'READY'}</span></span>`;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (preset.key !== active.key) applyPropModelPreset(preset.key);
+      });
+      planePickerGrid.appendChild(btn);
+    });
+  }
+  if (planePickerNote) {
+    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Press M in flight to cycle, or pick directly here before launch. The old blue hangar is still in the repo, but the main app is now the selection flow.`;
+  }
 }
 if (mpCallsignInput) {
   mpCallsignInput.value = playerProfileState.callsign;
@@ -9088,6 +9209,7 @@ syncLandingIndicator();
 syncMultiplayerIndicator();
 syncMultiplayerSetupUI();
 syncPropModelIndicator();
+syncPropModelPicker();
 
 const transientStatus = { text: '', className: 'panel', timer: 0 };
 function flashStatus(text, className = 'panel ok', duration = 1.2) {
@@ -9409,6 +9531,9 @@ renderScene();
 // =============================================================
 const title = document.getElementById('title');
 document.getElementById('seed-display').textContent = SEED;
+function isPreflightInteractiveTarget(target) {
+  return !!(target && target.closest && target.closest('input, button, label, .multiplayer-setup-card, .plane-selection-card'));
+}
 function beginFlight() {
   title.classList.add('hide');
   document.body.classList.remove('preflight');
@@ -9420,12 +9545,14 @@ function beginFlight() {
   syncAudioIndicator();
   renderer.domElement.focus();
 }
-title.addEventListener('click', () => {
+title.addEventListener('click', (e) => {
+  if (isPreflightInteractiveTarget(e.target)) return;
   renderer.domElement.focus();
   beginFlight();
 });
 // Also allow any key to start
-window.addEventListener('keydown', () => {
+window.addEventListener('keydown', (e) => {
+  if (isPreflightInteractiveTarget(e.target)) return;
   if (!running) {
     renderer.domElement.focus();
     beginFlight();
@@ -11205,6 +11332,8 @@ window.__ap = {
       mission_grade: missionDebriefState.grade,
       player_callsign: playerProfileState.callsign,
       spawn_mode: playerProfileState.spawnMode,
+      plane_key: getActivePropPreset().key,
+      plane_label: getActivePropPreset().name || getActivePropPreset().label,
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
@@ -11258,6 +11387,11 @@ window.__ap = {
   setSpawnMode(mode) {
     setPlayerSpawnMode(mode);
     return playerProfileState.spawnMode;
+  },
+  setPlaneModel(key) {
+    if (!PROP_MODEL_BY_KEY.has(key)) return null;
+    applyPropModelPreset(key);
+    return key;
   },
   fire() { fireProjectileBurst(); },
   previewCombatHit(kind = 'traffic', kill = false) {
