@@ -6916,29 +6916,13 @@ const PROP_ENGINE_SAMPLE = {
   author: 'local',
   license: 'project',
 };
-const PROP_DETAIL_BEDS = {
-  idle: {
-    urls: ['audio/engine/light-prop-idle.wav', 'audio/engine/generic-prop.wav'],
-    highpass: 70,
-    lowpass: 980,
-    gain: 0.22,
-  },
-  cruise: {
-    urls: ['audio/engine/light-prop-cruise.wav', 'audio/engine/generic-prop.wav'],
-    highpass: 85,
-    lowpass: 1650,
-    gain: 0.18,
-  },
-};
+const PROP_DETAIL_BEDS = {};
 
 // One-shots keyed by event name. Loaded lazily on first trigger; held as
 // decoded AudioBuffers and scheduled against the shared audio.master gain
 // node so they respect mute + master volume.
 const SFX_POOL = {
   urls: {
-    'prop-start':    ['audio/engine/prop-start-1.wav', 'audio/engine/prop-start-4.wav'],
-    'prop-damaged':  ['audio/engine/prop-damaged-1.wav', 'audio/engine/prop-damaged-2.wav', 'audio/engine/prop-damaged-3.wav', 'audio/engine/prop-damaged-4.wav'],
-    'nosedive':      ['audio/engine/nosedive-1.wav', 'audio/engine/nosedive-2.wav', 'audio/engine/nosedive-3.wav'],
     'mg-burst':      ['audio/combat/mg-burst-1.wav', 'audio/combat/mg-burst-2.wav'],
     'mg-hit':        ['audio/impact/mg-hit-1.wav', 'audio/impact/mg-hit-2.wav', 'audio/impact/mg-hit-3.wav', 'audio/impact/mg-hit-4.wav'],
     'explosion':     ['audio/impact/explosion-big.wav'],
@@ -7229,9 +7213,9 @@ function initAudio() {
   audio.master.connect(audio.ctx.destination);
 
   // Preload the combat + impact SFX so the first gun trigger isn't silent
-  // while the fetch+decode happens. Engine one-shots lazy-load on demand
-  // (player may never crash nosedive in a short session).
-  ['mg-burst', 'mg-hit', 'explosion', 'prop-damaged'].forEach(loadSfxEvent);
+  // while the fetch+decode happens. Engine audio stays as the continuous
+  // hum/loop only, per the latest simplification pass.
+  ['mg-burst', 'mg-hit', 'explosion'].forEach(loadSfxEvent);
 
   // Shared looping noise buffer (2s)
   const sr = audio.ctx.sampleRate;
@@ -7281,8 +7265,6 @@ function initAudio() {
   audio.windGain = wGain;
 
   ensurePropEngineSample();
-  ensurePropDetailBed('idle');
-  ensurePropDetailBed('cruise');
   audio.enabled = true;
   syncPropSamplePlayback();
 }
@@ -7326,8 +7308,6 @@ function updateAudio(dt) {
   if (!audio.ctx || !audio.enabled) return;
   if (isPropAirframe()) {
     ensurePropEngineSample();
-    ensurePropDetailBed('idle');
-    ensurePropDetailBed('cruise');
   }
 
   const ct = audio.ctx.currentTime;
@@ -7352,50 +7332,32 @@ function updateAudio(dt) {
 
   if (audio.propSampleReady) {
     if (propSampleActive) syncPropSamplePlayback();
-    // Flat playback rate — no doppler sweep, no dive-bomb effect. The
-    // sample just LOOPS at a fixed pitch; throttle is conveyed only
-    // through volume so a throttle cut sounds like a quiet engine, not
-    // a plane slowing into a dive. Tiny ±0.04 swing kept to hint at RPM.
-    const BASE_RATE = 1.15;
-    const clampedRate = Math.max(1.08, Math.min(1.22, BASE_RATE + t * 0.06 + surgeRecovery * 0.02 - surgeDip * 0.02));
-    audio.propPlaybackRate = clampedRate;
-    audio.propTextureBlend = clamp01(t * 0.72 + surgeRecovery * 0.18 + Math.min(sp / 160, 0.16));
+    // Keep the prop loop pitch steady. The user asked for the extra
+    // layered motion to go away, so throttle now reads through gain
+    // and filtering while the hum itself stays stable and easy to parse.
+    const BASE_RATE = 1.14;
+    audio.propPlaybackRate = BASE_RATE;
     if (audio.propBufferNode) {
-      audio.propBufferNode.playbackRate.setTargetAtTime(clampedRate, ct, 0.35);
+      audio.propBufferNode.playbackRate.setTargetAtTime(BASE_RATE, ct, 0.18);
     }
+    audio.propTextureBlend = 0;
     // Higher idle floor so throttle-off still sounds like a running
-    // engine (not silence). Startup SFX (`prop-start`) fires separately.
+    // engine (not silence). No extra texture beds layered on top.
     const sampleVol = propSampleActive
-      ? Math.min(1, 0.38 + t * 0.34 + surgeRecovery * 0.05 + Math.min(sp / 220, 0.12))
+      ? Math.min(1, 0.40 + t * 0.30)
       : 0;
     if (audio.propSampleGain) {
       audio.propSampleGain.gain.setTargetAtTime(sampleVol, ct, 0.12);
     }
     if (audio.propSampleFilter) {
       audio.propSampleFilter.frequency.setTargetAtTime(
-        820 + t * 2100 + sp * 2.1 + surgeRecovery * 180 - surgeDip * 160,
+        920 + t * 1280,
         ct,
-        0.12,
+        0.14,
       );
     }
     if (audio.propSampleHighpass) {
-      audio.propSampleHighpass.frequency.setTargetAtTime(48 + t * 92, ct, 0.12);
-    }
-
-    const idleBed = audio.propDetailBeds.idle;
-    if (idleBed) {
-      idleBed.playbackRate = Math.max(0.88, Math.min(1.08, 0.94 + t * 0.08 - surgeDip * 0.02));
-      if (idleBed.node) idleBed.node.playbackRate.setTargetAtTime(idleBed.playbackRate, ct, 0.22);
-      if (idleBed.gain) idleBed.gain.gain.setTargetAtTime((propSampleActive ? Math.pow(1 - t, 0.72) * PROP_DETAIL_BEDS.idle.gain : 0), ct, 0.14);
-      if (idleBed.filter) idleBed.filter.frequency.setTargetAtTime(760 + t * 320 + surgeRecovery * 60, ct, 0.16);
-    }
-
-    const cruiseBed = audio.propDetailBeds.cruise;
-    if (cruiseBed) {
-      cruiseBed.playbackRate = Math.max(0.92, Math.min(1.16, 0.96 + t * 0.16 + surgeRecovery * 0.03 - surgeDip * 0.015));
-      if (cruiseBed.node) cruiseBed.node.playbackRate.setTargetAtTime(cruiseBed.playbackRate, ct, 0.22);
-      if (cruiseBed.gain) cruiseBed.gain.gain.setTargetAtTime((propSampleActive ? Math.pow(t, 0.9) * PROP_DETAIL_BEDS.cruise.gain : 0), ct, 0.14);
-      if (cruiseBed.filter) cruiseBed.filter.frequency.setTargetAtTime(1320 + t * 980 + sp * 1.2 + surgeRecovery * 90, ct, 0.16);
+      audio.propSampleHighpass.frequency.setTargetAtTime(48 + t * 58, ct, 0.14);
     }
   }
 
@@ -7439,15 +7401,12 @@ function updateAudio(dt) {
 }
 
 function setAudioEnabled(on) {
-  const wasOn = audio.enabled;
   if (on && !audio.ctx) initAudio();
   if (!audio.ctx) return;
   if (audio.ctx.state === 'suspended') audio.ctx.resume();
   audio.enabled = on;
   if (on) {
     ensurePropEngineSample();
-    ensurePropDetailBed('idle');
-    ensurePropDetailBed('cruise');
   }
   audio.master.gain.setTargetAtTime(on ? 0.55 : 0, audio.ctx.currentTime, 0.1);
   if (!on && audio.propSampleGain) audio.propSampleGain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
@@ -7455,27 +7414,12 @@ function setAudioEnabled(on) {
     if (bed && bed.gain) bed.gain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
   }
   syncPropSamplePlayback();
-  // Startup growl — plays once when audio transitions off → on (i.e. the
-  // "engine starts" moment in this sim since the prop loop begins with it).
-  if (on && !wasOn) {
-    loadSfxEvent('prop-start').then(() => {
-      // Fires via playSfx so it respects master gain and will skip if the
-      // user toggled sound back off before the fetch completed.
-      playSfx('prop-start', { volume: 0.7 });
-    });
-  }
 }
 
-// Throttle-based start trigger: even if audio is already on, replay the
-// startup growl when throttle transitions from truly idle to engaged.
-// Called from updatePhysics.
+// Engine hum stays continuous; no extra throttle-start stinger.
 let _prevThrottleForStart = 0;
 function maybeTriggerEngineStart() {
-  const t = plane.throttle;
-  if (_prevThrottleForStart < 0.02 && t > 0.08 && !plane.crashed) {
-    playSfx('prop-start', { volume: 0.6, throttleMs: 3000 });
-  }
-  _prevThrottleForStart = t;
+  _prevThrottleForStart = plane.throttle;
 }
 
 // NOTE: `spawnDamageDecal` and `damageDecalsClear` are declared above
@@ -7578,10 +7522,8 @@ function damagePlane(amount, kind = 'airframe', opts = {}) {
   if (typeof spawnDamageDecal === 'function' && opts.worldPos) {
     spawnDamageDecal(opts.worldPos, a);
   }
-  // Damaged-engine cough every time we take a meaningful blow.
-  if (typeof playSfx === 'function' && a >= 0.15) {
-    playSfx('prop-damaged', { volume: 0.55 + a * 0.35, throttleMs: 400 });
-  }
+  // Keep damage feedback visual-only here; the user asked to keep the
+  // engine audio as a steady hum without extra cough / damage stingers.
   if (plane.health <= 0) {
     plane.crashed = true;
     setFlightPhase('IMPACT', 'warn');
