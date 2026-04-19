@@ -43,8 +43,85 @@
   }
   #instruments { top: 18px; left: 18px; min-width: 170px; }
   #instruments .big { font-size: 22px; color: #ffe0a0; font-weight: bold; }
-  #throttle-wrap { top: 18px; right: 18px; min-width: 180px; }
-  #controls-help { bottom: 18px; left: 18px; font-size: 10px; opacity: 0.75; }
+  #throttle-wrap {
+    top: 18px; right: 18px; min-width: 0; width: 284px;
+    border-radius: 24px; padding: 14px 16px 12px;
+    font-family: var(--game-font-ui);
+  }
+  #throttle-wrap::before {
+    content: 'TELEMETRY DECK';
+    display: block;
+    margin-bottom: 8px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(255, 226, 170, 0.68);
+  }
+  #throttle-wrap > div:first-child {
+    font-size: 17px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: #fff3d4;
+    margin-bottom: 4px;
+  }
+  #throttle-wrap .bar {
+    margin: 8px 0 10px;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  #throttle-wrap > div:nth-child(3) {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: rgba(255, 226, 170, 0.58);
+    min-height: 14px;
+  }
+  #throttle-wrap > div:nth-child(4) {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,204,102,0.14);
+    display: grid;
+    gap: 6px;
+    pointer-events: auto;
+  }
+  #throttle-wrap .hud-action {
+    padding: 7px 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,215,150,0.12);
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+  }
+  #throttle-wrap .hud-action:hover {
+    background: rgba(255,204,102,0.10);
+    border-color: rgba(255,215,150,0.22);
+    color: #fff3d4;
+  }
+  #controls-help {
+    left: 50%; transform: translateX(-50%); bottom: 18px;
+    width: min(980px, calc(100vw - 36px));
+    display: flex; flex-wrap: wrap; gap: 8px;
+    border-radius: 24px; padding: 12px 14px 14px;
+    font-size: 10px; opacity: 0.92; font-family: var(--game-font-ui);
+  }
+  #controls-help::before {
+    content: 'PILOT INPUTS';
+    flex-basis: 100%;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(255, 226, 170, 0.68);
+    margin-bottom: 2px;
+  }
+  #controls-help > div {
+    flex: 1 1 260px;
+    min-height: 52px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 215, 150, 0.12);
+    background: rgba(255,255,255,0.04);
+    font-size: 11px;
+    line-height: 1.45;
+    letter-spacing: 0.08em;
+    color: rgba(255, 240, 214, 0.86);
+  }
   #status-msg {
     bottom: 18px; right: 18px; text-align: left;
     min-width: 320px; max-width: min(420px, calc(100vw - 36px));
@@ -227,6 +304,8 @@
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
+    #controls-help { width: calc(100vw - 28px); bottom: 14px; }
+    #throttle-wrap { width: min(284px, calc(100vw - 28px)); }
   }
   .hide { opacity: 0; pointer-events: none; }
   body.preflight #crosshair,
@@ -270,6 +349,49 @@
   }
   #graphics-panel::-webkit-scrollbar { width: 4px; }
   #graphics-panel::-webkit-scrollbar-thumb { background: rgba(255,204,102,0.25); }
+  #graphics-panel.game-options-panel {
+    border-radius: 28px;
+    padding: 16px 16px 18px;
+    width: 316px;
+    max-height: calc(100vh - 126px);
+    font-family: var(--game-font-ui);
+    box-shadow: var(--game-shadow);
+  }
+  #graphics-panel.game-options-panel .options-title {
+    font-size: 26px;
+    line-height: 0.96;
+    letter-spacing: -0.03em;
+    color: #fff1ce;
+    margin-bottom: 4px;
+  }
+  #graphics-panel.game-options-panel .options-kicker {
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255, 226, 170, 0.62);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  #graphics-panel.game-options-panel .preset-card {
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,215,150,0.12);
+    min-height: 54px;
+    padding: 7px 8px 6px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  #graphics-panel.game-options-panel .preset-card strong {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: #fff0ca;
+  }
+  #graphics-panel.game-options-panel .preset-card span {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: rgba(255, 226, 170, 0.55);
+    margin-top: 3px;
+  }
 </style>
 </head>
 <body class="preflight">
@@ -288,7 +410,7 @@
     <div style="margin-top:4px;">SCORE <span class="big" id="score-val">0</span> <span style="opacity:0.5;font-size:10px;">· <span id="score-streak">0</span>×</span></div>
     <div style="margin-top:4px; font-size:10px; opacity:0.6;">SEED <span id="seed-disp">—</span></div>
   </div>
-  <div class="panel" id="throttle-wrap">
+  <div class="panel game-dialog-chrome telemetry-deck-shell" id="throttle-wrap">
     <div>THROTTLE <span id="throttle-val">0</span>%</div>
     <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
@@ -302,7 +424,7 @@
       <button type="button" class="hud-action" id="audio-btn" style="margin-top:3px;">SOUND <span id="audio-ind" class="warn">OFF</span></button>
     </div>
   </div>
-  <div class="panel" id="controls-help">
+  <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
     <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
     <div id="ch-line2">SHIFT or ↑ THROTTLE UP &nbsp; CTRL or ↓ THROTTLE DOWN &nbsp; B BRAKE</div>
     <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
@@ -341,6 +463,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
 <script>
@@ -847,28 +970,51 @@ bootLog.step('WebGL renderer', !!renderer.getContext(),
 
 const postFX = {
   enabled: false,
+  ready: false,
   composer: null,
   bokehPass: null,
+  fxaaPass: null,
 };
 
+function updateFxaaPassResolution() {
+  if (!postFX.fxaaPass || !postFX.fxaaPass.material || !postFX.fxaaPass.material.uniforms || !postFX.fxaaPass.material.uniforms.resolution) return;
+  const pxRatio = renderer.getPixelRatio ? renderer.getPixelRatio() : 1;
+  postFX.fxaaPass.material.uniforms.resolution.value.set(
+    1 / Math.max(1, window.innerWidth * pxRatio),
+    1 / Math.max(1, window.innerHeight * pxRatio),
+  );
+}
+
 function initPostFX() {
-  if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function' || typeof THREE.BokehPass !== 'function') return;
+  if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function') return;
   try {
     postFX.composer = new THREE.EffectComposer(renderer);
     const renderPass = new THREE.RenderPass(scene, camera);
     postFX.composer.addPass(renderPass);
-    postFX.bokehPass = new THREE.BokehPass(scene, camera, {
-      focus: 18.0,
-      aperture: 0.00008,
-      maxblur: 0.0035,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
-    postFX.composer.addPass(postFX.bokehPass);
-    postFX.enabled = true;
+
+    if (typeof THREE.BokehPass === 'function') {
+      postFX.bokehPass = new THREE.BokehPass(scene, camera, {
+        focus: 18.0,
+        aperture: 0.00008,
+        maxblur: 0.0035,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      postFX.bokehPass.enabled = false;
+      postFX.composer.addPass(postFX.bokehPass);
+    }
+
+    if (typeof THREE.ShaderPass === 'function' && typeof THREE.FXAAShader === 'object') {
+      postFX.fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+      postFX.composer.addPass(postFX.fxaaPass);
+      updateFxaaPassResolution();
+    }
+
+    postFX.ready = true;
   } catch (err) {
-    console.warn('[postfx] dof disabled', err && err.message ? err.message : err);
+    console.warn('[postfx] disabled', err && err.message ? err.message : err);
     postFX.enabled = false;
+    postFX.ready = false;
   }
 }
 
@@ -889,7 +1035,8 @@ function updateDepthOfField() {
 }
 
 function renderScene() {
-  if (postFX.enabled && postFX.composer) postFX.composer.render();
+  const fxaaActive = !!(postFX.fxaaPass && postFX.fxaaPass.enabled);
+  if ((postFX.enabled || fxaaActive) && postFX.composer) postFX.composer.render();
   else renderer.render(scene, camera);
 }
 
@@ -1445,8 +1592,13 @@ function makeChunk(cx, cz) {
     rocks.setMatrixAt(added, dummy.matrix);
     added++;
   }
-  rocks.count = added;
+  const clutterDensity = (typeof window !== 'undefined' && window.gfx && window.gfx.floraDensity != null)
+    ? Math.max(0.2, Math.min(1.2, window.gfx.floraDensity))
+    : 1.0;
+  rocks.count = Math.max(0, Math.min(added, Math.round(added * clutterDensity)));
   rocks.instanceMatrix.needsUpdate = true;
+  rocks.userData.__densityGroup = 'terrain-clutter';
+  rocks.userData.__baseCount = added;
   group.add(rocks);
 
   // ---- Procedural flora + boulders (biome-gated) ----
@@ -1550,10 +1702,10 @@ function makeChunk(cx, cz) {
     }
   }
 
-  pines.count    = nPine;    pines.instanceMatrix.needsUpdate = true;    if (nPine) group.add(pines);
-  cacti.count    = nCactus;  cacti.instanceMatrix.needsUpdate = true;    if (nCactus) group.add(cacti);
-  shrubs.count   = nShrub;   shrubs.instanceMatrix.needsUpdate = true;   if (nShrub) group.add(shrubs);
-  boulders.count = nBoulder; boulders.instanceMatrix.needsUpdate = true; if (nBoulder) group.add(boulders);
+  pines.count    = Math.max(0, Math.min(nPine, Math.round(nPine * clutterDensity)));       pines.instanceMatrix.needsUpdate = true;    pines.userData.__densityGroup = 'terrain-clutter'; pines.userData.__baseCount = nPine; if (nPine) group.add(pines);
+  cacti.count    = Math.max(0, Math.min(nCactus, Math.round(nCactus * clutterDensity)));   cacti.instanceMatrix.needsUpdate = true;    cacti.userData.__densityGroup = 'terrain-clutter'; cacti.userData.__baseCount = nCactus; if (nCactus) group.add(cacti);
+  shrubs.count   = Math.max(0, Math.min(nShrub, Math.round(nShrub * clutterDensity)));     shrubs.instanceMatrix.needsUpdate = true;   shrubs.userData.__densityGroup = 'terrain-clutter'; shrubs.userData.__baseCount = nShrub; if (nShrub) group.add(shrubs);
+  boulders.count = Math.max(0, Math.min(nBoulder, Math.round(nBoulder * clutterDensity))); boulders.instanceMatrix.needsUpdate = true; boulders.userData.__densityGroup = 'terrain-clutter'; boulders.userData.__baseCount = nBoulder; if (nBoulder) group.add(boulders);
 
   scene.add(group);
   return { group, geo, terrainMesh: mesh };
@@ -5482,7 +5634,17 @@ function updateSunShadowRig() {
     plane.pos.z
   );
   sunTarget.position.copy(sunShadowFocus);
-  sun.position.copy(sunShadowFocus).addScaledVector(sunDir, 560);
+  const shadowDistance = Math.max(140, Math.min(340, scene.userData.__shadowDistance || 230));
+  sun.position.copy(sunShadowFocus).addScaledVector(sunDir, Math.max(420, shadowDistance * 2.45));
+  if (sun.shadow && sun.shadow.camera) {
+    const cam = sun.shadow.camera;
+    cam.left = -shadowDistance;
+    cam.right = shadowDistance;
+    cam.top = shadowDistance;
+    cam.bottom = -shadowDistance;
+    cam.far = Math.max(1100, shadowDistance * 6.2);
+    cam.updateProjectionMatrix();
+  }
   sunTarget.updateMatrixWorld();
 }
 
@@ -7708,6 +7870,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateFxaaPassResolution();
   if (postFX.enabled && postFX.composer) {
     postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
@@ -8929,15 +9092,15 @@ function updateFloatingTarget(dt) {
 (function setupGraphicsPanel() {
   const LS_KEY = 'gfx-settings-v1';
   const DEFAULTS = {
-    fxaa: true, shadowsOn: true, shadowQuality: 'med',
-    dof: false, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, replayHeroLight: true, particleScale: 1.0,
+    fxaa: true, shadowsOn: true, shadowQuality: 'med', shadowDistance: 230,
+    dof: false, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0,
     fps: false, renderScale: 1.0, resolutionScale: 1.0, bloom: false, motionBlur: false,
   };
   const PRESETS = {
-    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  dof: false, fog: true, cloudDensity: 0.30, cloudStyle: 'chunky', terrainFade: 0.28, nightLift: 0.10, replayHeroLight: false, particleScale: 0.45, renderScale: 0.65, resolutionScale: 0.85 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  dof: false, fog: true, cloudDensity: 0.55, cloudStyle: 'chunky', terrainFade: 0.48, nightLift: 0.22, replayHeroLight: true,  particleScale: 0.85, renderScale: 0.85, resolutionScale: 0.95 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', dof: true,  fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, replayHeroLight: true,  particleScale: 1.0,  renderScale: 1.0,  resolutionScale: 1.0 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', dof: true,  fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.82, nightLift: 0.55, replayHeroLight: true,  particleScale: 1.25, renderScale: 1.0,  resolutionScale: 1.2 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, renderScale: 0.65, resolutionScale: 0.82 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, renderScale: 0.85, resolutionScale: 0.95 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  renderScale: 1.0,  resolutionScale: 1.0 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, renderScale: 1.0,  resolutionScale: 1.18 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -8965,6 +9128,7 @@ function updateFloatingTarget(dt) {
     renderer.shadowMap.enabled = !!gfx.shadowsOn;
     const sizeMap = { low: 512, med: 1024, high: 2048 };
     const size = sizeMap[gfx.shadowQuality] || 1024;
+    scene.userData.__shadowDistance = gfx.shadowDistance;
     scene.traverse(obj => {
       if (obj.isDirectionalLight && obj.shadow) {
         if (obj.shadow.mapSize.x !== size) {
@@ -8979,8 +9143,11 @@ function updateFloatingTarget(dt) {
     scene.userData.__fogDisabled = !gfx.fog;
   }
   function applyDof() {
-    if (!postFX || !postFX.bokehPass) return;
+    if (postFX.bokehPass) postFX.bokehPass.enabled = !!gfx.dof;
     postFX.enabled = !!gfx.dof;
+  }
+  function applyFxaa() {
+    if (postFX.fxaaPass) postFX.fxaaPass.enabled = !!gfx.fxaa;
   }
   function applyRenderScale() {
     const ratio = Math.max(0.5, Math.min(1.0, gfx.renderScale));
@@ -8988,6 +9155,7 @@ function updateFloatingTarget(dt) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample, 2.35));
     renderer.setSize(window.innerWidth, window.innerHeight, true);
     if (postFX.composer) postFX.composer.setSize(window.innerWidth, window.innerHeight);
+    updateFxaaPassResolution();
   }
   function applyClouds() {
     weather.clouds = gfx.cloudDensity;
@@ -9000,14 +9168,26 @@ function updateFloatingTarget(dt) {
       if (typeof syncCloudWisps === 'function') syncCloudWisps();
     }
   }
+  function applyTerrainClutter() {
+    const density = Math.max(0.2, Math.min(1.2, gfx.floraDensity || 1.0));
+    scene.userData.__floraDensity = density;
+    for (const c of chunks.values()) {
+      c.group.children.forEach(child => {
+        if (!child.isInstancedMesh || child.userData.__densityGroup !== 'terrain-clutter') return;
+        const base = child.userData.__baseCount || child.count || 0;
+        child.count = Math.max(0, Math.min(base, Math.round(base * density)));
+      });
+    }
+  }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
     scene.userData.__nightLift = gfx.nightLift;
     scene.userData.__replayHeroLight = gfx.replayHeroLight !== false;
+    scene.userData.__shadowDistance = gfx.shadowDistance;
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
   function applyAll() {
-    applyShadows(); applyFog(); applyDof(); applyRenderScale(); applyClouds(); applyWorldTuning();
+    applyShadows(); applyFog(); applyDof(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyWorldTuning();
     if (fpsDiv) fpsDiv.style.display = gfx.fps ? 'block' : 'none';
   }
 
@@ -9030,17 +9210,15 @@ function updateFloatingTarget(dt) {
   // SF Mono typography, shared letter-spacing. Reuse the existing `.bar`
   // look for sliders so they blend with HULL/AMMO indicators.
   const AMBER = '#ffcc66', AMBER_HI = '#ffe0a0', AMBER_BORDER = 'rgba(255,204,102,0.35)';
-  const btnStyle = (on) => `padding:2px 10px;background:${on?'rgba(255,204,102,0.22)':'rgba(255,204,102,0.04)'};color:${on?AMBER_HI:'rgba(255,204,102,0.55)'};border:1px solid ${AMBER_BORDER};font:inherit;letter-spacing:inherit;cursor:pointer;`;
-  const segStyle = (on) => `padding:2px 8px;background:${on?'rgba(255,204,102,0.22)':'rgba(255,204,102,0.04)'};color:${on?AMBER_HI:'rgba(255,204,102,0.55)'};border:1px solid ${AMBER_BORDER};border-right:0;font:inherit;letter-spacing:inherit;cursor:pointer;`;
-  const rowStyle = 'display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:10px;';
-  const headerStyle = 'border-top:1px solid rgba(255,204,102,0.2);padding-top:5px;margin-top:7px;opacity:0.55;font-size:10px;letter-spacing:0.12em;';
+  const btnStyle = (on) => `padding:4px 10px;background:${on?'rgba(255,204,102,0.18)':'rgba(255,255,255,0.04)'};color:${on?AMBER_HI:'rgba(255,226,170,0.72)'};border:1px solid ${AMBER_BORDER};border-radius:999px;font:inherit;letter-spacing:inherit;cursor:pointer;`;
+  const segStyle = (on) => `padding:4px 9px;background:${on?'rgba(255,204,102,0.18)':'rgba(255,255,255,0.04)'};color:${on?AMBER_HI:'rgba(255,226,170,0.72)'};border:1px solid ${AMBER_BORDER};border-right:0;font:inherit;letter-spacing:inherit;cursor:pointer;`;
+  const rowStyle = 'display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:12px;font-size:11px;';
+  const headerStyle = 'border-top:1px solid rgba(255,204,102,0.12);padding-top:8px;margin-top:10px;opacity:0.66;font-size:10px;letter-spacing:0.16em;';
 
-  // Panel is a real HUD panel so it shares styling with instruments/throttle.
-  // Positioned top-right, below the throttle-wrap panel (which is ~260px tall).
   const panel = el('div', {
     id: 'graphics-panel',
-    class: 'panel',
-    style: 'top:290px;right:18px;width:240px;max-height:calc(100vh - 320px);overflow:auto;font-size:11px;display:none;pointer-events:auto;'
+    class: 'panel game-dialog-chrome game-options-panel',
+    style: 'top:96px;right:18px;overflow:auto;font-size:11px;display:none;pointer-events:auto;'
   });
 
   const makeToggle = (id) => {
@@ -9096,50 +9274,57 @@ function updateFloatingTarget(dt) {
   const rebuild = () => {
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
-    const title = el('div', { style: `font-size:12px;letter-spacing:0.14em;margin-bottom:6px;color:${AMBER_HI};` }, 'GRAPHICS [P]');
-    title.appendChild(el('span', { style: 'float:right;opacity:0.5;font-size:10px;' }, 'close'));
-    panel.appendChild(title);
+    panel.appendChild(el('div', { class: 'options-title' }, 'OPTIONS [P]'));
+    panel.appendChild(el('div', { class: 'options-kicker' }, 'Graphics / world / performance // live while flying'));
 
-    panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;' }, 'PRESETS'));
-    const presetRow = el('div', { style: 'display:flex;gap:3px;margin-bottom:7px;' });
+    panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'PRESETS'));
+    const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
+    const presetMeta = {
+      low: ['LOW', 'lean / cooler'],
+      med: ['MED', 'balanced'],
+      high: ['HIGH', 'full fidelity'],
+      ultra: ['ULTRA', 'cinematic'],
+    };
     ['low','med','high','ultra'].forEach(p => {
       const key = p === 'med' ? 'medium' : p;
+      const meta = presetMeta[p];
       const b = el('button', {
         type: 'button',
-        style: `flex:1;padding:3px 0;background:rgba(255,204,102,0.04);color:${AMBER};border:1px solid ${AMBER_BORDER};font:inherit;letter-spacing:0.1em;cursor:pointer;text-transform:uppercase;`
-      }, p);
+        class: 'preset-card',
+        style: `text-align:left;cursor:pointer;${gfx.shadowQuality === (PRESETS[key].shadowQuality || gfx.shadowQuality) && gfx.floraDensity === (PRESETS[key].floraDensity || gfx.floraDensity) ? 'border-color:rgba(255,225,170,0.42);background:rgba(255,204,102,0.12);' : ''}`
+      }, el('strong', {}, meta[0]), el('span', {}, meta[1]));
       b.addEventListener('click', () => { Object.assign(gfx, DEFAULTS, PRESETS[key]); rebuild(); applyAll(); save(); });
       presetRow.appendChild(b);
     });
     panel.appendChild(presetRow);
 
-    panel.appendChild(el('div', { style: headerStyle }, 'POST-FX'));
-    panel.appendChild(row('FXAA', makeToggle('fxaa')));
+    panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
+    panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
     panel.appendChild(row('Depth of field', makeToggle('dof')));
     panel.appendChild(row('Replay hero light', makeToggle('replayHeroLight')));
     panel.appendChild(makeSliderRow('resolutionScale', 0.75, 1.35, 0.05, 'AA / SUPERSAMPLE', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(row('Bloom ·', makeToggle('bloom')));
-    panel.appendChild(row('Motion blur ·', makeToggle('motionBlur')));
 
     panel.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
     panel.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
     panel.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
+    panel.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'WORLD'));
     panel.appendChild(row('Fog', makeToggle('fog')));
     panel.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
     panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
     panel.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'PARTICLES'));
+    panel.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
 
     panel.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
     panel.appendChild(makeSliderRow('nightLift', 0, 0.9, 0.05, 'MOON / NIGHT LIFT', (v) => `${Math.round(v * 100)}%`));
 
-    panel.appendChild(el('div', { style: headerStyle }, 'PERF'));
+    panel.appendChild(el('div', { style: headerStyle }, 'PERFORMANCE'));
     panel.appendChild(row('FPS meter', makeToggle('fps')));
     panel.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
 
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.4;margin-top:7px;' }, 'FXAA + supersample help prop edges and distant shimmer.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'FXAA is now real. Shadow range and ground detail are the safest live levers for performance.'));
   };
   rebuild();
   // Append inside the HUD container so it inherits font + text-shadow
@@ -9153,12 +9338,20 @@ function updateFloatingTarget(dt) {
   (hudEl || document.body).appendChild(fpsDiv);
 
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyP' || e.ctrlKey || e.metaKey) return;
     const tgt = e.target;
     if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    e.preventDefault();
+    if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey) {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      e.preventDefault();
+    } else if (e.code === 'Escape' && panel.style.display !== 'none') {
+      panel.style.display = 'none';
+    }
   });
+  document.addEventListener('pointerdown', (e) => {
+    if (panel.style.display === 'none') return;
+    if (panel.contains(e.target)) return;
+    panel.style.display = 'none';
+  }, true);
 
   applyAll();
   window.__gfxTick = tickFps;
@@ -9253,6 +9446,8 @@ window.__ap = {
       tod_label: timeOfDay.label,
       terrain_fade: scene.userData.__terrainFade != null ? scene.userData.__terrainFade : 0.58,
       night_lift: scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35,
+      shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
+      flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
       world_bridge_count: worldOpportunities.bridgeCandidates.length,
@@ -9263,6 +9458,7 @@ window.__ap = {
       engine_sample_active: !!(audio.enabled && audio.propSampleReady && isPropAirframe()),
       prop_texture_blend: audio.propTextureBlend || 0,
       prop_detail_beds: Object.fromEntries(Object.entries(audio.propDetailBeds || {}).map(([k, v]) => [k, !!(v && v.ready && v.node)])),
+      fxaa_enabled: !!(postFX.fxaaPass && postFX.fxaaPass.enabled),
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
