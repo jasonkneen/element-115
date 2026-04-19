@@ -373,6 +373,10 @@ function fbm(x, y, oct) {
 // =============================================================
 //  TERRAIN HEIGHTMAP — canyon mesas with runway clearing
 // =============================================================
+const AIRFIELD_SURFACE_Y = 0.08;
+const AIRFIELD_FLAT_RADIUS = 230;
+const AIRFIELD_FLAT_R2 = AIRFIELD_FLAT_RADIUS * AIRFIELD_FLAT_RADIUS;
+
 function getHeight(x, z) {
   const dist = Math.sqrt(x * x + z * z);
 
@@ -415,6 +419,18 @@ function getHeight(x, z) {
   // sterile flat disc.
   const basinRipple = (1 - runwayMask) * (fbm(x * 0.006, z * 0.006, 2) - 0.5) * 5.5;
   h = Math.max(0, h + basinRipple);
+
+  // Airfield pavement footprint — explicitly flatten the runway/apron/taxiway
+  // area so the new airport doesn't get swallowed by the regenerated grass.
+  const runwayPad = (1 - smoothstepRange(18, 42, Math.abs(x)))
+    * (1 - smoothstepRange(215, 285, Math.abs(z)));
+  const apronPad = (1 - smoothstepRange(8, 74, Math.abs(x - 34)))
+    * (1 - smoothstepRange(92, 210, Math.abs(z - 150)));
+  const taxiPad = (1 - smoothstepRange(6, 18, Math.abs(x - 17)))
+    * (1 - smoothstepRange(62, 168, Math.abs(z - 116)));
+  const airfieldPad = clamp01(Math.max(runwayPad, apronPad, taxiPad));
+  h *= 1 - airfieldPad * 0.998;
+  h = Math.max(0, h - airfieldPad * 3.5);
 
   return h;
 }
@@ -1567,13 +1583,15 @@ function applyShadowFlags(root, { cast = true, receive = true } = {}) {
 function buildAirfield() {
   const g = new THREE.Group();
 
+  const surfaceY = AIRFIELD_SURFACE_Y;
+
   // Runway — long strip along -Z
   const runway = new THREE.Mesh(
     new THREE.PlaneGeometry(34, 420),
     new THREE.MeshLambertMaterial({ color: 0x28252a })
   );
   runway.rotation.x = -Math.PI / 2;
-  runway.position.set(0, 0.02, 0);
+  runway.position.set(0, surfaceY, 0);
   g.add(runway);
 
   // Center dashed line
@@ -1583,7 +1601,7 @@ function buildAirfield() {
       new THREE.MeshBasicMaterial({ color: 0xfff0cc })
     );
     dash.rotation.x = -Math.PI / 2;
-    dash.position.set(0, 0.03, z);
+    dash.position.set(0, surfaceY + 0.01, z);
     g.add(dash);
   }
 
@@ -1595,7 +1613,7 @@ function buildAirfield() {
       new THREE.MeshBasicMaterial({ color: 0xfff0cc })
     );
     m.rotation.x = -Math.PI / 2;
-    m.position.set(i * 2.7, 0.03, -202);
+    m.position.set(i * 2.7, surfaceY + 0.01, -202);
     g.add(m);
     const m2 = m.clone();
     m2.position.z = 202;
@@ -1608,7 +1626,7 @@ function buildAirfield() {
     new THREE.MeshLambertMaterial({ color: 0x2f2a28 })
   );
   apron.rotation.x = -Math.PI / 2;
-  apron.position.set(34, 0.015, 150);
+  apron.position.set(34, surfaceY - 0.004, 150);
   g.add(apron);
 
   const taxiway = new THREE.Mesh(
@@ -1616,7 +1634,7 @@ function buildAirfield() {
     new THREE.MeshLambertMaterial({ color: 0x3a342f })
   );
   taxiway.rotation.x = -Math.PI / 2;
-  taxiway.position.set(17, 0.016, 116);
+  taxiway.position.set(17, surfaceY - 0.002, 116);
   g.add(taxiway);
 
   const shadowCatcher = new THREE.Mesh(
@@ -1624,7 +1642,7 @@ function buildAirfield() {
     new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.22 })
   );
   shadowCatcher.rotation.x = -Math.PI / 2;
-  shadowCatcher.position.set(0, 0.012, 20);
+  shadowCatcher.position.set(0, surfaceY - 0.03, 20);
   shadowCatcher.receiveShadow = true;
   shadowCatcher.material.depthWrite = false;
   shadowCatcher.renderOrder = 1;
@@ -4297,8 +4315,8 @@ function updateCombat(dt) {
     p.mesh.position.copy(p.pos);
     p.mesh.quaternion.setFromUnitVectors(_projectileForward, _combatTmpB.copy(p.vel).normalize());
 
-    const groundH = (p.pos.x * p.pos.x + p.pos.z * p.pos.z < 40000)
-      ? 0 : getHeight(p.pos.x, p.pos.z);
+    const groundH = (p.pos.x * p.pos.x + p.pos.z * p.pos.z < AIRFIELD_FLAT_R2)
+      ? AIRFIELD_SURFACE_Y : getHeight(p.pos.x, p.pos.z);
     if (p.pos.y <= groundH + 0.12) {
       spawnExplosion(p.pos.clone(), 0.32, 0.18);
       deactivateProjectile(p);
@@ -5258,8 +5276,8 @@ function updateShadow() {}
 
 const sunShadowFocus = new THREE.Vector3();
 function updateSunShadowRig() {
-  const groundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
-    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const groundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
+    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   sunShadowFocus.set(
     plane.pos.x,
     groundH + Math.min(36, Math.max(8, (plane.pos.y - groundH) * 0.35)),
@@ -5940,7 +5958,7 @@ function maybeTriggerEngineStart() {
 //  PLANE STATE + PHYSICS
 // =============================================================
 const plane = {
-  pos: new THREE.Vector3(0, 2.3, 120),  // on runway
+  pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 120),  // on runway
   vel: new THREE.Vector3(0, 0, 0),
   quat: new THREE.Quaternion(),
   angVel: new THREE.Vector3(),       // local pitch/yaw/roll rates
@@ -6309,8 +6327,8 @@ function updatePhysics(dt) {
   // throttle actually stop the plane. Use the persistent onGround state
   // instead of a raw altitude threshold so the parked aircraft does not
   // creep forward at 0% throttle the instant the sim starts.
-  const _thrGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
-    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const _thrGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
+    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   // Flight-idle floor only kicks in when throttle is actively engaged.
   // Holding CTRL all the way to 0% = genuine engine-off (glide-only).
   // Small hysteresis (0.03) so a slight breath on throttle doesn't jitter.
@@ -6347,8 +6365,8 @@ function updatePhysics(dt) {
   plane.vel.addScaledVector(accel, dt);
 
   // ----- Ground interaction -----
-  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000
-    ? 0  // on the flat airfield
+  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
+    ? AIRFIELD_SURFACE_Y  // on the flat airfield
     : getHeight(plane.pos.x, plane.pos.z);
 
   const altAbove = plane.pos.y - groundH;
@@ -6363,7 +6381,7 @@ function updatePhysics(dt) {
     // pointed into it, that is a crash, gear or no gear.
     const EPS = 3;
     const sampleH = (x, z) =>
-      (x * x + z * z < 40000) ? 0 : getHeight(x, z);
+      (x * x + z * z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(x, z);
     const hC = sampleH(plane.pos.x, plane.pos.z);
     const hX = sampleH(plane.pos.x + EPS, plane.pos.z) - hC;
     const hZ = sampleH(plane.pos.x, plane.pos.z + EPS) - hC;
@@ -6534,8 +6552,8 @@ function updateJetVisual() {
   jet.userData.gearR.rotation.z = -(1 - g) * (Math.PI * 0.5);
 
   // Fixed gear stance — slightly wider/splayed under load, tucking in as lift unloads it.
-  const gearGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
-    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const gearGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
+    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   const gearAltAGL = Math.max(0, plane.pos.y - gearGroundH);
   const groundLoad = clamp01(1 - gearAltAGL / 8) * g;
   for (const gear of [jet.userData.gearL, jet.userData.gearR]) {
@@ -6712,8 +6730,8 @@ function updateJetVisual() {
       const splashCenter = plane.pos.clone()
         .addScaledVector(forwardWorld, 54)
         .addScaledVector(rightWorld, rig.side * 2.6);
-      const splashGround = (splashCenter.x * splashCenter.x + splashCenter.z * splashCenter.z < 40000)
-        ? 0.08 : getHeight(splashCenter.x, splashCenter.z) + 0.18;
+      const splashGround = (splashCenter.x * splashCenter.x + splashCenter.z * splashCenter.z < AIRFIELD_FLAT_R2)
+        ? AIRFIELD_SURFACE_Y + 0.08 : getHeight(splashCenter.x, splashCenter.z) + 0.18;
       rig.splash.position.set(splashCenter.x, splashGround, splashCenter.z);
       rig.splash.rotation.z = Math.atan2(forwardWorld.x, -forwardWorld.z);
       rig.splash.material.opacity = plane.landingLights
@@ -7196,8 +7214,8 @@ function updateStatusGuidance(speedKts, aoaDeg) {
     return;
   }
 
-  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000
-    ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
+    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
   const landingTrainingArmed = !plane.onGround && plane.gear > 0.95 && speedKts > 55 && speedKts < 165 && aglFt > 20 && aglFt < 900 && Math.abs(plane.pos.x) < 90 && Math.abs(plane.pos.z) > 220 && Math.abs(plane.pos.z) < 1200;
 
@@ -7529,7 +7547,7 @@ applyStyle();
       );
       leftStripe.rotation.x = -Math.PI / 2;
       leftStripe.rotation.z = dir * 0.3; // angle inward
-      leftStripe.position.set(-xOffset, 0.04, zPos + dir * (i * 1.5));
+      leftStripe.position.set(-xOffset, AIRFIELD_SURFACE_Y + 0.01, zPos + dir * (i * 1.5));
       markerGroup.add(leftStripe);
       
       // Right side stripe
@@ -7539,7 +7557,7 @@ applyStyle();
       );
       rightStripe.rotation.x = -Math.PI / 2;
       rightStripe.rotation.z = -dir * 0.3; // angle inward
-      rightStripe.position.set(xOffset, 0.04, zPos + dir * (i * 1.5));
+      rightStripe.position.set(xOffset, AIRFIELD_SURFACE_Y + 0.01, zPos + dir * (i * 1.5));
       markerGroup.add(rightStripe);
     }
     
