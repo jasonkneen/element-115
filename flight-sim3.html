@@ -55,7 +55,7 @@
     width: min(1220px, calc(100vw - 24px));
     transform: translateX(-50%);
     border-radius: 22px;
-    padding: 6px 10px;
+    padding: 7px 10px 8px;
   }
   #instruments {
     top: 10px;
@@ -102,8 +102,8 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 2px;
-    padding: 7px 9px 6px;
+    gap: 3px;
+    padding: 8px 10px 7px;
     border-radius: 14px;
     color: rgba(255, 240, 214, 0.82);
   }
@@ -138,17 +138,28 @@
   #instruments .big,
   #throttle-wrap .big,
   .hud-value {
-    font-size: 16px;
-    line-height: 0.95;
+    font-size: 22px;
+    line-height: 0.9;
     color: #fff1ce;
     font-weight: 700;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.045em;
+  }
+  .top-stat-emphasis .hud-value {
+    font-size: 28px;
+    line-height: 0.86;
   }
   .hud-unit,
   .hud-subtle {
     color: rgba(255, 240, 214, 0.72);
-    font-size: 9px;
+    font-size: 11px;
     letter-spacing: 0.08em;
+  }
+  .hud-subtle > span {
+    font-size: 17px;
+    line-height: 0.92;
+    font-weight: 700;
+    color: #fff2cf;
+    letter-spacing: -0.03em;
   }
   .hud-stack-line .hud-subtle {
     display: inline-flex;
@@ -182,7 +193,7 @@
   }
   .hud-engine-chip {
     min-width: 0;
-    padding: 7px 9px 6px;
+    padding: 8px 10px 7px;
     border-radius: 14px;
   }
   .hud-inline-state {
@@ -857,10 +868,10 @@
   <div id="crosshair"></div>
   <div class="panel game-dialog-chrome flight-core-shell thin-surface-hud-shell top-surface-strip" id="instruments">
     <div class="hud-compact-grid">
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip top-stat-emphasis">
         <div class="hud-stat-line"><span class="hud-label">SPD</span><span class="hud-value big" id="speed">0</span><span class="hud-unit">KTS</span></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip top-stat-emphasis">
         <div class="hud-stat-line"><span class="hud-label">ALT</span><span class="hud-value big" id="altitude">0</span><span class="hud-unit">FT</span></div>
       </div>
       <div class="hud-stat-chip">
@@ -872,7 +883,7 @@
       <div class="hud-stat-chip">
         <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span><span class="hud-subtle">SEED <span id="seed-disp">—</span></span></div>
       </div>
-      <div class="hud-stat-chip hud-track-chip">
+      <div class="hud-stat-chip hud-track-chip top-stat-emphasis">
         <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span></div>
         <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
       </div>
@@ -880,7 +891,7 @@
         <div class="hud-track-head"><span class="hud-label">AMMO</span><span class="hud-subtle"><span id="ammo-val">300</span>/<span id="ammo-max">300</span></span></div>
         <div class="bar hud-mini-track"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip top-stat-emphasis">
         <div class="hud-track-head"><span class="hud-label">SCORE</span><span class="hud-value big" id="score-val">0</span></div>
         <div class="hud-subtle">STREAK <span id="score-streak">0</span>×</div>
       </div>
@@ -889,7 +900,7 @@
   <div class="panel game-dialog-chrome telemetry-deck-shell thin-surface-hud-shell bottom-surface-strip" id="throttle-wrap">
     <div class="hud-bottom-surface">
       <div class="hud-engine-strip">
-        <div class="hud-engine-chip">
+        <div class="hud-engine-chip top-stat-emphasis">
           <div class="hud-inline-readout"><span class="hud-label">THR</span><span class="hud-value big" id="throttle-val">0</span><span class="hud-unit">%</span></div>
           <div class="bar hud-mini-track"><div id="throttle-bar" style="width:0%"></div></div>
         </div>
