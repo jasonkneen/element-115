@@ -758,10 +758,15 @@ const bootParams = new URLSearchParams(bootParamSource);
 const DEBUG_UI = bootParams.get('debug') === '1';
 const AUTOPILOT_UI = DEBUG_UI || bootParams.get('autopilot') === '1';
 let MULTIPLAYER_URL = (() => {
+  const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+  const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const hostUrl = hostIsLocal
+    ? `${hostProto}//${location.hostname}:8787`
+    : `${hostProto}//${location.host}`;
   try {
-    return bootParams.get('mp') || localStorage.getItem('flight_mp_url') || '';
+    return bootParams.get('mp') || localStorage.getItem('flight_mp_url') || (hostIsLocal ? '' : hostUrl);
   } catch {
-    return bootParams.get('mp') || '';
+    return bootParams.get('mp') || (hostIsLocal ? '' : hostUrl);
   }
 })();
 const MULTIPLAYER_CALLSIGN_KEY = 'flight_mp_callsign';
@@ -3764,8 +3769,16 @@ function setPlayerSpawnMode(mode) {
 
 function syncMultiplayerSetupUI() {
   try {
+    const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const hostUrl = hostIsLocal
+      ? `${hostProto}//${location.hostname}:8787`
+      : `${hostProto}//${location.host}`;
     if (mpCallsignInput) mpCallsignInput.value = playerProfileState.callsign;
-    if (mpUrlInput) mpUrlInput.value = MULTIPLAYER_URL;
+    if (mpUrlInput) {
+      mpUrlInput.value = MULTIPLAYER_URL;
+      mpUrlInput.placeholder = hostUrl;
+    }
     if (mpRoomInput) mpRoomInput.value = MULTIPLAYER_ROOM;
     if (mpSpawnRow) {
       while (mpSpawnRow.firstChild) mpSpawnRow.removeChild(mpSpawnRow.firstChild);
@@ -3779,7 +3792,7 @@ function syncMultiplayerSetupUI() {
       });
     }
     if (mpSetupNote) {
-      const trafficLine = MULTIPLAYER_URL ? 'Random traffic is disabled while network flight is configured.' : 'Leave server blank for SOLO.';
+      const trafficLine = MULTIPLAYER_URL ? 'Random traffic is disabled while network flight is configured.' : (hostIsLocal ? 'Leave server blank for SOLO.' : 'Live deployments default the server to this host.');
       mpSetupNote.textContent = `${trafficLine} Spawn: ${SPAWN_OPTIONS.find(opt => opt.key === playerProfileState.spawnMode)?.label || 'RWY 36'} · Callsign: ${playerProfileState.callsign}.`;
     }
   } catch (err) {
