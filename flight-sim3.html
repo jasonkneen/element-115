@@ -487,7 +487,7 @@
     pointer-events: auto;
   }
   #title .plane-selection-card::before {
-    content: 'FLIGHT LINE';
+    content: 'PROP FLIGHT LINE';
     display: block;
     margin-bottom: 10px;
     font-size: 9px;
@@ -913,7 +913,7 @@
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
-      <div>2 · PICK AN AIRFRAME BELOW OR PRESS M TO CYCLE</div>
+      <div>2 · PICK A PROP AIRFRAME BELOW OR PRESS M TO CYCLE</div>
       <div>3 · HOLD SHIFT OR ↑ TO BUILD SPEED</div>
       <div>4 · PRESS S TO ROTATE AND CLIMB</div>
       <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
@@ -923,7 +923,7 @@
     </div>
     <div class="plane-selection-card">
       <div class="plane-picker-grid" id="plane-picker-grid"></div>
-      <div class="plane-picker-note" id="plane-picker-note">Recent aircraft from Downloads are now available directly in the briefing card. The old blue hangar stays in the repo, but it no longer needs to be the launch path.</div>
+      <div class="plane-picker-note" id="plane-picker-note">Recent Downloads now feed a prop-only flight line directly inside the briefing card. The old blue hangar stays in the repo, but the main app is now the selection flow.</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -1038,16 +1038,12 @@ const PROP_MODEL_PRESETS = [
   { key: 'scruggs', label: 'CLAUDE SCRUGGS', name: 'Claude Scruggs', hudLabel: 'SCRUGGS', type: 'Racing Prop', badge: 'NEW', file: 'models/claude_scruggs.glb' },
   { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIPSLINGER', type: 'Racing Prop', badge: 'NEW', file: 'models/ripslinger.glb' },
   { key: 'bush', label: 'CRANK BUSH', name: 'Crank Bush Plane', hudLabel: 'BUSH', type: 'Utility Prop', badge: 'NEW', file: 'models/crank_bush_plane.glb' },
-  { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Tucano', hudLabel: 'TUCANO', type: 'Trainer / Attack', badge: 'NEW', file: 'models/colombian_emb_314_tucano.glb' },
-  { key: 'avenger', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'AVENGER', type: 'Warbird', badge: 'NEW', file: 'models/p-100_avenger_-_free.glb' },
-  { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
-  { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Warbird', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
-  { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird', badge: 'HEAVY', file: 'models/yak-9.glb' },
-  { key: 'krogulec', label: 'AH250 KROGULEC', name: 'AH250 Krogulec', hudLabel: 'KROGULEC', type: 'Rotorcraft', badge: 'NEW', file: 'models/ah250_krogulec.glb' },
-  { key: 'apachemk1', label: 'AH MK.1 APACHE', name: 'AH Mk.1 Apache', hudLabel: 'APACHE MK1', type: 'Rotorcraft', badge: 'NEW', file: 'models/ah_mk.1_apache.glb' },
-  { key: 'apache64', label: 'AH-64E GUARDIAN', name: 'AH-64E Apache Guardian', hudLabel: 'AH-64E', type: 'Rotorcraft', badge: 'ULTRA', file: 'models/ah-64e_apache_guardian.glb' },
-  { key: 't47', label: 'T-47 AIRSPEEDER', name: 'T-47 Airspeeder', hudLabel: 'T-47', type: 'Speeder', badge: 'NEW', file: 'models/star_wars_t-47_airspeeder__snowspeeder.glb' },
-  { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback', badge: 'LITE', file: 'models/low_poly_plane.glb' },
+  { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Tucano', hudLabel: 'TUCANO', type: 'Trainer Prop', badge: 'NEW', file: 'models/colombian_emb_314_tucano.glb' },
+  { key: 'avenger', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'AVENGER', type: 'Warbird Prop', badge: 'NEW', file: 'models/p-100_avenger_-_free.glb' },
+  { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird Prop', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
+  { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Prop', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
+  { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird Prop', badge: 'HEAVY', file: 'models/yak-9.glb' },
+  { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback Prop', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
 const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
 
@@ -9163,7 +9159,7 @@ function syncPropModelPicker() {
     });
   }
   if (planePickerNote) {
-    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Press M in flight to cycle, or pick directly here before launch. The old blue hangar is still in the repo, but the main app is now the selection flow.`;
+    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Prop planes only here now — press M in flight to cycle, or pick directly before launch. The old blue hangar stays in the repo, but the main app is the selection flow.`;
   }
 }
 if (mpCallsignInput) {
