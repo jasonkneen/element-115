@@ -7935,9 +7935,13 @@ function replayPostStep() {
 }
 function syncReplayUI() {
   if (!replay.ui) return;
-  replay.ui.panel.style.display = plane.crashed ? 'block' : 'none';
-  const summary = plane.crashed
-    ? (missionDebriefState.summary || captureMissionDebrief(missionDebriefState.reason || 'TERRAIN IMPACT'))
+  const reviewVisible = plane.crashed || landingCompleteState.active;
+  replay.ui.panel.style.display = reviewVisible ? 'block' : 'none';
+  const reviewReason = plane.crashed
+    ? (missionDebriefState.reason || 'TERRAIN IMPACT')
+    : 'LANDING COMPLETE';
+  const summary = reviewVisible
+    ? (missionDebriefState.summary || captureMissionDebrief(reviewReason))
     : null;
   replay.ui.modeButtons.forEach(b => {
     const isActive = b.dataset.mode === replay.mode;
@@ -7945,7 +7949,8 @@ function syncReplayUI() {
     b.style.color = isActive ? '#fff0c8' : '#ffcc66';
     b.style.borderColor = isActive ? 'rgba(255,225,170,0.42)' : 'rgba(255,215,150,0.22)';
   });
-  replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : '▶ REVIEW RUN';
+  replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : (landingCompleteState.active && !plane.crashed ? '▶ REVIEW LANDING' : '▶ REVIEW RUN');
+  if (replay.ui.resetBtn) replay.ui.resetBtn.textContent = landingCompleteState.active && !plane.crashed ? '↺ NEXT SORTIE [R]' : '↺ FLY AGAIN [R]';
   if (replay.ui.subline) replay.ui.subline.textContent = summary
     ? `${summary.reason} · ${summary.highlight}`
     : (replay.playing ? `Camera: ${replay.mode.toUpperCase()} · tap a mode to switch` : 'Crash cam / replay loop / cinematic angles');
@@ -8245,6 +8250,13 @@ const landingMedalState = {
   bestDetail: bestLandingRecord.detail || '',
   count: 0,
 };
+const landingCompleteState = {
+  armed: false,
+  active: false,
+  touchdownAt: 0,
+  bonusPoints: 0,
+  result: null,
+};
 function setFlightPhase(label, tone = '') {
   flightPhaseState.label = label;
   flightPhaseState.tone = tone || '';
@@ -8276,6 +8288,11 @@ function resetMissionDebrief() {
   landingMedalState.lastDetail = '';
   landingMedalState.lastWasBest = false;
   landingMedalState.count = 0;
+  landingCompleteState.armed = false;
+  landingCompleteState.active = false;
+  landingCompleteState.touchdownAt = 0;
+  landingCompleteState.bonusPoints = 0;
+  landingCompleteState.result = null;
 }
 function saveBestLandingRecord() {
   try {
@@ -8314,6 +8331,7 @@ function evaluateLandingTouchdown({ sinkRateMps = 0, speedKts = 0, centerlineFt 
 function recordLandingTouchdown(sample = {}) {
   const result = evaluateLandingTouchdown(sample);
   const isNewBest = result.score > landingMedalState.bestScore;
+  const landingBonusPoints = result.onRunway ? Math.round(140 + result.score * 4.6) : Math.round(40 + result.score * 2.1);
   landingMedalState.lastMedal = result.medal;
   landingMedalState.lastGrade = result.grade;
   landingMedalState.lastScore = result.score;
@@ -8326,6 +8344,14 @@ function recordLandingTouchdown(sample = {}) {
   missionDebriefState.landingMedal = result.medal;
   missionDebriefState.lastHighlight = result.medal;
   missionDebriefState.summary = null;
+  if (window.__gameScore && result.onRunway) {
+    window.__gameScore.points += landingBonusPoints;
+  }
+  landingCompleteState.armed = !!result.onRunway;
+  landingCompleteState.active = false;
+  landingCompleteState.touchdownAt = performance.now();
+  landingCompleteState.bonusPoints = result.onRunway ? landingBonusPoints : 0;
+  landingCompleteState.result = result;
   if (isNewBest) {
     landingMedalState.bestScore = result.score;
     landingMedalState.bestMedal = result.medal;
@@ -8335,12 +8361,41 @@ function recordLandingTouchdown(sample = {}) {
   }
   if (typeof window.showComboBanner === 'function') {
     const suffix = isNewBest ? ' · NEW BEST' : '';
-    window.showComboBanner(result.medal, `${result.grade} LANDING · ${result.detail}${suffix}`, result.color);
+    const pointsText = result.onRunway ? ` · +${landingBonusPoints}` : '';
+    window.showComboBanner(result.medal, `${result.grade} LANDING${pointsText} · ${result.detail}${suffix}`, result.color);
   }
   if (typeof flashStatus === 'function') {
-    flashStatus(`${result.grade} LANDING · ${result.medal}`, result.score >= 72 ? 'panel ok' : 'panel warn', 1.7);
+    const pointsText = result.onRunway ? ` · +${landingBonusPoints}` : '';
+    flashStatus(`${result.grade} LANDING · ${result.medal}${pointsText}`, result.score >= 72 ? 'panel ok' : 'panel warn', 1.9);
   }
   return result;
+}
+function updateLandingCompleteFlow(speedKts) {
+  if (plane.crashed) return;
+  if (landingCompleteState.active) {
+    if (!plane.onGround || speedKts > 42) {
+      landingCompleteState.active = false;
+      if (typeof syncReplayUI === 'function') syncReplayUI();
+    }
+    return;
+  }
+  if (!landingCompleteState.armed || !landingCompleteState.result) return;
+  const settleMs = performance.now() - landingCompleteState.touchdownAt;
+  const settled = plane.onGround && speedKts < 16 && plane.throttle < 0.34;
+  if (!settled || settleMs < 1200) return;
+  landingCompleteState.armed = false;
+  landingCompleteState.active = true;
+  missionDebriefState.reason = 'LANDING COMPLETE';
+  setFlightPhase('TAXI COMPLETE', 'ok');
+  const summary = captureMissionDebrief('LANDING COMPLETE');
+  if (typeof syncReplayUI === 'function') syncReplayUI();
+  if (typeof window.showComboBanner === 'function') {
+    const result = landingCompleteState.result;
+    window.showComboBanner('LANDING COMPLETE', `${result.medal} · +${landingCompleteState.bonusPoints} · ${summary.grade} RUN`, result.color);
+  }
+  if (typeof flashStatus === 'function') {
+    flashStatus(`LANDING COMPLETE — ${landingCompleteState.result.medal}`, 'panel ok', 2.4);
+  }
 }
 function recordMissionMoment({ kind = '', gateLabel = '', stunts = [], points = 0 } = {}) {
   missionDebriefState.gates += 1;
@@ -8476,6 +8531,10 @@ function updateFlightPhase(speedKts, aglFt, aoaDeg) {
   }
   if (plane.crashed) {
     setFlightPhase(replay.playing ? 'REVIEW' : 'IMPACT', replay.playing ? 'ok' : 'warn');
+    return;
+  }
+  if (landingCompleteState.active) {
+    setFlightPhase('TAXI COMPLETE', 'ok');
     return;
   }
   if (replay.playing) {
@@ -8721,6 +8780,7 @@ function animate(now) {
   updateAirfieldAmbient(dt);
   updateAudio(dt);
   updateMissionDebrief(dt, plane.vel.length() * 1.94);
+  updateLandingCompleteFlow(plane.vel.length() * 1.94);
   updateHUD();
   updateCombat(dt);
   if (typeof updateGateScoring === 'function') updateGateScoring(dt);
@@ -8916,6 +8976,53 @@ applyStyle();
       markerGroup.add(band);
     });
   });
+
+  const runwayNumberBoards = [];
+  const makeBoardTexture = (label) => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 160;
+    const g2 = c.getContext('2d');
+    g2.fillStyle = '#13161d';
+    g2.fillRect(0, 0, c.width, c.height);
+    g2.strokeStyle = '#fff4cf';
+    g2.lineWidth = 10;
+    g2.strokeRect(10, 10, c.width - 20, c.height - 20);
+    g2.fillStyle = '#fff4cf';
+    g2.font = '700 96px system-ui';
+    g2.textAlign = 'center';
+    g2.textBaseline = 'middle';
+    g2.fillText(label, c.width / 2, c.height / 2 + 4);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+    return tex;
+  };
+  [
+    { label: '36', z: -214, dir: -1 },
+    { label: '18', z: 214, dir: 1 },
+  ].forEach((cfg) => {
+    const tex = makeBoardTexture(cfg.label);
+    [-1, 1].forEach((side) => {
+      const sign = new THREE.Group();
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.8, 0.14), new THREE.MeshStandardMaterial({ color: 0x37363c, roughness: 0.8 }));
+      postL.position.set(-1.2, 1.4, 0);
+      sign.add(postL);
+      const postR = postL.clone();
+      postR.position.x = 1.2;
+      sign.add(postR);
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.4, 2.1),
+        new THREE.MeshStandardMaterial({ map: tex, color: 0xffffff, roughness: 0.78, metalness: 0.06, emissive: 0x17140f, emissiveIntensity: 0.08 })
+      );
+      board.position.y = 2.3;
+      sign.add(board);
+      sign.position.set(side * (runwayHalfWidth + 7.2), 0, cfg.z);
+      sign.rotation.y = side < 0 ? Math.PI * 0.08 : -Math.PI * 0.08;
+      markerGroup.add(sign);
+      runwayNumberBoards.push(sign);
+    });
+  });
+  window.__runwayNumberBoards = runwayNumberBoards;
   
   scene.add(markerGroup);
 })();
@@ -10462,6 +10569,8 @@ window.__ap = {
       landing_score: landingMedalState.lastScore,
       best_landing_grade: landingMedalState.bestGrade,
       best_landing_medal: landingMedalState.bestMedal,
+      landing_complete: !!landingCompleteState.active,
+      landing_bonus_points: landingCompleteState.bonusPoints || 0,
       propwash_active: !!propWashState.active,
       engine_surge_phase: engineSurgeState.phase,
       engine_surge_power: engineSurgeState.powerMul,
@@ -10498,6 +10607,16 @@ window.__ap = {
   recordLandingPreview(sample = {}) {
     const result = recordLandingTouchdown(sample);
     captureMissionDebrief('LANDING REVIEW');
+    if (typeof syncReplayUI === 'function') syncReplayUI();
+    return result;
+  },
+  completeLandingPreview(sample = {}) {
+    const result = recordLandingTouchdown(sample);
+    landingCompleteState.armed = false;
+    landingCompleteState.active = !!result.onRunway;
+    missionDebriefState.reason = result.onRunway ? 'LANDING COMPLETE' : 'LANDING REVIEW';
+    if (result.onRunway) setFlightPhase('TAXI COMPLETE', 'ok');
+    captureMissionDebrief(missionDebriefState.reason);
     if (typeof syncReplayUI === 'function') syncReplayUI();
     return result;
   },
