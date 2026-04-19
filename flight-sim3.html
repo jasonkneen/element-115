@@ -147,6 +147,19 @@
     letter-spacing: 0.08em;
     color: rgba(255, 240, 214, 0.86);
   }
+  #controls-help.collapsed {
+    left: 50%; transform: translateX(-50%);
+    width: auto; min-width: 248px;
+    padding: 10px 14px;
+    gap: 0;
+  }
+  #controls-help.collapsed::before {
+    content: 'PILOT INPUTS [H]';
+    margin-bottom: 0;
+  }
+  #controls-help.collapsed > div {
+    display: none;
+  }
   #status-msg {
     bottom: 18px; right: 18px; text-align: left;
     min-width: 320px; max-width: min(420px, calc(100vw - 36px));
@@ -330,6 +343,7 @@
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
     #controls-help { width: calc(100vw - 28px); bottom: 14px; }
+    #controls-help.collapsed { min-width: 0; width: auto; }
     #throttle-wrap { width: min(284px, calc(100vw - 28px)); }
   }
   .hide { opacity: 0; pointer-events: none; }
@@ -471,7 +485,7 @@
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
     <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
     <div id="ch-line2">SHIFT or ↑ THROTTLE UP &nbsp; CTRL or ↓ THROTTLE DOWN &nbsp; B BRAKE</div>
-    <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
+    <div id="ch-line3">G GEAR &nbsp; H HELP &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel game-dialog-chrome game-status-shell" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
@@ -494,7 +508,7 @@
       <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
       <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
       <div>7 · PRESS R ANY TIME TO RESET</div>
-      <div>8 · PRESS P FOR GRAPHICS · ; FOR MODEL TUNE</div>
+      <div>8 · PRESS P FOR OPTIONS · H FOR HELP · ; FOR MODEL TUNE</div>
     </div>
     <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
     <div class="cta">CLICK OR PRESS ANY KEY TO FLY</div>
@@ -508,8 +522,10 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 (() => {
 'use strict';
@@ -1018,6 +1034,7 @@ const postFX = {
   composer: null,
   bokehPass: null,
   fxaaPass: null,
+  bloomPass: null,
 };
 
 function updateFxaaPassResolution() {
@@ -1048,8 +1065,15 @@ function initPostFX() {
       postFX.composer.addPass(postFX.bokehPass);
     }
 
+    if (typeof THREE.UnrealBloomPass === 'function' && typeof THREE.Vector2 === 'function') {
+      postFX.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.28, 0.86);
+      postFX.bloomPass.enabled = false;
+      postFX.composer.addPass(postFX.bloomPass);
+    }
+
     if (typeof THREE.ShaderPass === 'function' && typeof THREE.FXAAShader === 'object') {
       postFX.fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+      postFX.fxaaPass.enabled = true;
       postFX.composer.addPass(postFX.fxaaPass);
       updateFxaaPassResolution();
     }
@@ -1080,7 +1104,8 @@ function updateDepthOfField() {
 
 function renderScene() {
   const fxaaActive = !!(postFX.fxaaPass && postFX.fxaaPass.enabled);
-  if ((postFX.enabled || fxaaActive) && postFX.composer) postFX.composer.render();
+  const bloomActive = !!(postFX.bloomPass && postFX.bloomPass.enabled);
+  if ((postFX.enabled || fxaaActive || bloomActive) && postFX.composer) postFX.composer.render();
   else renderer.render(scene, camera);
 }
 
@@ -5625,11 +5650,23 @@ for (let i = 0; i < DUST_DEVIL_COUNT; i++) {
   });
 }
 
+function currentAmbientFxDensity() {
+  return scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0;
+}
+
 function updateDustDevils(t, px, pz) {
+  const density = Math.max(0, Math.min(1.2, currentAmbientFxDensity()));
+  const activeDevils = Math.max(0, Math.min(dustDevils.length, Math.round(dustDevils.length * density)));
+  dustDevilPoints.visible = activeDevils > 0;
+  if (!dustDevilPoints.visible) {
+    dustDevilGeo.attributes.alpha.array.fill(0);
+    dustDevilGeo.attributes.alpha.needsUpdate = true;
+    return;
+  }
   const time = t * 0.001;
   let idx = 0;
 
-  for (let d = 0; d < dustDevils.length; d++) {
+  for (let d = 0; d < activeDevils; d++) {
     const dev = dustDevils[d];
     // Recenter devils when player has moved more than 1500m — they "wrap"
     const dx = (dev.anchorX + dev.cx) - px;
@@ -5652,12 +5689,13 @@ function updateDustDevils(t, px, pz) {
       dustDevilPos[idx * 3]     = px2;
       dustDevilPos[idx * 3 + 1] = py2;
       dustDevilPos[idx * 3 + 2] = pz2;
-      dustDevilAlpha[idx] = 0.55 * (1 - rise * 0.7);
+      dustDevilAlpha[idx] = (0.55 * (1 - rise * 0.7)) * Math.min(1, density + 0.1);
       dustDevilSize[idx] = 3 + rise * 6;
       idx++;
     }
   }
 
+  for (let i = idx; i < dustDevilAlpha.length; i++) dustDevilAlpha[i] = 0;
   dustDevilGeo.attributes.position.needsUpdate = true;
   dustDevilGeo.attributes.alpha.needsUpdate = true;
   dustDevilGeo.attributes.psize.needsUpdate = true;
@@ -5760,7 +5798,12 @@ for (let f = 0; f < 5; f++) {
   birdFlocks.push(grp);
 }
 function updateBirds(t) {
-  for (const flock of birdFlocks) {
+  const density = Math.max(0, Math.min(1.2, currentAmbientFxDensity()));
+  const activeFlocks = Math.max(0, Math.min(birdFlocks.length, Math.round(birdFlocks.length * density)));
+  for (let i = 0; i < birdFlocks.length; i++) {
+    const flock = birdFlocks[i];
+    flock.visible = i < activeFlocks;
+    if (!flock.visible) continue;
     flock.children.forEach(b => {
       const phase = t * 0.004 + b.userData.flapPhase;
       // Bobbing reads as flapping at distance
@@ -6471,7 +6514,7 @@ const MAX_ANG_VEL = 5.0;       // rad/s clamp to prevent runaway spin
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['Space', 'KeyG', 'KeyL', 'KeyM', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -6481,9 +6524,10 @@ let modelPressed = false;
 let resetPressed = false;
 let stylePressed = false;
 let biomePressed = false;
+let helpPressed = false;
 
 function resetPlane() {
-  plane.pos.set(0, 2.3, 120);
+  plane.pos.set(0, AIRFIELD_SURFACE_Y + 2.3, 120);
   plane.vel.set(0, 0, 0);
   plane.quat.identity();
   plane.angVel.set(0, 0, 0);
@@ -6500,10 +6544,11 @@ function resetPlane() {
   if (typeof replayStop === 'function') replayStop();
   if (typeof replayClear === 'function') replayClear();
   if (typeof syncReplayUI === 'function') syncReplayUI();
-  // Camera orbit (right-mouse drag) back to default.
   if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
   if (typeof resetGateScoring === 'function') resetGateScoring();
   resetEngineSurgeFx();
+  helpStripState.autoCollapsed = false;
+  setHelpStripCollapsed(false);
   statusMsg.textContent = 'READY FOR DEPARTURE';
   statusMsg.className = 'panel';
   if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
@@ -6549,6 +6594,13 @@ function updateInputLatches(dt) {
   if (keys['KeyY']) {
     if (!biomePressed) { cycleBiome(); biomePressed = true; }
   } else biomePressed = false;
+
+  if (keys['KeyH']) {
+    if (!helpPressed) {
+      setHelpStripCollapsed(!helpStripState.collapsed, true);
+      helpPressed = true;
+    }
+  } else helpPressed = false;
 }
 
 function updatePhysics(dt) {
@@ -7568,6 +7620,18 @@ const $propModelInd = document.getElementById('prop-model-ind');
 const $landingInd = document.getElementById('landing-ind');
 const statusMsg = document.getElementById('status-msg');
 const $devOverlay = document.getElementById('dev-overlay');
+const controlsHelpEl = document.getElementById('controls-help');
+const helpStripState = {
+  collapsed: false,
+  autoCollapsed: false,
+  lastManualAt: 0,
+};
+function setHelpStripCollapsed(next, manual = false) {
+  if (!controlsHelpEl) return;
+  helpStripState.collapsed = !!next;
+  controlsHelpEl.classList.toggle('collapsed', helpStripState.collapsed);
+  if (manual) helpStripState.lastManualAt = performance.now();
+}
 $seedDisp.textContent = SEED;
 if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 
@@ -7769,6 +7833,11 @@ function updateHUD() {
   $throttleBar.style.width = tp + '%';
   $abStatus.textContent = tp > 55 ? '◈ AFTERBURNER' : ' ';
   $abStatus.className = tp > 55 ? 'warn' : '';
+
+  if (!helpStripState.autoCollapsed && running && (sp > 42 || !plane.onGround)) {
+    setHelpStripCollapsed(true);
+    helpStripState.autoCollapsed = true;
+  }
   updateStatusGuidance(sp, aoa);
 }
 
@@ -7875,6 +7944,8 @@ function beginFlight() {
   title.classList.add('hide');
   document.body.classList.remove('preflight');
   running = true;
+  helpStripState.autoCollapsed = false;
+  setHelpStripCollapsed(false);
   setAudioEnabled(true);
   syncAudioIndicator();
   renderer.domElement.focus();
@@ -7915,7 +7986,8 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   updateFxaaPassResolution();
-  if (postFX.enabled && postFX.composer) {
+  if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth, window.innerHeight);
+  if (postFX.composer) {
     postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
       postFX.bokehPass.materialBokeh.uniforms.aspect.value = camera.aspect;
@@ -8240,8 +8312,10 @@ function resetGateScoring() {
   for (const ring of window.__allGates) {
     ring.userData.scored = false;
     if (ring.material && ring.userData.__origEmissive != null) {
-      ring.material.emissive.setHex(ring.userData.__origEmissive);
-      ring.material.emissiveIntensity = ring.userData.__origEmissiveInt;
+      if (ring.material.emissive) {
+        ring.material.emissive.setHex(ring.userData.__origEmissive);
+        ring.material.emissiveIntensity = ring.userData.__origEmissiveInt;
+      }
       ring.material.opacity = ring.userData.__origOpacity;
     }
   }
@@ -9137,14 +9211,14 @@ function updateFloatingTarget(dt) {
   const LS_KEY = 'gfx-settings-v1';
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'med', shadowDistance: 230,
-    dof: false, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0,
-    fps: false, renderScale: 1.0, resolutionScale: 1.0, bloom: false, motionBlur: false,
+    dof: false, bloom: true, bloomStrength: 0.42, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0, ambientFxDensity: 1.0,
+    fps: false, renderScale: 1.0, resolutionScale: 1.0, motionBlur: false,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, renderScale: 0.65, resolutionScale: 0.82 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, renderScale: 0.85, resolutionScale: 0.95 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  renderScale: 1.0,  resolutionScale: 1.0 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, renderScale: 1.0,  resolutionScale: 1.18 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, bloom: false, bloomStrength: 0.18, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, ambientFxDensity: 0.35, renderScale: 0.65, resolutionScale: 0.82 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, renderScale: 0.85, resolutionScale: 0.95 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, renderScale: 1.0,  resolutionScale: 1.0 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, renderScale: 1.0,  resolutionScale: 1.18 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -9190,6 +9264,14 @@ function updateFloatingTarget(dt) {
     if (postFX.bokehPass) postFX.bokehPass.enabled = !!gfx.dof;
     postFX.enabled = !!gfx.dof;
   }
+  function applyBloom() {
+    if (postFX.bloomPass) {
+      postFX.bloomPass.enabled = !!gfx.bloom;
+      postFX.bloomPass.strength = Math.max(0, Math.min(1.25, gfx.bloomStrength || 0.42));
+      postFX.bloomPass.radius = 0.28 + (gfx.bloomStrength || 0.42) * 0.22;
+      postFX.bloomPass.threshold = 0.88 - Math.min(0.26, (gfx.bloomStrength || 0.42) * 0.18);
+    }
+  }
   function applyFxaa() {
     if (postFX.fxaaPass) postFX.fxaaPass.enabled = !!gfx.fxaa;
   }
@@ -9199,6 +9281,7 @@ function updateFloatingTarget(dt) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample, 2.35));
     renderer.setSize(window.innerWidth, window.innerHeight, true);
     if (postFX.composer) postFX.composer.setSize(window.innerWidth, window.innerHeight);
+    if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth, window.innerHeight);
     updateFxaaPassResolution();
   }
   function applyClouds() {
@@ -9223,6 +9306,9 @@ function updateFloatingTarget(dt) {
       });
     }
   }
+  function applyAmbientFx() {
+    scene.userData.__ambientFxDensity = Math.max(0, Math.min(1.2, gfx.ambientFxDensity || 1.0));
+  }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
     scene.userData.__nightLift = gfx.nightLift;
@@ -9231,7 +9317,7 @@ function updateFloatingTarget(dt) {
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
   function applyAll() {
-    applyShadows(); applyFog(); applyDof(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyWorldTuning();
+    applyShadows(); applyFog(); applyDof(); applyBloom(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyAmbientFx(); applyWorldTuning();
     if (fpsDiv) fpsDiv.style.display = gfx.fps ? 'block' : 'none';
   }
 
@@ -9324,7 +9410,7 @@ function updateFloatingTarget(dt) {
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
     panel.appendChild(el('div', { class: 'options-title' }, 'OPTIONS [P]'));
-    panel.appendChild(el('div', { class: 'options-kicker' }, 'Graphics / world / performance // live while flying'));
+    panel.appendChild(el('div', { class: 'options-kicker' }, 'Graphics / world / performance // ESC or backdrop to return to flight'));
 
     panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'PRESETS'));
     const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
@@ -9350,8 +9436,10 @@ function updateFloatingTarget(dt) {
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
     panel.appendChild(row('Depth of field', makeToggle('dof')));
+    panel.appendChild(row('Bloom', makeToggle('bloom')));
     panel.appendChild(row('Replay hero light', makeToggle('replayHeroLight')));
     panel.appendChild(makeSliderRow('resolutionScale', 0.75, 1.35, 0.05, 'AA / SUPERSAMPLE', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('bloomStrength', 0.1, 0.9, 0.05, 'BLOOM STRENGTH', (v) => `${v.toFixed(2)}`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
     panel.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
@@ -9364,6 +9452,7 @@ function updateFloatingTarget(dt) {
     panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
     panel.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
 
     panel.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
@@ -9501,6 +9590,7 @@ window.__ap = {
       night_lift: scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
+      ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
       world_bridge_count: worldOpportunities.bridgeCandidates.length,
@@ -9512,6 +9602,8 @@ window.__ap = {
       prop_texture_blend: audio.propTextureBlend || 0,
       prop_detail_beds: Object.fromEntries(Object.entries(audio.propDetailBeds || {}).map(([k, v]) => [k, !!(v && v.ready && v.node)])),
       fxaa_enabled: !!(postFX.fxaaPass && postFX.fxaaPass.enabled),
+      bloom_enabled: !!(postFX.bloomPass && postFX.bloomPass.enabled),
+      bloom_strength: postFX.bloomPass ? postFX.bloomPass.strength : 0,
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
