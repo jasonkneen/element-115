@@ -5369,6 +5369,20 @@ const PROP_ENGINE_SAMPLE = {
   author: 'local',
   license: 'project',
 };
+const PROP_DETAIL_BEDS = {
+  idle: {
+    urls: ['audio/engine/light-prop-idle.wav', 'audio/engine/generic-prop.wav'],
+    highpass: 70,
+    lowpass: 980,
+    gain: 0.22,
+  },
+  cruise: {
+    urls: ['audio/engine/light-prop-cruise.wav', 'audio/engine/generic-prop.wav'],
+    highpass: 85,
+    lowpass: 1650,
+    gain: 0.18,
+  },
+};
 
 // One-shots keyed by event name. Loaded lazily on first trigger; held as
 // decoded AudioBuffers and scheduled against the shared audio.master gain
@@ -5467,10 +5481,19 @@ const audio = {
   propSampleReady: false,
   propSampleMode: 'none',
   engineSampleLabel: 'synth',
+  propDetailBeds: {},
+  propTextureBlend: 0,
 };
 
 function isPropAirframe() {
   return typeof plane !== 'undefined' && !!((plane.props && plane.props.length) || plane.suppressJetFX);
+}
+
+function propLoopShouldPlay(forcePlay = false) {
+  const alive = !(typeof plane !== 'undefined' && plane.crashed);
+  const parked = plane && plane.onGround && plane.throttle < 0.02 && plane.throttleTarget < 0.02
+    && (!plane.vel || plane.vel.length() < 2);
+  return !!(audio.enabled && alive && !parked && (forcePlay || isPropAirframe()));
 }
 
 // Engine loop — decoded into an AudioBuffer and played via
@@ -5479,18 +5502,13 @@ function isPropAirframe() {
 // "pop" an HTMLAudioElement emits at the loop seam, and lets us modulate
 // playbackRate cleanly with engine RPM.
 function syncPropSamplePlayback(forcePlay = false) {
-  const alive = !(typeof plane !== 'undefined' && plane.crashed);
-  // Engine loop only runs when the engine is actually engaged. Parked
-  // on the runway with throttle at 0 = silent, as a real cold plane.
-  // Short airspeed grace so throttle-off glides keep the prop audible.
-  const parked = plane && plane.onGround && plane.throttle < 0.02 && plane.throttleTarget < 0.02
-    && (!plane.vel || plane.vel.length() < 2);
-  const shouldPlay = !!(audio.enabled && alive && !parked && (forcePlay || isPropAirframe()));
+  const shouldPlay = propLoopShouldPlay(forcePlay);
   if (shouldPlay && audio.propSampleReady && !audio.propBufferNode) {
     startPropBuffer();
   } else if (!shouldPlay && audio.propBufferNode) {
     stopPropBuffer();
   }
+  syncPropDetailBeds(forcePlay, shouldPlay);
 }
 
 function startPropBuffer() {
@@ -5514,6 +5532,84 @@ function stopPropBuffer() {
   try { audio.propBufferNode.stop(0); } catch {}
   try { audio.propBufferNode.disconnect(); } catch {}
   audio.propBufferNode = null;
+}
+
+function ensurePropDetailGraph(name) {
+  const cfg = PROP_DETAIL_BEDS[name];
+  if (!cfg) return null;
+  if (audio.propDetailBeds[name] && audio.propDetailBeds[name].gain) return audio.propDetailBeds[name];
+  const hp = audio.ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = cfg.highpass;
+  const lp = audio.ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = cfg.lowpass;
+  lp.Q.value = 0.7;
+  const gain = audio.ctx.createGain();
+  gain.gain.value = 0;
+  hp.connect(lp).connect(gain).connect(audio.master);
+  const state = audio.propDetailBeds[name] || {};
+  Object.assign(state, { highpass: hp, filter: lp, gain, ready: false, loading: false, buffer: null, node: null, playbackRate: 1 });
+  audio.propDetailBeds[name] = state;
+  return state;
+}
+
+function startPropDetailBed(name) {
+  const bed = audio.propDetailBeds[name];
+  if (!audio.ctx || !bed || !bed.buffer || bed.node) return;
+  const src = audio.ctx.createBufferSource();
+  src.buffer = bed.buffer;
+  src.loop = true;
+  const dur = bed.buffer.duration;
+  src.loopStart = dur * 0.08;
+  src.loopEnd = dur * 0.92;
+  src.playbackRate.value = bed.playbackRate || 1;
+  src.connect(bed.highpass);
+  src.start(0, src.loopStart);
+  bed.node = src;
+}
+
+function stopPropDetailBed(name) {
+  const bed = audio.propDetailBeds[name];
+  if (!bed || !bed.node) return;
+  try { bed.node.stop(0); } catch {}
+  try { bed.node.disconnect(); } catch {}
+  bed.node = null;
+}
+
+async function ensurePropDetailBed(name) {
+  if (!audio.ctx) return;
+  const cfg = PROP_DETAIL_BEDS[name];
+  if (!cfg) return;
+  const bed = ensurePropDetailGraph(name);
+  if (!bed || bed.buffer || bed.loading) return;
+  bed.loading = true;
+  for (const url of cfg.urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arr = await res.arrayBuffer();
+      const buf = await new Promise((resolve, reject) => audio.ctx.decodeAudioData(arr, resolve, reject));
+      if (buf.duration < 0.8) continue;
+      bed.buffer = buf;
+      bed.ready = true;
+      bed.loading = false;
+      if (propLoopShouldPlay()) startPropDetailBed(name);
+      return;
+    } catch (err) {
+      console.warn(`[audio] detail ${name} ${url} failed:`, err && err.message || err);
+    }
+  }
+  bed.loading = false;
+}
+
+function syncPropDetailBeds(forcePlay = false, shouldPlay = propLoopShouldPlay(forcePlay)) {
+  for (const name of Object.keys(PROP_DETAIL_BEDS)) {
+    const bed = audio.propDetailBeds[name];
+    if (!bed) continue;
+    if (shouldPlay && bed.ready && !bed.node) startPropDetailBed(name);
+    else if (!shouldPlay && bed.node) stopPropDetailBed(name);
+  }
 }
 
 async function ensurePropEngineSample() {
@@ -5626,6 +5722,8 @@ function initAudio() {
   audio.windGain = wGain;
 
   ensurePropEngineSample();
+  ensurePropDetailBed('idle');
+  ensurePropDetailBed('cruise');
   audio.enabled = true;
   syncPropSamplePlayback();
 }
@@ -5667,7 +5765,11 @@ function audioThud(intensity = 0.5) {
 let stallTimer = 0.5;
 function updateAudio(dt) {
   if (!audio.ctx || !audio.enabled) return;
-  if (isPropAirframe() && !audio.propSampleEl) ensurePropEngineSample();
+  if (isPropAirframe()) {
+    ensurePropEngineSample();
+    ensurePropDetailBed('idle');
+    ensurePropDetailBed('cruise');
+  }
 
   const ct = audio.ctx.currentTime;
   const surgePower = plane.crashed ? 1 : engineSurgeState.powerMul;
@@ -5698,26 +5800,43 @@ function updateAudio(dt) {
     const BASE_RATE = 1.15;
     const clampedRate = Math.max(1.08, Math.min(1.22, BASE_RATE + t * 0.06 + surgeRecovery * 0.02 - surgeDip * 0.02));
     audio.propPlaybackRate = clampedRate;
+    audio.propTextureBlend = clamp01(t * 0.72 + surgeRecovery * 0.18 + Math.min(sp / 160, 0.16));
     if (audio.propBufferNode) {
       audio.propBufferNode.playbackRate.setTargetAtTime(clampedRate, ct, 0.35);
     }
     // Higher idle floor so throttle-off still sounds like a running
     // engine (not silence). Startup SFX (`prop-start`) fires separately.
     const sampleVol = propSampleActive
-      ? Math.min(1, 0.45 + t * 0.40 + surgeRecovery * 0.04)
+      ? Math.min(1, 0.38 + t * 0.34 + surgeRecovery * 0.05 + Math.min(sp / 220, 0.12))
       : 0;
     if (audio.propSampleGain) {
       audio.propSampleGain.gain.setTargetAtTime(sampleVol, ct, 0.12);
     }
     if (audio.propSampleFilter) {
       audio.propSampleFilter.frequency.setTargetAtTime(
-        880 + t * 2200 + sp * 2.2 + surgeRecovery * 180 - surgeDip * 160,
+        820 + t * 2100 + sp * 2.1 + surgeRecovery * 180 - surgeDip * 160,
         ct,
         0.12,
       );
     }
     if (audio.propSampleHighpass) {
-      audio.propSampleHighpass.frequency.setTargetAtTime(50 + t * 85, ct, 0.12);
+      audio.propSampleHighpass.frequency.setTargetAtTime(48 + t * 92, ct, 0.12);
+    }
+
+    const idleBed = audio.propDetailBeds.idle;
+    if (idleBed) {
+      idleBed.playbackRate = Math.max(0.88, Math.min(1.08, 0.94 + t * 0.08 - surgeDip * 0.02));
+      if (idleBed.node) idleBed.node.playbackRate.setTargetAtTime(idleBed.playbackRate, ct, 0.22);
+      if (idleBed.gain) idleBed.gain.gain.setTargetAtTime((propSampleActive ? Math.pow(1 - t, 0.72) * PROP_DETAIL_BEDS.idle.gain : 0), ct, 0.14);
+      if (idleBed.filter) idleBed.filter.frequency.setTargetAtTime(760 + t * 320 + surgeRecovery * 60, ct, 0.16);
+    }
+
+    const cruiseBed = audio.propDetailBeds.cruise;
+    if (cruiseBed) {
+      cruiseBed.playbackRate = Math.max(0.92, Math.min(1.16, 0.96 + t * 0.16 + surgeRecovery * 0.03 - surgeDip * 0.015));
+      if (cruiseBed.node) cruiseBed.node.playbackRate.setTargetAtTime(cruiseBed.playbackRate, ct, 0.22);
+      if (cruiseBed.gain) cruiseBed.gain.gain.setTargetAtTime((propSampleActive ? Math.pow(t, 0.9) * PROP_DETAIL_BEDS.cruise.gain : 0), ct, 0.14);
+      if (cruiseBed.filter) cruiseBed.filter.frequency.setTargetAtTime(1320 + t * 980 + sp * 1.2 + surgeRecovery * 90, ct, 0.16);
     }
   }
 
@@ -5766,9 +5885,16 @@ function setAudioEnabled(on) {
   if (!audio.ctx) return;
   if (audio.ctx.state === 'suspended') audio.ctx.resume();
   audio.enabled = on;
-  if (on) ensurePropEngineSample();
+  if (on) {
+    ensurePropEngineSample();
+    ensurePropDetailBed('idle');
+    ensurePropDetailBed('cruise');
+  }
   audio.master.gain.setTargetAtTime(on ? 0.55 : 0, audio.ctx.currentTime, 0.1);
   if (!on && audio.propSampleGain) audio.propSampleGain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
+  for (const bed of Object.values(audio.propDetailBeds || {})) {
+    if (bed && bed.gain) bed.gain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
+  }
   syncPropSamplePlayback();
   // Startup growl — plays once when audio transitions off → on (i.e. the
   // "engine starts" moment in this sim since the prop loop begins with it).
@@ -8897,6 +9023,8 @@ window.__ap = {
       engine_sample_mode: audio.propSampleMode,
       engine_sample_label: audio.engineSampleLabel,
       engine_sample_active: !!(audio.enabled && audio.propSampleReady && isPropAirframe()),
+      prop_texture_blend: audio.propTextureBlend || 0,
+      prop_detail_beds: Object.fromEntries(Object.entries(audio.propDetailBeds || {}).map(([k, v]) => [k, !!(v && v.ready && v.node)])),
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
