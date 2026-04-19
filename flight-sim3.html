@@ -4845,10 +4845,37 @@ const combatState = {
 };
 const projectileGroup = new THREE.Group();
 scene.add(projectileGroup);
-const projectileGeo = new THREE.BoxGeometry(0.09, 0.09, 1.8);
-const projectileMat = new THREE.MeshBasicMaterial({ color: 0xfff4b8, toneMapped: false });
-for (let i = 0; i < 48; i++) {
-  const mesh = new THREE.Mesh(projectileGeo, projectileMat);
+const projectileCoreGeo = new THREE.BoxGeometry(0.12, 0.12, 3.2);
+const projectileShellGeo = new THREE.BoxGeometry(0.28, 0.28, 6.4);
+const projectileHaloGeo = new THREE.BoxGeometry(0.48, 0.48, 9.2);
+const projectileCoreMat = new THREE.MeshBasicMaterial({ color: 0xfffde8, toneMapped: false });
+const projectileShellMat = new THREE.MeshBasicMaterial({
+  color: 0xffb14d,
+  toneMapped: false,
+  transparent: true,
+  opacity: 0.92,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const tracerHaloMat = new THREE.MeshBasicMaterial({
+  color: 0xff5e2c,
+  toneMapped: false,
+  transparent: true,
+  opacity: 0.34,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+for (let i = 0; i < 72; i++) {
+  const mesh = new THREE.Group();
+  const halo = new THREE.Mesh(projectileHaloGeo, tracerHaloMat);
+  const shell = new THREE.Mesh(projectileShellGeo, projectileShellMat);
+  const core = new THREE.Mesh(projectileCoreGeo, projectileCoreMat);
+  halo.renderOrder = 28;
+  shell.renderOrder = 29;
+  core.renderOrder = 30;
+  mesh.add(halo);
+  mesh.add(shell);
+  mesh.add(core);
   mesh.visible = false;
   projectileGroup.add(mesh);
   combatState.projectiles.push({
@@ -4860,12 +4887,16 @@ for (let i = 0; i < 48; i++) {
   });
 }
 const muzzleFlashPool = new ParticlePool(scene, {
-  max: 70, color: 0xffe7a8, size: 1.1,
-  life: 0.14, growth: 2.6, additive: true, texture: sharedSpriteTex,
+  max: 110, color: 0xfff0b8, size: 1.65,
+  life: 0.18, growth: 3.4, additive: true, texture: sharedSpriteTex,
 });
 const impactSparkPool = new ParticlePool(scene, {
-  max: 180, color: 0xffd27a, size: 0.9,
-  life: 0.55, growth: 1.7, additive: true, texture: sharedSpriteTex,
+  max: 220, color: 0xffdf9c, size: 1.25,
+  life: 0.72, growth: 2.4, additive: true, texture: sharedSpriteTex,
+});
+const impactBlastPool = new ParticlePool(scene, {
+  max: 180, color: 0xff9d57, size: 2.4,
+  life: 0.34, growth: 6.2, additive: true, texture: sharedSpriteTex,
 });
 const explosionFirePool = new ParticlePool(scene, {
   max: 260, color: 0xff9448, size: 3.4,
@@ -4905,6 +4936,7 @@ function getTargetWorldPosition(target, out) {
 }
 
 function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
+  impactBlastPool.emitCluster(pos, Math.round(5 + intensity * 7), 0.9 + intensity * 0.8, 0.22, 0.42 + intensity * 0.18, 1.1 + intensity * 0.9);
   explosionFirePool.emitCluster(pos, Math.round(10 + intensity * 8), 1.6 + intensity * 1.1, 0.45, 0.9 + intensity * 0.35, 1.0 + intensity * 0.65);
   explosionSmokePool.emitCluster(pos, Math.round(10 + smokeMul * 8), 2.0 + smokeMul * 1.3, 0.8, 1.0 + smokeMul * 0.5, 1.0 + smokeMul * 0.8);
   impactSparkPool.emitCluster(pos, Math.round(8 + intensity * 10), 1.0 + intensity * 0.7, 0.55, 0.7 + intensity * 0.2, 1.1 + intensity * 0.5);
@@ -4916,11 +4948,19 @@ function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
 function damageDestructible(target, pos, damage = 1.0, intensity = 1.0) {
   if (!target || !target.alive) return false;
   target.health = Math.max(0, target.health - damage);
+  const isAirframeTarget = target.kind === 'traffic' || target.kind === 'drone' || target.kind === 'floatingTarget';
+  impactBlastPool.emitCluster(pos,
+    Math.round(3 + intensity * 4),
+    0.45 + intensity * 0.35, 0.18, 0.28 + intensity * 0.12, 0.8 + intensity * 0.35
+  );
   // Hit feedback spark cluster — scaled to damage
   impactSparkPool.emitCluster(pos,
     Math.round(4 + damage * 6),
     0.6 + damage * 0.5, 0.35, 0.5 + damage * 0.2, 0.9 + damage * 0.4
   );
+  if (isAirframeTarget) {
+    spawnExplosion(pos, 0.28 + intensity * 0.18, 0.10 + intensity * 0.06);
+  }
   // Bullet impact ping — variant chosen randomly so repeat shots don't
   // sound identical. Throttled because multiple projectiles can land in
   // the same frame on a big target.
@@ -4943,7 +4983,10 @@ function destroyTarget(target, pos, intensity = 1.0) {
   target.alive = false;
   target.object.visible = false;
   combatState.hits += 1;
-  spawnExplosion(pos, intensity, intensity * 1.1);
+  spawnExplosion(pos, intensity * 1.25, intensity * 1.35);
+  if (target.kind === 'traffic' && typeof window.showComboBanner === 'function') {
+    window.showComboBanner('AIR KILL', `HOSTILE DOWN · ${combatState.hits} TOTAL`, '#ffb36a');
+  }
   // Reward destruction — mountain targets + big kills top up score,
   // hull and ammo so the player has a reason to chase them down.
   let msg = 'TARGET DESTROYED';
@@ -5171,6 +5214,7 @@ function updateCombat(dt) {
 
   muzzleFlashPool.update(dt);
   impactSparkPool.update(dt);
+  impactBlastPool.update(dt);
   explosionFirePool.update(dt);
   explosionSmokePool.update(dt);
 }
@@ -9670,7 +9714,14 @@ function spawnTraffic(file, pathFn, opts) {
     model.traverse(o => { o.userData.__isTrafficPlane = true; });
     applyShadowFlags(model);
     group.add(model);
-    rec.destructible = registerDestructible(group, { radius: Math.max(4, (opts.targetSize || 10) * 0.6), kind: 'traffic', health: 3 });
+    rec.destructible = registerDestructible(group, {
+      radius: Math.max(4, (opts.targetSize || 10) * 0.6),
+      kind: 'traffic',
+      health: opts.health || 3,
+    });
+    rec.destructible.rewardPoints = opts.rewardPoints || 180;
+    rec.destructible.rewardAmmo = opts.rewardAmmo || 18;
+    rec.destructible.rewardHealth = opts.rewardHealth || 4;
     rec.child = model;
     rec.loaded = true;
     group.visible = true;
@@ -9753,24 +9804,47 @@ function updateTraffic(dt) {
   }
 }
 
-// ---- Populate: three aircraft at varied altitudes and patrol types.
-// Phase offsets stop them from bunching up.
+// ---- Populate: layered hostile airspace at varied altitudes and patrol types.
+// __airspace_density_burst__ — more low/mid-altitude traffic so the player has
+// several reachable aircraft to hunt instead of only a few distant fly-bys.
 spawnTraffic(
   'models/low_poly_plane.glb',
   pathOrbit(1400, 260, -1800, 1100, false),
-  { speed: 72, targetSize: 9, phaseOffset:   0 }
+  { speed: 72, targetSize: 9, phaseOffset: 0, health: 2, rewardPoints: 160 }
 );
 spawnTraffic(
   'models/low_poly_f14_tomcat.glb',
   pathTransit(
     new THREE.Vector3(-3500, 520, -3200),
-    new THREE.Vector3( 3500, 520,  3200), 90),
-  { speed: 140, targetSize: 12, phaseOffset: 140 }
+    new THREE.Vector3(3500, 520, 3200), 90),
+  { speed: 140, targetSize: 12, phaseOffset: 140, health: 3, rewardPoints: 260, rewardAmmo: 24 }
 );
 spawnTraffic(
   'models/low_poly_a-10_warthog.glb',
   pathFigure8(-1600, 220, 1200, 900),
-  { speed: 95, targetSize: 11, phaseOffset: 280 }
+  { speed: 95, targetSize: 11, phaseOffset: 280, health: 3, rewardPoints: 220 }
+);
+spawnTraffic(
+  'models/low_poly_plane.glb',
+  pathOrbit(280, 190, -920, 680, true),
+  { speed: 78, targetSize: 9.2, phaseOffset: 60, health: 2, rewardPoints: 170 }
+);
+spawnTraffic(
+  'models/low_poly_plane.glb',
+  pathTransit(
+    new THREE.Vector3(-2200, 240, 820),
+    new THREE.Vector3(2200, 240, -420), 72),
+  { speed: 108, targetSize: 9.4, phaseOffset: 220, health: 2, rewardPoints: 170 }
+);
+spawnTraffic(
+  'models/low_poly_a-10_warthog.glb',
+  pathFigure8(920, 280, -260, 620),
+  { speed: 112, targetSize: 11.4, phaseOffset: 420, health: 3, rewardPoints: 240 }
+);
+spawnTraffic(
+  'models/low_poly_f14_tomcat.glb',
+  pathOrbit(-650, 430, -2550, 1600, true),
+  { speed: 155, targetSize: 12.8, phaseOffset: 560, health: 4, rewardPoints: 300, rewardAmmo: 30 }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
@@ -10560,6 +10634,9 @@ window.__ap = {
       aero_flex: { wing: aeroFlexState.wingBend, aileron: aeroFlexState.aileron, elevator: aeroFlexState.elevator, rudder: aeroFlexState.rudder },
       multiplayer_connected: !!multiplayerState.connected,
       remote_players: multiplayerState.remotePlayers.size,
+      traffic_planes: traffic.length,
+      traffic_loaded: traffic.filter(t => t.loaded).length,
+      traffic_alive: destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
       shots_fired: combatState.shotsFired,
       combat_hits: combatState.hits,
@@ -10636,6 +10713,20 @@ window.__ap = {
     syncMultiplayerIndicator();
   },
   fire() { fireProjectileBurst(); },
+  previewCombatHit(kind = 'traffic', kill = false) {
+    const target = destructibleTargets.find(t => t.alive && (!kind || t.kind === kind));
+    if (!target) return null;
+    const pos = getTargetWorldPosition(target, new THREE.Vector3()).clone();
+    if (kill) destroyTarget(target, pos.clone(), target.kind === 'traffic' ? 1.45 : 1.1);
+    else damageDestructible(target, pos.clone(), 1.0, target.kind === 'traffic' ? 1.45 : 1.0);
+    return {
+      kind: target.kind,
+      alive: target.alive,
+      health: target.health,
+      pos: { x: pos.x, y: pos.y, z: pos.z },
+      telemetry: window.__ap.telemetry(),
+    };
+  },
   crash() {
     plane.crashed = true;
     plane.vel.set(0, 0, 0);
