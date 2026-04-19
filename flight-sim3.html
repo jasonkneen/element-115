@@ -120,6 +120,28 @@
     border-color: rgba(255,215,150,0.22);
     color: #fff3d4;
   }
+  #throttle-wrap .deck-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: rgba(255, 226, 170, 0.76);
+  }
+  #throttle-wrap .hud-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.18);
+    background: rgba(255,255,255,0.05);
+    color: #fff2cf;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
   #controls-help {
     left: 50%; transform: translateX(-50%); bottom: 18px;
     width: min(980px, calc(100vw - 36px));
@@ -321,6 +343,80 @@
     cursor: pointer;
     padding: 6px 11px;
   }
+  .review-panel-shell .review-grade {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.18);
+    background: rgba(255,255,255,0.05);
+    color: #fff2cf;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .review-panel-shell .review-grade strong {
+    font-size: 16px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #fff4d4;
+  }
+  .review-panel-shell .review-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 0 12px;
+  }
+  .review-panel-shell .review-stat-card {
+    min-height: 68px;
+    padding: 10px 11px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 215, 150, 0.12);
+    background: rgba(255,255,255,0.04);
+  }
+  .review-panel-shell .review-stat-card span {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgba(255, 226, 170, 0.58);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .review-panel-shell .review-stat-card strong {
+    display: block;
+    font-size: 20px;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #fff3d2;
+  }
+  .review-panel-shell .review-stat-card em {
+    display: block;
+    margin-top: 6px;
+    font-style: normal;
+    font-size: 10px;
+    letter-spacing: 0.10em;
+    color: rgba(255, 231, 176, 0.68);
+  }
+  .review-panel-shell .review-awards {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0 0 12px;
+  }
+  .review-panel-shell .review-award-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(127, 220, 255, 0.22);
+    background: rgba(77, 169, 255, 0.08);
+    color: #dff5ff;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
   .mission-banner-shell {
     font-family: var(--game-font-ui);
     border-radius: 20px;
@@ -349,12 +445,16 @@
   .hide { opacity: 0; pointer-events: none; }
   body.preflight #crosshair,
   body.preflight #instruments,
-  body.preflight #controls-help {
+  body.preflight #controls-help,
+  body.preflight #throttle-wrap,
+  body.preflight #status-msg {
     opacity: 0;
   }
   #crosshair,
   #instruments,
-  #controls-help {
+  #controls-help,
+  #throttle-wrap,
+  #status-msg {
     transition: opacity 0.25s ease;
   }
   /* Graphics panel range sliders — match HUD amber theme */
@@ -473,9 +573,10 @@
     <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
     <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
-      <div>TIME <span id="tod-ind" class="ok">MORNING</span></div>
-      <div>NET <span id="mp-ind">SOLO</span></div>
-      <button type="button" class="hud-action" id="prop-model-btn" style="margin-top:3px;">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
+      <div class="deck-meta-row">TIME <span id="tod-ind" class="ok hud-chip">MORNING</span></div>
+      <div class="deck-meta-row">PHASE <span id="phase-ind" class="hud-chip">PREFLIGHT</span></div>
+      <div class="deck-meta-row">NET <span id="mp-ind" class="hud-chip">SOLO</span></div>
+      <button type="button" class="hud-action" id="prop-model-btn" style="margin-top:6px;">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
       <button type="button" class="hud-action" id="landing-btn" style="margin-top:3px;">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
       <button type="button" class="hud-action" id="style-btn" style="margin-top:3px;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
       <button type="button" class="hud-action" id="biome-btn" style="margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
@@ -1949,45 +2050,155 @@ function buildAirfield() {
 
   const surfaceY = AIRFIELD_SURFACE_Y;
 
+  const runwaySurfaceTexture = (() => {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 4096;
+    const g2 = c.getContext('2d');
+    g2.fillStyle = '#26242a';
+    g2.fillRect(0, 0, c.width, c.height);
+    const grad = g2.createLinearGradient(0, 0, c.width, 0);
+    grad.addColorStop(0, 'rgba(76,78,88,0.18)');
+    grad.addColorStop(0.15, 'rgba(10,10,12,0.14)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.03)');
+    grad.addColorStop(0.85, 'rgba(10,10,12,0.14)');
+    grad.addColorStop(1, 'rgba(76,78,88,0.18)');
+    g2.fillStyle = grad;
+    g2.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 5200; i++) {
+      const x = Math.random() * c.width;
+      const y = Math.random() * c.height;
+      const s = 1 + Math.random() * 2.4;
+      const shade = 28 + Math.random() * 20;
+      g2.fillStyle = `rgba(${shade},${shade},${shade + 6},${0.05 + Math.random() * 0.08})`;
+      g2.fillRect(x, y, s, s * (0.7 + Math.random() * 1.4));
+    }
+    g2.strokeStyle = 'rgba(255,241,206,0.92)';
+    g2.lineWidth = 10;
+    g2.setLineDash([74, 58]);
+    g2.beginPath();
+    g2.moveTo(c.width * 0.5, 180);
+    g2.lineTo(c.width * 0.5, c.height - 180);
+    g2.stroke();
+    g2.setLineDash([]);
+    g2.strokeStyle = 'rgba(255,245,230,0.52)';
+    g2.lineWidth = 6;
+    g2.beginPath();
+    g2.moveTo(42, 80);
+    g2.lineTo(42, c.height - 80);
+    g2.moveTo(c.width - 42, 80);
+    g2.lineTo(c.width - 42, c.height - 80);
+    g2.stroke();
+    g2.fillStyle = 'rgba(255,241,220,0.88)';
+    for (let i = 0; i < 6; i++) {
+      const y = 140 + i * 34;
+      g2.fillRect(76 + i * 18, y, 28, 84);
+      g2.fillRect(c.width - 104 - i * 18, y, 28, 84);
+      const y2 = c.height - 224 - i * 34;
+      g2.fillRect(76 + i * 18, y2, 28, 84);
+      g2.fillRect(c.width - 104 - i * 18, y2, 28, 84);
+    }
+    for (let i = 0; i < 18; i++) {
+      const cx = c.width * (0.45 + (Math.random() - 0.5) * 0.18);
+      const cy = 260 + Math.random() * (c.height - 520);
+      const len = 140 + Math.random() * 420;
+      const wid = 4 + Math.random() * 11;
+      g2.fillStyle = `rgba(12,12,12,${0.05 + Math.random() * 0.08})`;
+      g2.save();
+      g2.translate(cx, cy);
+      g2.rotate((Math.random() - 0.5) * 0.08);
+      g2.fillRect(-wid * 0.5, -len * 0.5, wid, len);
+      g2.restore();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+    tex.anisotropy = 8;
+    return tex;
+  })();
+
+  const apronSurfaceTexture = (() => {
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 1024;
+    const g2 = c.getContext('2d');
+    g2.fillStyle = '#353038';
+    g2.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 1800; i++) {
+      const x = Math.random() * c.width;
+      const y = Math.random() * c.height;
+      const s = 1 + Math.random() * 4;
+      const shade = 40 + Math.random() * 22;
+      g2.fillStyle = `rgba(${shade},${shade},${shade + 8},${0.05 + Math.random() * 0.08})`;
+      g2.fillRect(x, y, s, s);
+    }
+    g2.strokeStyle = 'rgba(255,193,77,0.85)';
+    g2.lineWidth = 8;
+    g2.strokeRect(78, 78, c.width - 156, c.height - 156);
+    g2.strokeStyle = 'rgba(255,193,77,0.45)';
+    g2.lineWidth = 5;
+    g2.beginPath();
+    g2.moveTo(c.width * 0.28, 160);
+    g2.lineTo(c.width * 0.28, c.height - 160);
+    g2.moveTo(c.width * 0.72, 160);
+    g2.lineTo(c.width * 0.72, c.height - 160);
+    g2.stroke();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+    tex.anisotropy = 8;
+    return tex;
+  })();
+
+  const taxiwaySurfaceTexture = (() => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 1024;
+    const g2 = c.getContext('2d');
+    g2.fillStyle = '#403933';
+    g2.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * c.width;
+      const y = Math.random() * c.height;
+      const s = 1 + Math.random() * 3;
+      g2.fillStyle = `rgba(255,255,255,${0.015 + Math.random() * 0.03})`;
+      g2.fillRect(x, y, s, s);
+    }
+    g2.strokeStyle = 'rgba(255,186,71,0.9)';
+    g2.lineWidth = 8;
+    g2.setLineDash([58, 34]);
+    g2.beginPath();
+    g2.moveTo(c.width * 0.5, 80);
+    g2.lineTo(c.width * 0.5, c.height - 80);
+    g2.stroke();
+    g2.setLineDash([]);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+    tex.anisotropy = 8;
+    return tex;
+  })();
+
   // Runway — long strip along -Z
   const runway = new THREE.Mesh(
     new THREE.PlaneGeometry(34, 420),
-    new THREE.MeshLambertMaterial({ color: 0x28252a })
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: runwaySurfaceTexture,
+      roughness: 0.94,
+      metalness: 0.04,
+    })
   );
   runway.rotation.x = -Math.PI / 2;
   runway.position.set(0, surfaceY, 0);
   g.add(runway);
 
-  // Center dashed line
-  for (let z = -188; z <= 188; z += 16) {
-    const dash = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xfff0cc })
-    );
-    dash.rotation.x = -Math.PI / 2;
-    dash.position.set(0, surfaceY + 0.01, z);
-    g.add(dash);
-  }
-
-  // Threshold stripes (end markings)
-  for (let i = -5; i <= 5; i++) {
-    if (i === 0) continue;
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(2, 9),
-      new THREE.MeshBasicMaterial({ color: 0xfff0cc })
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(i * 2.7, surfaceY + 0.01, -202);
-    g.add(m);
-    const m2 = m.clone();
-    m2.position.z = 202;
-    g.add(m2);
-  }
-
   // Taxiway apron
   const apron = new THREE.Mesh(
     new THREE.PlaneGeometry(58, 56),
-    new THREE.MeshLambertMaterial({ color: 0x2f2a28 })
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: apronSurfaceTexture,
+      roughness: 0.92,
+      metalness: 0.05,
+    })
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.set(34, surfaceY - 0.004, 150);
@@ -1995,7 +2206,12 @@ function buildAirfield() {
 
   const taxiway = new THREE.Mesh(
     new THREE.PlaneGeometry(14, 74),
-    new THREE.MeshLambertMaterial({ color: 0x3a342f })
+    new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: taxiwaySurfaceTexture,
+      roughness: 0.91,
+      metalness: 0.04,
+    })
   );
   taxiway.rotation.x = -Math.PI / 2;
   taxiway.position.set(17, surfaceY - 0.002, 116);
@@ -2968,6 +3184,19 @@ const replayHeroRig = (() => {
   scene.add(fill);
   return { spot, fill, target };
 })();
+const airframeFillRig = (() => {
+  const target = new THREE.Object3D();
+  const spot = new THREE.SpotLight(0xf3f6ff, 0, 210, Math.PI / 6.1, 0.62, 1.4);
+  spot.castShadow = false;
+  spot.visible = false;
+  spot.target = target;
+  const fill = new THREE.PointLight(0x9ebeff, 0, 120, 2.0);
+  fill.visible = false;
+  scene.add(target);
+  scene.add(spot);
+  scene.add(fill);
+  return { spot, fill, target };
+})();
 const aeroFlexState = {
   wingBend: 0,
   aileron: 0,
@@ -3228,18 +3457,18 @@ function syncMultiplayerIndicator() {
   if (typeof $mpInd === 'undefined' || !$mpInd) return;
   if (!MULTIPLAYER_URL) {
     $mpInd.textContent = 'SOLO';
-    $mpInd.className = '';
+    $mpInd.className = 'hud-chip';
     return;
   }
   if (multiplayerState.connected) {
     $mpInd.textContent = `ONLINE ${multiplayerState.remotePlayers.size + 1}`;
-    $mpInd.className = 'ok';
+    $mpInd.className = 'hud-chip ok';
   } else if (multiplayerState.connecting) {
     $mpInd.textContent = 'CONNECTING';
-    $mpInd.className = 'warn';
+    $mpInd.className = 'hud-chip warn';
   } else {
     $mpInd.textContent = 'OFFLINE';
-    $mpInd.className = 'warn';
+    $mpInd.className = 'hud-chip warn';
   }
 }
 
@@ -5434,11 +5663,15 @@ function updateTimeOfDay(dt = 0) {
 
   const terrainFade = clamp01(scene.userData.__terrainFade != null ? scene.userData.__terrainFade : 0.58);
   const nightLift = Math.max(0, Math.min(0.9, scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35));
+  const atmosphereDepth = Math.max(0.7, Math.min(1.25, scene.userData.__atmosphereDepth != null ? scene.userData.__atmosphereDepth : 1.0));
   const fogEnabled = !scene.userData.__fogDisabled;
-  const realFogNear = 280 + (1 - terrainFade) * 260;
-  const realFogFar = 4300 + terrainFade * 3200;
-  const lowFogNear = 340 + (1 - terrainFade) * 280;
-  const lowFogFar = 3600 + terrainFade * 2400;
+  const fogMul = 1 - (atmosphereDepth - 1) * 0.22;
+  const farMul = 1 - (atmosphereDepth - 1) * 0.16;
+  const realFogNear = (280 + (1 - terrainFade) * 260) * fogMul;
+  const realFogFar = (4300 + terrainFade * 3200) * farMul;
+  const lowFogNear = (340 + (1 - terrainFade) * 280) * fogMul;
+  const lowFogFar = (3600 + terrainFade * 2400) * farMul;
+  const lowPoly = styleMode.current === 'lowpoly';
 
   scene.background.copy(todFog);
   scene.fog.color.copy(todFog);
@@ -5446,6 +5679,7 @@ function updateTimeOfDay(dt = 0) {
   scene.fog.far = fogEnabled ? lowFogFar : 1e9;
   skyMat.uniforms.topColor.value.copy(todSkyTop);
   skyMat.uniforms.bottomColor.value.copy(todSkyBottom);
+  skyMat.uniforms.exponent.value = (lowPoly ? 0.35 : 0.55) + (atmosphereDepth - 1) * 0.14 + twilight * 0.04;
   waterMat.uniforms.fogColor.value.copy(todFog);
   waterMat.uniforms.fogNear.value = lowFogNear;
   waterMat.uniforms.fogFar.value = fogEnabled ? lowFogFar : 1e9;
@@ -5455,8 +5689,8 @@ function updateTimeOfDay(dt = 0) {
   sandMat.uniforms.fogColor.value.copy(todFog);
   sandMat.uniforms.fogNear.value = realFogNear;
   sandMat.uniforms.fogFar.value = fogEnabled ? realFogFar : 1e9;
-  sandMat.uniforms.hazeStrength.value = ATMOS_REALISTIC.hazeStrength + terrainFade * 0.24 + (1 - daylight) * 0.06;
-  sandMat.uniforms.hazeExponent.value = ATMOS_REALISTIC.hazeExponent + terrainFade * 0.12;
+  sandMat.uniforms.hazeStrength.value = ATMOS_REALISTIC.hazeStrength + terrainFade * 0.24 + (1 - daylight) * 0.06 + (atmosphereDepth - 1) * 0.34;
+  sandMat.uniforms.hazeExponent.value = ATMOS_REALISTIC.hazeExponent + terrainFade * 0.12 + (atmosphereDepth - 1) * 0.08;
   sandMat.uniforms.skyTint.value.copy(todSkyTop);
   sandMat.uniforms.groundTint.value.copy(todGround);
   sandMat.uniforms.ambientColor.value.copy(todAmbient);
@@ -5465,8 +5699,8 @@ function updateTimeOfDay(dt = 0) {
   sandMatLowPoly.uniforms.fogColor.value.copy(todFog);
   sandMatLowPoly.uniforms.fogNear.value = lowFogNear;
   sandMatLowPoly.uniforms.fogFar.value = fogEnabled ? lowFogFar : 1e9;
-  sandMatLowPoly.uniforms.hazeStrength.value = ATMOS_LOWPOLY.hazeStrength + terrainFade * 0.30 + (1 - daylight) * 0.08;
-  sandMatLowPoly.uniforms.hazeExponent.value = ATMOS_LOWPOLY.hazeExponent + terrainFade * 0.08;
+  sandMatLowPoly.uniforms.hazeStrength.value = ATMOS_LOWPOLY.hazeStrength + terrainFade * 0.30 + (1 - daylight) * 0.08 + (atmosphereDepth - 1) * 0.38;
+  sandMatLowPoly.uniforms.hazeExponent.value = ATMOS_LOWPOLY.hazeExponent + terrainFade * 0.08 + (atmosphereDepth - 1) * 0.06;
   sandMatLowPoly.uniforms.skyTint.value.copy(todSkyTop);
   sandMatLowPoly.uniforms.groundTint.value.copy(todGround);
   sandMatLowPoly.uniforms.ambientColor.value.copy(todLowPolyAmbient);
@@ -5483,7 +5717,7 @@ function updateTimeOfDay(dt = 0) {
   hemiLight.intensity = 0.18 + daylight * 0.36 + twilight * 0.05 + nightFloor * 0.22 + liftBoost * 0.42;
   ambientLight.color.copy(todAmbient);
   ambientLight.intensity = 0.10 + daylight * 0.12 + twilight * 0.02 + nightFloor * 0.10 + liftBoost * 0.24;
-  renderer.toneMappingExposure = 0.68 + daylight * 0.38 + twilight * 0.08 + liftBoost * 0.18;
+  renderer.toneMappingExposure = 0.68 + daylight * 0.38 + twilight * 0.08 + liftBoost * 0.18 - (atmosphereDepth - 1) * 0.03;
   updateRunwayLights(1 - daylight, twilight);
 
   // Clouds: bright + wispy at midday, fuller + darker at dusk/night.
@@ -5539,7 +5773,7 @@ function updateTimeOfDay(dt = 0) {
     const hh = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
     const mm = String(totalMinutes % 60).padStart(2, '0');
     $todInd.textContent = `${hh}:${mm} ${timeOfDay.label}`;
-    $todInd.className = daylight < 0.2 ? 'warn' : twilight > 0.55 ? '' : 'ok';
+    $todInd.className = `hud-chip ${daylight < 0.2 ? 'warn' : twilight > 0.55 ? '' : 'ok'}`.trim();
   }
 }
 
@@ -6454,6 +6688,9 @@ function damagePlane(amount, kind = 'airframe', opts = {}) {
   }
   if (plane.health <= 0) {
     plane.crashed = true;
+    setFlightPhase('IMPACT', 'warn');
+    captureMissionDebrief(opts.reason || 'AIRFRAME FAILURE');
+    if (typeof syncReplayUI === 'function') syncReplayUI();
     if (typeof statusMsg !== 'undefined' && statusMsg) {
       statusMsg.textContent = (opts.reason || 'AIRFRAME FAILURE') + ' — PRESS R';
     }
@@ -6538,6 +6775,7 @@ function resetPlane() {
   plane.brake = 0;
   plane.landingLights = true;
   plane.crashed = false;
+  resetMissionDebrief();
   healPlane();
   resetCombatState();
   // Fresh slate for flight-review.
@@ -7216,6 +7454,28 @@ function updateJetVisual() {
     });
   }
 
+  const airframeFill = Math.max(0, Math.min(1.4, scene.userData.__airframeFill != null ? scene.userData.__airframeFill : 0.55));
+  const airframeFillActive = airframeFill > 0.01 && (running || replay.playing || nightFactor > 0.1);
+  airframeFillRig.spot.visible = airframeFillActive;
+  airframeFillRig.fill.visible = airframeFillActive;
+  if (airframeFillActive) {
+    const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    airframeFillRig.spot.position.copy(camera.position)
+      .addScaledVector(camForward, 6.5)
+      .addScaledVector(camUp, 1.6)
+      .addScaledVector(camRight, 0.8);
+    airframeFillRig.fill.position.copy(plane.pos)
+      .addScaledVector(camUp, 1.8)
+      .addScaledVector(camRight, -1.2);
+    airframeFillRig.target.position.copy(plane.pos)
+      .addScaledVector(camUp, 0.7);
+    airframeFillRig.target.updateMatrixWorld();
+    airframeFillRig.spot.intensity = airframeFill * (0.12 + nightFactor * 1.15 + (replay.playing ? 0.24 : 0));
+    airframeFillRig.fill.intensity = airframeFill * (0.05 + nightFactor * 0.45 + (replay.playing ? 0.08 : 0));
+  }
+
   const heroEnabled = scene.userData.__replayHeroLight !== false;
   const heroActive = heroEnabled && (replay.playing || nightFactor > 0.45);
   replayHeroRig.spot.visible = heroActive;
@@ -7407,6 +7667,9 @@ function replayPostStep() {
 function syncReplayUI() {
   if (!replay.ui) return;
   replay.ui.panel.style.display = plane.crashed ? 'block' : 'none';
+  const summary = plane.crashed
+    ? (missionDebriefState.summary || captureMissionDebrief(missionDebriefState.reason || 'TERRAIN IMPACT'))
+    : null;
   replay.ui.modeButtons.forEach(b => {
     const isActive = b.dataset.mode === replay.mode;
     b.style.background = isActive ? 'rgba(255,204,102,0.18)' : 'rgba(255,255,255,0.04)';
@@ -7414,9 +7677,37 @@ function syncReplayUI() {
     b.style.borderColor = isActive ? 'rgba(255,225,170,0.42)' : 'rgba(255,215,150,0.22)';
   });
   replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : '▶ REVIEW RUN';
-  if (replay.ui.subline) replay.ui.subline.textContent = replay.playing
-    ? `Camera: ${replay.mode.toUpperCase()} · tap a mode to switch`
-    : 'Crash cam / replay loop / cinematic angles';
+  if (replay.ui.subline) replay.ui.subline.textContent = summary
+    ? `${summary.reason} · ${summary.highlight}`
+    : (replay.playing ? `Camera: ${replay.mode.toUpperCase()} · tap a mode to switch` : 'Crash cam / replay loop / cinematic angles');
+  if (replay.ui.gradeValue) replay.ui.gradeValue.textContent = summary ? summary.grade : 'C';
+  if (replay.ui.gradeLabel) replay.ui.gradeLabel.textContent = 'RUN GRADE';
+  if (replay.ui.summaryGrid) {
+    while (replay.ui.summaryGrid.firstChild) replay.ui.summaryGrid.removeChild(replay.ui.summaryGrid.firstChild);
+    (summary ? summary.cards : []).forEach(card => {
+      const stat = document.createElement('div');
+      stat.className = 'review-stat-card';
+      const label = document.createElement('span');
+      label.textContent = card.label;
+      const value = document.createElement('strong');
+      value.textContent = card.value;
+      const detail = document.createElement('em');
+      detail.textContent = card.detail;
+      stat.appendChild(label);
+      stat.appendChild(value);
+      stat.appendChild(detail);
+      replay.ui.summaryGrid.appendChild(stat);
+    });
+  }
+  if (replay.ui.awardsWrap) {
+    while (replay.ui.awardsWrap.firstChild) replay.ui.awardsWrap.removeChild(replay.ui.awardsWrap.firstChild);
+    (summary ? summary.awards : ['REPLAY AVAILABLE']).forEach(text => {
+      const pill = document.createElement('div');
+      pill.className = 'review-award-pill';
+      pill.textContent = text;
+      replay.ui.awardsWrap.appendChild(pill);
+    });
+  }
 }
 function replayBuildUI() {
   const hud = document.getElementById('hud');
@@ -7435,6 +7726,24 @@ function replayBuildUI() {
   subline.textContent = 'Crash cam / replay loop / cinematic angles';
   panel.appendChild(subline);
 
+  const grade = document.createElement('div');
+  grade.className = 'review-grade';
+  const gradeValue = document.createElement('strong');
+  gradeValue.textContent = 'C';
+  const gradeLabel = document.createElement('span');
+  gradeLabel.textContent = 'RUN GRADE';
+  grade.appendChild(gradeValue);
+  grade.appendChild(gradeLabel);
+  panel.appendChild(grade);
+
+  const summaryGrid = document.createElement('div');
+  summaryGrid.className = 'review-summary-grid';
+  panel.appendChild(summaryGrid);
+
+  const awardsWrap = document.createElement('div');
+  awardsWrap.className = 'review-awards';
+  panel.appendChild(awardsWrap);
+
   const playRow = document.createElement('div');
   playRow.className = 'review-actions';
   panel.appendChild(playRow);
@@ -7447,6 +7756,12 @@ function replayBuildUI() {
     else replayStart();
   });
   playRow.appendChild(playBtn);
+
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.textContent = '↺ FLY AGAIN [R]';
+  resetBtn.addEventListener('click', () => { if (typeof resetPlane === 'function') resetPlane(); });
+  playRow.appendChild(resetBtn);
 
   const modeWrap = document.createElement('div');
   modeWrap.className = 'review-modes';
@@ -7470,7 +7785,7 @@ function replayBuildUI() {
   });
   panel.appendChild(modeWrap);
   hud.appendChild(panel);
-  replay.ui = { panel, playBtn, modeButtons, subline };
+  replay.ui = { panel, playBtn, resetBtn, modeButtons, subline, gradeValue, gradeLabel, summaryGrid, awardsWrap };
 }
 replayBuildUI();
 bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
@@ -7615,6 +7930,7 @@ const $seedDisp = document.getElementById('seed-disp');
 const $styleInd = document.getElementById('style-ind');
 const $biomeInd = document.getElementById('biome-ind');
 const $todInd = document.getElementById('tod-ind');
+const $phaseInd = document.getElementById('phase-ind');
 const $mpInd = document.getElementById('mp-ind');
 const $propModelInd = document.getElementById('prop-model-ind');
 const $landingInd = document.getElementById('landing-ind');
@@ -7626,6 +7942,94 @@ const helpStripState = {
   autoCollapsed: false,
   lastManualAt: 0,
 };
+const flightPhaseState = {
+  label: 'PREFLIGHT',
+  tone: '',
+};
+const missionDebriefState = {
+  startedAt: performance.now(),
+  distanceMeters: 0,
+  peakSpeedKts: 0,
+  peakAltitudeFt: 0,
+  gates: 0,
+  bridgeRuns: 0,
+  portalShots: 0,
+  lowRuns: 0,
+  lastHighlight: 'FIRST FLIGHT',
+  grade: 'C',
+  reason: 'TERRAIN IMPACT',
+  summary: null,
+};
+function setFlightPhase(label, tone = '') {
+  flightPhaseState.label = label;
+  flightPhaseState.tone = tone || '';
+  if ($phaseInd) {
+    $phaseInd.textContent = label;
+    $phaseInd.className = `hud-chip ${tone}`.trim();
+  }
+}
+function resetMissionDebrief() {
+  missionDebriefState.startedAt = performance.now();
+  missionDebriefState.distanceMeters = 0;
+  missionDebriefState.peakSpeedKts = 0;
+  missionDebriefState.peakAltitudeFt = 0;
+  missionDebriefState.gates = 0;
+  missionDebriefState.bridgeRuns = 0;
+  missionDebriefState.portalShots = 0;
+  missionDebriefState.lowRuns = 0;
+  missionDebriefState.lastHighlight = 'READY FOR TAKEOFF';
+  missionDebriefState.grade = 'C';
+  missionDebriefState.reason = 'TERRAIN IMPACT';
+  missionDebriefState.summary = null;
+}
+function recordMissionMoment({ kind = '', gateLabel = '', stunts = [], points = 0 } = {}) {
+  missionDebriefState.gates += 1;
+  if (kind === 'bridge') missionDebriefState.bridgeRuns += 1;
+  if (kind === 'portal') missionDebriefState.portalShots += 1;
+  if (stunts.includes('LOW RUN')) missionDebriefState.lowRuns += 1;
+  missionDebriefState.lastHighlight = stunts[0] || gateLabel || (kind ? `${kind.toUpperCase()} GATE` : `+${points}`);
+  missionDebriefState.summary = null;
+}
+function updateMissionDebrief(dt, speedKts) {
+  if (!running || plane.crashed) return;
+  missionDebriefState.distanceMeters += Math.max(0, plane.vel.length() * dt);
+  missionDebriefState.peakSpeedKts = Math.max(missionDebriefState.peakSpeedKts, speedKts);
+  missionDebriefState.peakAltitudeFt = Math.max(missionDebriefState.peakAltitudeFt, plane.pos.y * 3.28);
+}
+function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
+  const score = window.__gameScore || { points: 0, bestStreak: 0 };
+  const seconds = Math.max(1, (performance.now() - missionDebriefState.startedAt) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const distanceNm = missionDebriefState.distanceMeters / 1852;
+  const accuracy = combatState.shotsFired > 0 ? combatState.hits / combatState.shotsFired : 0;
+  const rating = score.points / 520 + score.bestStreak * 0.72 + missionDebriefState.bridgeRuns * 1.25 + missionDebriefState.portalShots * 1.45 + missionDebriefState.lowRuns * 0.38 + combatState.hits * 0.26 + accuracy * 2.4;
+  const grade = rating >= 8.2 ? 'S' : rating >= 5.6 ? 'A' : rating >= 3.6 ? 'B' : rating >= 2.1 ? 'C' : 'D';
+  const awards = [];
+  if (missionDebriefState.bridgeRuns > 0) awards.push(`BRIDGE ACE ×${missionDebriefState.bridgeRuns}`);
+  if (missionDebriefState.portalShots > 0) awards.push(`PORTAL HUNTER ×${missionDebriefState.portalShots}`);
+  if (score.bestStreak >= 5) awards.push(`STREAK MASTER ×${score.bestStreak}`);
+  if (missionDebriefState.lowRuns >= 2) awards.push(`LOW-LEVEL RUNNER ×${missionDebriefState.lowRuns}`);
+  if (combatState.hits >= 3) awards.push(`GUNS ON TARGET ×${combatState.hits}`);
+  if (accuracy >= 0.35 && combatState.shotsFired >= 6) awards.push(`SHARP SHOOTER ${Math.round(accuracy * 100)}%`);
+  if (missionDebriefState.peakSpeedKts >= 165) awards.push(`REDLINE ${Math.round(missionDebriefState.peakSpeedKts)}KT`);
+  if (!awards.length) awards.push(missionDebriefState.lastHighlight || 'KEEP PUSHING THE CANYON');
+  missionDebriefState.grade = grade;
+  missionDebriefState.reason = reason;
+  missionDebriefState.summary = {
+    grade,
+    reason,
+    awards: awards.slice(0, 4),
+    cards: [
+      { label: 'SCORE', value: String(score.points), detail: `${score.bestStreak || 0}× BEST CHAIN` },
+      { label: 'GUNS', value: combatState.shotsFired ? `${Math.round(accuracy * 100)}%` : '—', detail: `${combatState.hits} HITS / ${combatState.shotsFired} SHOTS` },
+      { label: 'RANGE', value: `${distanceNm.toFixed(1)}NM`, detail: `${Math.round(missionDebriefState.peakSpeedKts)}KT PEAK` },
+      { label: 'TIME', value: `${minutes}:${String(secs).padStart(2, '0')}`, detail: `${Math.round(missionDebriefState.peakAltitudeFt)}FT MAX` },
+    ],
+    highlight: missionDebriefState.lastHighlight || 'CANYON RUN',
+  };
+  return missionDebriefState.summary;
+}
 function setHelpStripCollapsed(next, manual = false) {
   if (!controlsHelpEl) return;
   helpStripState.collapsed = !!next;
@@ -7681,6 +8085,39 @@ function flashStatus(text, className = 'panel ok', duration = 1.2) {
 let vsSmoothed = 0;
 let gSmoothed = 1;
 let lastVel = new THREE.Vector3();
+function updateFlightPhase(speedKts, aglFt, aoaDeg) {
+  if (!running) {
+    setFlightPhase('PREFLIGHT');
+    return;
+  }
+  if (plane.crashed) {
+    setFlightPhase(replay.playing ? 'REVIEW' : 'IMPACT', replay.playing ? 'ok' : 'warn');
+    return;
+  }
+  if (replay.playing) {
+    setFlightPhase('REVIEW', 'ok');
+  } else if (plane.onGround && speedKts < 8) {
+    setFlightPhase('ON STAND');
+  } else if (plane.onGround && speedKts < 55) {
+    setFlightPhase('TAKEOFF ROLL');
+  } else if (plane.onGround) {
+    setFlightPhase('ROTATE', 'ok');
+  } else if (aglFt < 90) {
+    setFlightPhase('GEAR CLEAR', 'ok');
+  } else if (aglFt < 180 && speedKts > 105) {
+    setFlightPhase('LOW RUN', 'warn');
+  } else if (aglFt < 320) {
+    setFlightPhase('CLIMB OUT', 'ok');
+  } else if (Math.abs(aoaDeg) > 17) {
+    setFlightPhase('STALL EDGE', 'warn');
+  } else if (window.__gameScore && window.__gameScore.streak >= 4) {
+    setFlightPhase('STUNT CHAIN', 'ok');
+  } else if (plane.damage.airframe > 0.3 || plane.damage.engine > 0.25) {
+    setFlightPhase('DAMAGED', 'warn');
+  } else {
+    setFlightPhase('FREE FLIGHT', 'ok');
+  }
+}
 function updateStatusGuidance(speedKts, aoaDeg) {
   if (plane.crashed) return;
   if (!running) {
@@ -7760,6 +8197,10 @@ function updateHUD() {
   $aoa.textContent = aoa.toFixed(1);
   if (Math.abs(aoa) > 17) $aoa.className = 'warn';
   else $aoa.className = '';
+  const terrH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
+    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const aglFt = Math.max(0, (plane.pos.y - terrH) * 3.28);
+  updateFlightPhase(sp, aglFt, aoa);
 
   // G-force estimate: lift acceleration / g (smoothed)
   // Approx via rate of change of velocity perpendicular to motion
@@ -7890,6 +8331,7 @@ function animate(now) {
   updateFloatingTarget(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAudio(dt);
+  updateMissionDebrief(dt, plane.vel.length() * 1.94);
   updateHUD();
   updateCombat(dt);
   if (typeof updateGateScoring === 'function') updateGateScoring(dt);
@@ -7944,6 +8386,7 @@ function beginFlight() {
   title.classList.add('hide');
   document.body.classList.remove('preflight');
   running = true;
+  resetMissionDebrief();
   helpStripState.autoCollapsed = false;
   setHelpStripCollapsed(false);
   setAudioEnabled(true);
@@ -8253,6 +8696,9 @@ function updateGateScoring(dt) {
       const pts = Math.round(ring.userData.gatePoints * streakMul * kindBonus * stuntMul);
       score.points += pts;
       score.lastHitAt = now;
+      if (typeof recordMissionMoment === 'function') {
+        recordMissionMoment({ kind, gateLabel, stunts, points: pts });
+      }
 
       playGateChime(score.streak);
       if (combatState) combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + 20);
@@ -9211,14 +9657,14 @@ function updateFloatingTarget(dt) {
   const LS_KEY = 'gfx-settings-v1';
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'med', shadowDistance: 230,
-    dof: false, bloom: true, bloomStrength: 0.42, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0, ambientFxDensity: 1.0,
+    dof: false, bloom: true, bloomStrength: 0.42, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, atmosphereDepth: 1.0, airframeFill: 0.55, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0, ambientFxDensity: 1.0,
     fps: false, renderScale: 1.0, resolutionScale: 1.0, motionBlur: false,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, bloom: false, bloomStrength: 0.18, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, ambientFxDensity: 0.35, renderScale: 0.65, resolutionScale: 0.82 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, renderScale: 0.85, resolutionScale: 0.95 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, renderScale: 1.0,  resolutionScale: 1.0 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, renderScale: 1.0,  resolutionScale: 1.18 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, bloom: false, bloomStrength: 0.18, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, atmosphereDepth: 0.74, airframeFill: 0.30, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, ambientFxDensity: 0.35, renderScale: 0.65, resolutionScale: 0.82 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, renderScale: 0.85, resolutionScale: 0.95 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, renderScale: 1.0,  resolutionScale: 1.0 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, renderScale: 1.0,  resolutionScale: 1.18 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -9312,6 +9758,8 @@ function updateFloatingTarget(dt) {
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
     scene.userData.__nightLift = gfx.nightLift;
+    scene.userData.__atmosphereDepth = Math.max(0.7, Math.min(1.25, gfx.atmosphereDepth || 1.0));
+    scene.userData.__airframeFill = Math.max(0, Math.min(1.4, gfx.airframeFill || 0));
     scene.userData.__replayHeroLight = gfx.replayHeroLight !== false;
     scene.userData.__shadowDistance = gfx.shadowDistance;
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
@@ -9451,12 +9899,14 @@ function updateFloatingTarget(dt) {
     panel.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
     panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
     panel.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));
     panel.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
 
     panel.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
     panel.appendChild(makeSliderRow('nightLift', 0, 0.9, 0.05, 'MOON / NIGHT LIFT', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('airframeFill', 0, 1.4, 0.05, 'AIRFRAME FILL', (v) => `${Math.round(v * 100)}%`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'PERFORMANCE'));
     panel.appendChild(row('FPS meter', makeToggle('fps')));
@@ -9588,6 +10038,8 @@ window.__ap = {
       tod_label: timeOfDay.label,
       terrain_fade: scene.userData.__terrainFade != null ? scene.userData.__terrainFade : 0.58,
       night_lift: scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35,
+      atmosphere_depth: scene.userData.__atmosphereDepth != null ? scene.userData.__atmosphereDepth : 1.0,
+      airframe_fill: scene.userData.__airframeFill != null ? scene.userData.__airframeFill : 0.55,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
@@ -9620,6 +10072,8 @@ window.__ap = {
       turn_smoke_mix: engineSurgeState.greyMix,
       throat_clear_smoke: engineSurgeState.throatClear,
       crash_fx_active: !!combatState.crashFxTriggered,
+      flight_phase: flightPhaseState.label,
+      mission_grade: missionDebriefState.grade,
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
@@ -9662,6 +10116,9 @@ window.__ap = {
     plane.crashed = true;
     plane.vel.set(0, 0, 0);
     combatState.crashFxTriggered = false;
+    setFlightPhase('IMPACT', 'warn');
+    captureMissionDebrief('TERRAIN IMPACT');
+    if (typeof syncReplayUI === 'function') syncReplayUI();
     statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
     statusMsg.className = 'panel warn';
   },
