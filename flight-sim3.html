@@ -163,7 +163,7 @@
   </div>
   <div class="panel" id="controls-help">
     <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
-    <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL THROTTLE DOWN &nbsp; B BRAKE</div>
+    <div id="ch-line2">SHIFT or ↑ THROTTLE UP &nbsp; CTRL or ↓ THROTTLE DOWN &nbsp; B BRAKE</div>
     <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
@@ -181,7 +181,7 @@
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
       <div>2 · PRESS M TO CYCLE PROP MODELS</div>
-      <div>3 · HOLD SHIFT TO BUILD SPEED</div>
+      <div>3 · HOLD SHIFT OR ↑ TO BUILD SPEED</div>
       <div>4 · PRESS S TO ROTATE AND CLIMB</div>
       <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
       <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
@@ -6125,8 +6125,8 @@ function updatePhysics(dt) {
   const yawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
                 - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
 
-  if (keys['ShiftLeft'] || keys['ShiftRight']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
-  if (keys['ControlLeft'] || keys['ControlRight']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
+  if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
+  if (keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
   plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
   maybeTriggerEngineStart();
 
@@ -7201,7 +7201,7 @@ function updateStatusGuidance(speedKts, aoaDeg) {
     message = 'LANDING TRAINING — FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
     className = 'panel ok';
   } else if (plane.onGround && plane.throttle < 0.15) {
-    message = 'HOLD SHIFT TO ADVANCE THROTTLE';
+    message = 'HOLD SHIFT OR ↑ TO ADVANCE THROTTLE';
   } else if (plane.onGround && speedKts < 55) {
     message = 'TAKEOFF ROLL — USE Q/E TO STAY STRAIGHT';
   } else if (plane.onGround) {
