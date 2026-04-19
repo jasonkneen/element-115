@@ -1,5 +1,10 @@
 # Large model files
-*.glb
+models/*.glb
+archive/models-unused/
+archive/backups/
+
+# Archived screenshots (session captures, not source assets)
+archive/screenshots/
 
 # Designer backup (regenerated on first run)
 flight-sim3.html.bak
@@ -13,3 +18,11 @@ autopilot-skills.json
 world-state.json
 feature-requests.json
 build-log.json
+
+# Bun
+node_modules/
+
+# Tool state
+.grok/
+research/_agent_ids.txt
+/.playwright-mcp

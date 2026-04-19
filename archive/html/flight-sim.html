@@ -1,0 +1,1926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canyon Flight Sim</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; overflow: hidden; background: #1a0f0a;
+    font-family: 'SF Mono', 'Courier New', monospace; color: #ffcc66;
+  }
+  canvas { display: block; }
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    font-size: 12px; text-shadow: 0 0 4px #000, 0 0 2px #000;
+    letter-spacing: 0.08em;
+  }
+  .panel {
+    position: absolute; padding: 10px 14px;
+    border: 1px solid rgba(255, 204, 102, 0.35);
+    background: rgba(20, 10, 5, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    line-height: 1.6;
+  }
+  #instruments { top: 18px; left: 18px; min-width: 170px; }
+  #instruments .big { font-size: 22px; color: #ffe0a0; font-weight: bold; }
+  #throttle-wrap { top: 18px; right: 18px; min-width: 180px; }
+  #controls-help { bottom: 18px; left: 18px; font-size: 10px; opacity: 0.75; }
+  #status-msg { bottom: 18px; right: 18px; font-size: 11px; text-align: right; }
+  .bar { height: 6px; background: rgba(255,204,102,0.15); margin: 4px 0; position: relative; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
+  .warn { color: #ff5533; }
+  .ok { color: #66ff99; }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 50px; height: 50px;
+    border: 1px solid rgba(255, 204, 102, 0.35);
+    border-radius: 50%;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: rgba(255, 204, 102, 0.35);
+  }
+  #crosshair::before { top: 50%; left: -12px; right: -12px; height: 1px; }
+  #crosshair::after { left: 50%; top: -12px; bottom: -12px; width: 1px; }
+  #title {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center; padding: 28px 44px;
+    border: 1px solid rgba(255, 204, 102, 0.5);
+    background: rgba(20, 10, 5, 0.7);
+    backdrop-filter: blur(10px);
+    pointer-events: auto; cursor: pointer;
+    transition: opacity 0.4s;
+  }
+  #title h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0.2em; }
+  #title p { margin: 4px 0; font-size: 12px; opacity: 0.85; letter-spacing: 0.1em; }
+  #title .cta { margin-top: 16px; font-size: 14px; color: #ffe0a0; }
+  .hide { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="crosshair"></div>
+  <div class="panel" id="instruments">
+    <div>SPD <span class="big" id="speed">0</span> kts</div>
+    <div>ALT <span class="big" id="altitude">0</span> ft</div>
+    <div>HDG <span id="heading">000</span>° &nbsp; V/S <span id="vspeed">0</span></div>
+    <div>AOA <span id="aoa">0</span>° &nbsp; G <span id="gforce">1.0</span></div>
+    <div style="margin-top:6px;">GEAR <span id="gear" class="ok">DOWN</span></div>
+    <div style="margin-top:4px; font-size:10px; opacity:0.6;">SEED <span id="seed-disp">—</span></div>
+  </div>
+  <div class="panel" id="throttle-wrap">
+    <div>THROTTLE <span id="throttle-val">0</span>%</div>
+    <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
+    <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
+    <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); cursor:pointer; pointer-events:auto;" id="style-btn">
+      STYLE [T] <span id="style-ind" class="ok">REALISTIC</span>
+    </div>
+  </div>
+  <div class="panel" id="controls-help">
+    W/S PITCH &nbsp; A/D ROLL &nbsp; Q/E YAW<br>
+    SHIFT THROTTLE UP &nbsp; CTRL DOWN<br>
+    G GEAR &nbsp; B BRAKE &nbsp; T STYLE &nbsp; R RESET
+  </div>
+  <div class="panel" id="status-msg">READY FOR DEPARTURE</div>
+  <div id="title">
+    <h1>CANYON AIRSTRIP</h1>
+    <p>TAKEOFF · NAVIGATE · REGENERATIVE TERRAIN</p>
+    <p>Full throttle (SHIFT) until ~140 kts, then pull back (S) gently</p>
+    <p style="margin-top:14px; font-size:10px; opacity:0.55;">SEED <span id="seed-display">----</span> · DETERMINISTIC WORLD</p>
+    <div class="cta">&gt; CLICK TO BEGIN &lt;</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+// =============================================================
+//  SEED + NOISE — deterministic worldgen
+// =============================================================
+const SEED = 8472;          // change this to roll a different canyon
+const SEED_OX = (SEED * 17.31) % 1000;
+const SEED_OY = (SEED * 23.79) % 1000;
+const hash2 = (x, y) => {
+  const s = Math.sin((x + SEED_OX) * 127.1 + (y + SEED_OY) * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+};
+// Deterministic 0–1 PRNG for placement (rocks, vegetation, etc.)
+function srand(a, b, salt = 0) {
+  const s = Math.sin(a * 12.9898 + b * 78.233 + salt * 37.719 + SEED * 0.1417) * 43758.5453;
+  return s - Math.floor(s);
+}
+const smoothstep = t => t * t * (3 - 2 * t);
+function vnoise(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const u = smoothstep(fx), v = smoothstep(fy);
+  const a = hash2(ix, iy);
+  const b = hash2(ix + 1, iy);
+  const c = hash2(ix, iy + 1);
+  const d = hash2(ix + 1, iy + 1);
+  return a * (1 - u) * (1 - v) + b * u * (1 - v) +
+         c * (1 - u) * v + d * u * v;
+}
+function fbm(x, y, oct) {
+  let v = 0, a = 1, f = 1, tot = 0;
+  for (let i = 0; i < oct; i++) {
+    v += a * vnoise(x * f, y * f);
+    tot += a;
+    a *= 0.5; f *= 2;
+  }
+  return v / tot;
+}
+
+// =============================================================
+//  TERRAIN HEIGHTMAP — canyon mesas with runway clearing
+// =============================================================
+function getHeight(x, z) {
+  const dist = Math.sqrt(x * x + z * z);
+  // Smooth runway clearing: flat for 220m, ramp up over next 180m
+  const maskT = Math.min(1, Math.max(0, (dist - 220) / 180));
+  const mask = smoothstep(maskT);
+
+  let h = 0, amp = 1, freq = 0.0018, tot = 0;
+  for (let i = 0; i < 5; i++) {
+    const n = vnoise(x * freq, z * freq);
+    h += amp * (1 - Math.abs(n * 2 - 1)); // ridged
+    tot += amp;
+    amp *= 0.5; freq *= 2;
+  }
+  h = Math.pow(h / tot, 2.4) * 260;
+
+  // Large-scale variation: wider valleys / higher plateaus
+  h += (fbm(x * 0.0006, z * 0.0006, 3) - 0.4) * 120;
+  h = Math.max(0, h);
+
+  // Terracing for mesa tops
+  const step = 28;
+  const t = h / step;
+  const base = Math.floor(t);
+  const frac = t - base;
+  const tr = frac < 0.72 ? 0 : smoothstep((frac - 0.72) / 0.28);
+  h = (base + tr) * step;
+
+  return h * mask;
+}
+
+// =============================================================
+//  SCENE
+// =============================================================
+const SKY_TOP = new THREE.Color(0x4a7ca8);
+const SKY_BOT = new THREE.Color(0xffd4a0);
+const FOG_COLOR = 0xe8b888;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(FOG_COLOR);
+scene.fog = new THREE.Fog(FOG_COLOR, 400, 3200);
+
+const camera = new THREE.PerspectiveCamera(
+  72, window.innerWidth / window.innerHeight, 0.8, 6500
+);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true, powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+// Sky dome
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: {
+    topColor: { value: SKY_TOP },
+    bottomColor: { value: SKY_BOT },
+    offset: { value: 100 },
+    exponent: { value: 0.55 },
+  },
+  vertexShader: `
+    varying vec3 vW;
+    void main() {
+      vW = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform vec3 topColor;
+    uniform vec3 bottomColor;
+    uniform float offset;
+    uniform float exponent;
+    varying vec3 vW;
+    void main() {
+      float h = normalize(vW + vec3(0.0, offset, 0.0)).y;
+      gl_FragColor = vec4(mix(bottomColor, topColor, pow(max(h, 0.0), exponent)), 1.0);
+    }`,
+  side: THREE.BackSide,
+  depthWrite: false,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(5500, 32, 16), skyMat);
+scene.add(sky);
+
+// Lights
+const sun = new THREE.DirectionalLight(0xfff1d4, 1.35);
+sun.position.set(400, 500, 200);
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x8aaacc, 0xc68855, 0.5));
+scene.add(new THREE.AmbientLight(0x5a4a3a, 0.35));
+
+// =============================================================
+//  SAND SHADER — custom material for terrain
+//  Wind-rippled normals, sun sparkle, hemisphere fill, backscatter
+// =============================================================
+const SAND_VS = `
+  attribute vec3 color;
+  varying vec3 vColor;
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  void main() {
+    vColor = color;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const SAND_FS = `
+  precision highp float;
+  uniform vec3 sunDir;
+  uniform vec3 sunColor;
+  uniform vec3 ambientColor;
+  uniform vec3 skyTint;
+  uniform vec3 groundTint;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vColor;
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+
+  // Stable hash for sparkle noise
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec2 uv = vWorldPos.xz;
+
+    // ---- Wind-blown sand ripples ----
+    // Multiple sin waves at different angles + scales = natural look
+    float r1 = cos(uv.x * 0.55 + uv.y * 0.21);
+    float r2 = cos(uv.y * 0.62 - uv.x * 0.27 + 1.7);
+    float r3 = cos((uv.x + uv.y) * 0.13);
+    // Mid-frequency dune-edge perturbation
+    float r4 = cos(uv.x * 1.8 + uv.y * 0.6) * 0.3;
+    float r5 = cos(uv.y * 1.6 - uv.x * 1.2 + 0.5) * 0.3;
+    vec3 rippleN = normalize(vec3(
+      r1 * 0.06 + r3 * 0.02 + r4 * 0.025,
+      1.0,
+      r2 * 0.06 + r3 * 0.02 + r5 * 0.025
+    ));
+
+    // Apply ripples ONLY on sandy/flat areas, not steep cliff faces
+    float flatness = smoothstep(0.55, 0.92, N.y);
+    vec3 perturbed = normalize(mix(N, normalize(N + (rippleN - vec3(0.0, 1.0, 0.0)) * 0.7), flatness));
+
+    // ---- Lighting ----
+    vec3 L = normalize(sunDir);
+    float NdotL = max(dot(perturbed, L), 0.0);
+
+    // Hemisphere fill (sky from above, warm bounce from ground)
+    float hemi = perturbed.y * 0.5 + 0.5;
+    vec3 hemiCol = mix(groundTint, skyTint, hemi);
+
+    vec3 diffuse = vColor * (NdotL * sunColor + hemiCol * 0.45 + ambientColor);
+
+    // ---- Specular + sand sparkle ----
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 H = normalize(L + V);
+    float NdotH = max(dot(perturbed, H), 0.0);
+    // Soft broad spec — sand isn't shiny, but has some
+    float spec = pow(NdotH, 22.0) * 0.18 * flatness;
+    // Crystalline sparkle — high-freq noise threshold gated by viewing angle
+    float sparkleNoise = vnoise(uv * 55.0);
+    float sparkleMask = smoothstep(0.79, 0.93, sparkleNoise) * pow(NdotH, 90.0) * flatness;
+    vec3 sparkle = sunColor * sparkleMask * 5.0;
+
+    // ---- Subsurface backscatter ----
+    // Sand glows slightly when sun is behind it (light passes through grains)
+    float backLight = max(dot(-perturbed, L), 0.0);
+    vec3 backScatter = vColor * sunColor * backLight * 0.07;
+
+    // ---- Rim light at grazing angles (atmospheric glow) ----
+    float rim = 1.0 - max(dot(N, V), 0.0);
+    rim = pow(rim, 2.5) * 0.15;
+    vec3 rimCol = mix(vColor, fogColor, 0.6) * rim;
+
+    vec3 color = diffuse + spec * sunColor + sparkle + backScatter + rimCol;
+
+    // ---- Linear fog ----
+    float dist = length(vWorldPos - cameraPosition);
+    float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    color = mix(color, fogColor, fogF);
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const sandMat = new THREE.ShaderMaterial({
+  uniforms: {
+    sunDir:        { value: sun.position.clone().normalize() },
+    sunColor:      { value: new THREE.Color(0xfff1d4) },
+    ambientColor:  { value: new THREE.Color(0x2a2520) },
+    skyTint:       { value: new THREE.Color(0x88aacc) },
+    groundTint:    { value: new THREE.Color(0x6a4830) },
+    fogColor:      { value: new THREE.Color(0xe8b888) },
+    fogNear:       { value: 400 },
+    fogFar:        { value: 3200 },
+  },
+  vertexShader: SAND_VS,
+  fragmentShader: SAND_FS,
+});
+
+// =============================================================
+//  LOW-POLY SHADER — flat-shaded cel rendering for stylised mode
+// =============================================================
+const LOWPOLY_FS = `
+  #extension GL_OES_standard_derivatives : enable
+  precision highp float;
+  uniform vec3 sunDir;
+  uniform vec3 sunColor;
+  uniform vec3 ambientColor;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vColor;
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+
+  void main() {
+    // True flat shading: derive normal from screen-space position derivatives,
+    // so every triangle gets one solid color regardless of vertex normals
+    vec3 dx = dFdx(vWorldPos);
+    vec3 dy = dFdy(vWorldPos);
+    vec3 N = normalize(cross(dx, dy));
+    if (N.y < 0.0) N = -N;
+
+    vec3 L = normalize(sunDir);
+    float NdotL = dot(N, L);
+
+    // Cel-shaded: 4 hard light bands
+    float band;
+    if (NdotL > 0.7)       band = 1.10;
+    else if (NdotL > 0.35) band = 0.85;
+    else if (NdotL > 0.0)  band = 0.62;
+    else                   band = 0.45;
+
+    // Posterise color into 8 levels per channel — punchy palette
+    vec3 c = vColor * 1.10;
+    c = floor(c * 8.0) / 8.0;
+    // Boost saturation a bit
+    float lum = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(lum), c, 1.25);
+
+    // Subtle hemisphere fill
+    float hemi = N.y * 0.5 + 0.5;
+    vec3 hemiCol = mix(vec3(0.55, 0.40, 0.30), vec3(0.65, 0.78, 0.92), hemi);
+
+    vec3 color = c * (band * sunColor + hemiCol * 0.35 + ambientColor);
+
+    // Lighter fog so the stylised palette stays readable
+    float dist = length(vWorldPos - cameraPosition);
+    float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    color = mix(color, fogColor, fogF * 0.85);
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+const sandMatLowPoly = new THREE.ShaderMaterial({
+  uniforms: {
+    sunDir:       { value: sun.position.clone().normalize() },
+    sunColor:     { value: new THREE.Color(0xfff1d4) },
+    ambientColor: { value: new THREE.Color(0x3a3328) },
+    fogColor:     { value: new THREE.Color(0xe8b888) },
+    fogNear:      { value: 600 },
+    fogFar:       { value: 3500 },
+  },
+  vertexShader: SAND_VS,
+  fragmentShader: LOWPOLY_FS,
+  extensions: { derivatives: true },
+});
+
+// =============================================================
+//  TERRAIN CHUNKS
+// =============================================================
+const CHUNK_SIZE = 600;
+const CHUNK_RES = 60;
+const RENDER_RADIUS = 3; // 7x7 chunks
+const ROCKS_PER_CHUNK = 90;
+const chunks = new Map();
+const chunkKey = (cx, cz) => `${cx},${cz}`;
+
+// Sedimentary strata — bands of color at fixed elevations (Grand Canyon style)
+const STRATA = [
+  { h: -10, c: new THREE.Color(0x3a2218) },
+  { h:   6, c: new THREE.Color(0x5a3220) },
+  { h:  22, c: new THREE.Color(0x8a4d2e) },
+  { h:  42, c: new THREE.Color(0xb16b40) },
+  { h:  60, c: new THREE.Color(0xc78854) },
+  { h:  92, c: new THREE.Color(0xd49868) },
+  { h: 130, c: new THREE.Color(0xdfb486) },
+  { h: 180, c: new THREE.Color(0xe2c79c) },
+  { h: 260, c: new THREE.Color(0xdcc7a4) },
+];
+const CLIFF_TINT = new THREE.Color(0x7a3c22);
+
+function strataColor(h, out) {
+  for (let i = 0; i < STRATA.length - 1; i++) {
+    if (h <= STRATA[i + 1].h) {
+      const t = (h - STRATA[i].h) / (STRATA[i + 1].h - STRATA[i].h);
+      out.copy(STRATA[i].c).lerp(STRATA[i + 1].c, Math.max(0, Math.min(1, t)));
+      return out;
+    }
+  }
+  out.copy(STRATA[STRATA.length - 1].c);
+  return out;
+}
+
+// Shared rock asset (one geo + one mat reused across all chunks via instancing)
+const rockGeo = (() => {
+  const g = new THREE.DodecahedronGeometry(1, 0);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const n = Math.sin(x * 4.7 + SEED) * Math.cos(y * 3.1) * Math.sin(z * 5.3);
+    p.setXYZ(i, x * (1 + n * 0.28), y * (1 + n * 0.18), z * (1 + n * 0.22));
+  }
+  g.computeVertexNormals();
+  return g;
+})();
+const rockMat = new THREE.MeshLambertMaterial({ color: 0x9c6840 });
+
+function makeChunk(cx, cz) {
+  const group = new THREE.Group();
+
+  const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, CHUNK_RES, CHUNK_RES);
+  geo.rotateX(-Math.PI / 2);
+
+  const cxW = (cx + 0.5) * CHUNK_SIZE;
+  const czW = (cz + 0.5) * CHUNK_SIZE;
+
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const tmp = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    const lx = pos.getX(i);
+    const lz = pos.getZ(i);
+    const wx = cxW + lx;
+    const wz = czW + lz;
+    const h = getHeight(wx, wz);
+    pos.setY(i, h);
+
+    // Sedimentary strata
+    strataColor(h, tmp);
+
+    // Cliff face tint — steep slopes turn warmer / darker
+    const hN = getHeight(wx + 5, wz);
+    const hE = getHeight(wx, wz + 5);
+    const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.045);
+    if (slope > 0.25) {
+      tmp.lerp(CLIFF_TINT, (slope - 0.25) * 0.55);
+    }
+
+    // Two-octave noise variation for natural mottling
+    const n1 = vnoise(wx * 0.045, wz * 0.045);
+    const n2 = vnoise(wx * 0.011, wz * 0.011);
+    tmp.multiplyScalar(0.78 + n1 * 0.22 + (n2 - 0.5) * 0.18);
+
+    colors[i * 3] = tmp.r;
+    colors[i * 3 + 1] = tmp.g;
+    colors[i * 3 + 2] = tmp.b;
+  }
+
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geo, sandMat);
+  mesh.position.set(cxW, 0, czW);
+  group.add(mesh);
+
+  // ---- Instanced rocks ----
+  const rocks = new THREE.InstancedMesh(rockGeo, rockMat, ROCKS_PER_CHUNK);
+  const dummy = new THREE.Object3D();
+  let added = 0;
+  for (let i = 0; i < ROCKS_PER_CHUNK * 2 && added < ROCKS_PER_CHUNK; i++) {
+    const r1 = srand(cx, cz, i * 2);
+    const r2 = srand(cx, cz, i * 2 + 1);
+    const lxr = (r1 - 0.5) * CHUNK_SIZE;
+    const lzr = (r2 - 0.5) * CHUNK_SIZE;
+    const wx = cxW + lxr;
+    const wz = czW + lzr;
+    const dist = Math.sqrt(wx * wx + wz * wz);
+    if (dist < 280) continue;                 // keep airfield clear
+    const h = getHeight(wx, wz);
+    if (h < 4) continue;                       // skip valley floors
+    const scl = 0.6 + srand(cx, cz, i + 100) * 3.2;
+    dummy.position.set(wx, h - scl * 0.3, wz);
+    dummy.rotation.set(
+      srand(cx, cz, i + 200) * Math.PI,
+      srand(cx, cz, i + 300) * Math.PI * 2,
+      srand(cx, cz, i + 400) * Math.PI
+    );
+    dummy.scale.set(scl, scl * (0.7 + srand(cx, cz, i + 500) * 0.6), scl);
+    dummy.updateMatrix();
+    rocks.setMatrixAt(added, dummy.matrix);
+    added++;
+  }
+  rocks.count = added;
+  rocks.instanceMatrix.needsUpdate = true;
+  group.add(rocks);
+
+  scene.add(group);
+  return { group, geo, terrainMesh: mesh };
+}
+
+function updateChunks(px, pz) {
+  const pcx = Math.floor(px / CHUNK_SIZE);
+  const pcz = Math.floor(pz / CHUNK_SIZE);
+  const wanted = new Set();
+
+  for (let dz = -RENDER_RADIUS; dz <= RENDER_RADIUS; dz++) {
+    for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
+      const cx = pcx + dx, cz = pcz + dz;
+      const key = chunkKey(cx, cz);
+      wanted.add(key);
+      if (!chunks.has(key)) chunks.set(key, makeChunk(cx, cz));
+    }
+  }
+
+  for (const [key, c] of chunks) {
+    if (!wanted.has(key)) {
+      scene.remove(c.group);
+      c.geo.dispose();
+      // sandMat + rockGeo + rockMat are shared across chunks — don't dispose
+      chunks.delete(key);
+    }
+  }
+}
+
+// =============================================================
+//  RUNWAY + TOWER
+// =============================================================
+function buildAirfield() {
+  const g = new THREE.Group();
+
+  // Runway — long strip along -Z
+  const runway = new THREE.Mesh(
+    new THREE.PlaneGeometry(28, 320),
+    new THREE.MeshLambertMaterial({ color: 0x28252a })
+  );
+  runway.rotation.x = -Math.PI / 2;
+  runway.position.set(0, 0.02, 0);
+  g.add(runway);
+
+  // Center dashed line
+  for (let z = -140; z <= 140; z += 14) {
+    const dash = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfff0cc })
+    );
+    dash.rotation.x = -Math.PI / 2;
+    dash.position.set(0, 0.03, z);
+    g.add(dash);
+  }
+
+  // Threshold stripes (end markings)
+  for (let i = -5; i <= 5; i++) {
+    if (i === 0) continue;
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 9),
+      new THREE.MeshBasicMaterial({ color: 0xfff0cc })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(i * 2.4, 0.03, -155);
+    g.add(m);
+    const m2 = m.clone();
+    m2.position.z = 155;
+    g.add(m2);
+  }
+
+  // Taxiway apron
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(44, 40),
+    new THREE.MeshLambertMaterial({ color: 0x2f2a28 })
+  );
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.set(26, 0.015, 130);
+  g.add(apron);
+
+  // Tower
+  const towerGrp = new THREE.Group();
+  towerGrp.position.set(38, 0, 70);
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0xbba487, roughness: 0.9, metalness: 0.05 });
+  const towerDark = new THREE.MeshStandardMaterial({ color: 0x2a2d36, roughness: 0.6, metalness: 0.2 });
+  const towerGlass = new THREE.MeshStandardMaterial({
+    color: 0x0a2838, roughness: 0.1, metalness: 1.0,
+    transparent: true, opacity: 0.85
+  });
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 8), towerMat);
+  base.position.y = 2;
+  towerGrp.add(base);
+
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.8, 16, 10), towerMat);
+  shaft.position.y = 12;
+  towerGrp.add(shaft);
+
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 2.6, 1, 12), towerDark);
+  deck.position.y = 20.5;
+  towerGrp.add(deck);
+
+  const cabin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 2.8, 12), towerGlass);
+  cabin.position.y = 22.4;
+  towerGrp.add(cabin);
+
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0, 3.3, 1.2, 12), towerDark);
+  roof.position.y = 24.4;
+  towerGrp.add(roof);
+
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4), towerDark);
+  antenna.position.y = 27;
+  towerGrp.add(antenna);
+
+  g.add(towerGrp);
+
+  // Some hangars / crates as set dressing
+  const crateMat = new THREE.MeshStandardMaterial({ color: 0x9a7d5a, roughness: 0.95 });
+  for (let i = 0; i < 4; i++) {
+    const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMat);
+    c.position.set(30 + (i % 2) * 8, 1.5, 155 - Math.floor(i / 2) * 6);
+    g.add(c);
+  }
+
+  // Hangar — semi-cylinder for visibility from altitude
+  const hangarMat = new THREE.MeshStandardMaterial({ color: 0x8a8275, roughness: 0.85, metalness: 0.15 });
+  const hangar = new THREE.Mesh(
+    new THREE.CylinderGeometry(7, 7, 16, 18, 1, true, 0, Math.PI),
+    hangarMat
+  );
+  hangar.rotation.z = Math.PI / 2;
+  hangar.position.set(56, 0, 130);
+  hangar.material.side = THREE.DoubleSide;
+  g.add(hangar);
+  // Hangar back wall
+  const hangarBack = new THREE.Mesh(
+    new THREE.PlaneGeometry(14, 7),
+    new THREE.MeshStandardMaterial({ color: 0x6d6655, roughness: 0.9 })
+  );
+  hangarBack.position.set(56, 3.5, 138);
+  g.add(hangarBack);
+
+  // Fuel tanks
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0xb8a285, roughness: 0.7, metalness: 0.4 });
+  for (let i = 0; i < 2; i++) {
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 4, 16), tankMat);
+    tank.position.set(-30 + i * 6, 2, 100);
+    g.add(tank);
+  }
+
+  // Radio mast
+  const mastMat = new THREE.MeshStandardMaterial({ color: 0xaa3322, roughness: 0.6 });
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.4, 30, 6), mastMat);
+  mast.position.set(-40, 15, 60);
+  g.add(mast);
+  // Red beacon at mast top
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff2200 })
+  );
+  beacon.position.set(-40, 30.3, 60);
+  g.add(beacon);
+
+  // Runway edge lights
+  const lightMat = new THREE.MeshBasicMaterial({ color: 0xffe499 });
+  for (let z = -150; z <= 150; z += 20) {
+    const lw = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), lightMat);
+    lw.position.set(-15, 0.3, z);
+    g.add(lw);
+    const le = lw.clone();
+    le.position.x = 15;
+    g.add(le);
+  }
+
+  // Approach lights — extending past runway ends, helps spot field from air
+  const approachMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (let i = 1; i <= 8; i++) {
+    const z1 = -160 - i * 12;
+    const z2 = 160 + i * 12;
+    const w = 1 + i * 0.4;
+    const a1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.5), approachMat);
+    a1.position.set(0, 0.05, z1);
+    g.add(a1);
+    const a2 = a1.clone();
+    a2.position.z = z2;
+    g.add(a2);
+  }
+
+  scene.add(g);
+}
+buildAirfield();
+
+// =============================================================
+//  FIGHTER JET
+// =============================================================
+function makeJet() {
+  const root = new THREE.Group();
+
+  const matFuse = new THREE.MeshStandardMaterial({
+    color: 0x6d7580, metalness: 0.55, roughness: 0.5
+  });
+  const matDark = new THREE.MeshStandardMaterial({
+    color: 0x292c34, metalness: 0.8, roughness: 0.35
+  });
+  const matCanopy = new THREE.MeshStandardMaterial({
+    color: 0x1a3045, metalness: 1.0, roughness: 0.18,
+    transparent: true, opacity: 0.55
+  });
+  const matAccent = new THREE.MeshStandardMaterial({
+    color: 0x9a1a28, metalness: 0.3, roughness: 0.7
+  });
+  const matTire = new THREE.MeshStandardMaterial({
+    color: 0x151515, metalness: 0.1, roughness: 0.95
+  });
+
+  // Fuselage — elongated along Z (plane's forward is -Z)
+  const fuse = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.05, 0.55, 13, 14),
+    matFuse
+  );
+  fuse.rotation.x = Math.PI / 2;
+  fuse.position.z = 1;
+  root.add(fuse);
+
+  // Nose cone
+  const nose = new THREE.Mesh(
+    new THREE.ConeGeometry(0.55, 3, 14),
+    matFuse
+  );
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -6.6;
+  root.add(nose);
+
+  // Engine nozzle
+  const nozzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.7, 1.2, 14),
+    matDark
+  );
+  nozzle.rotation.x = Math.PI / 2;
+  nozzle.position.z = 8;
+  root.add(nozzle);
+
+  // Nozzle inner glow ring
+  const nozRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.65, 0.65, 0.2, 14),
+    new THREE.MeshBasicMaterial({ color: 0x441100 })
+  );
+  nozRing.rotation.x = Math.PI / 2;
+  nozRing.position.z = 8.5;
+  root.add(nozRing);
+
+  // Canopy — stretched half-sphere
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.95, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    matCanopy
+  );
+  canopy.scale.set(1, 0.55, 2.4);
+  canopy.position.set(0, 0.6, -1.5);
+  root.add(canopy);
+
+  // --- Wings: swept delta with two-tone paint (darker top, lighter belly) ---
+  function makeWing() {
+    const g = new THREE.BoxGeometry(11, 0.22, 3.2, 4, 1, 2);
+    const p = g.attributes.position;
+    const cols = new Float32Array(p.count * 3);
+    const top = new THREE.Color(0x5a626d);
+    const bot = new THREE.Color(0x8a96a8);
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const y = p.getY(i);
+      const z = p.getZ(i);
+      const ax = Math.abs(x);
+      // Taper chord at wingtips
+      const taper = 1 - (ax / 5.5) * 0.55;
+      // Sweep back trailing edge
+      const sweep = ax * 0.38;
+      p.setZ(i, z * taper + sweep);
+      // Slight dihedral (wings tilt up)
+      p.setY(i, p.getY(i) + ax * 0.04);
+      const c = y > 0 ? top : bot;
+      cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+  const wingMat = new THREE.MeshStandardMaterial({
+    vertexColors: true, metalness: 0.55, roughness: 0.5
+  });
+  const wings = new THREE.Mesh(makeWing(), wingMat);
+  wings.position.set(0, -0.1, 0.8);
+  root.add(wings);
+
+  // Wing accent stripes
+  const stripeL = new THREE.Mesh(
+    new THREE.BoxGeometry(2.8, 0.03, 0.4), matAccent
+  );
+  stripeL.position.set(-3, 0.02, 1.2);
+  root.add(stripeL);
+  const stripeR = stripeL.clone();
+  stripeR.position.x = 3;
+  root.add(stripeR);
+
+  // --- Vertical tail ---
+  function makeTail() {
+    const g = new THREE.BoxGeometry(0.22, 2.2, 2.6, 1, 2, 2);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      const z = p.getZ(i);
+      // Taper top, sweep back
+      const ay = Math.max(0, y);
+      p.setZ(i, z * (1 - ay * 0.35) + ay * 0.7);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+  const tail = new THREE.Mesh(makeTail(), matFuse);
+  tail.position.set(0, 1.1, 5.5);
+  root.add(tail);
+
+  // Horizontal stabilizers
+  function makeHStab() {
+    const g = new THREE.BoxGeometry(4.4, 0.15, 1.5, 2, 1, 1);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const z = p.getZ(i);
+      const ax = Math.abs(x);
+      p.setZ(i, z * (1 - ax * 0.25) + ax * 0.4);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+  const hstab = new THREE.Mesh(makeHStab(), matFuse);
+  hstab.position.set(0, 0.1, 6.3);
+  root.add(hstab);
+
+  // Engine intakes (sides)
+  function addIntake(x) {
+    const intake = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.9, 2.4),
+      matDark
+    );
+    intake.position.set(x, -0.25, -0.5);
+    root.add(intake);
+    const inside = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.55, 0.3),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+    );
+    inside.position.set(x, -0.25, -1.6);
+    root.add(inside);
+  }
+  addIntake(-1.0);
+  addIntake(1.0);
+
+  // --- Landing gear ---
+  function makeGear(isNose) {
+    const grp = new THREE.Group();
+    const strutH = isNose ? 1.3 : 1.6;
+    const wheelR = isNose ? 0.22 : 0.3;
+    const strut = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, strutH, 8),
+      matDark
+    );
+    strut.position.y = -strutH / 2;
+    grp.add(strut);
+    const wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(wheelR, wheelR, 0.22, 14),
+      matTire
+    );
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.y = -strutH;
+    grp.add(wheel);
+    return grp;
+  }
+
+  // Nose gear — retracts forward/up
+  const gearNose = makeGear(true);
+  gearNose.position.set(0, -0.6, -4.2);
+  root.add(gearNose);
+
+  // Left main gear — retracts inward/up
+  const gearL = makeGear(false);
+  gearL.position.set(-1.8, -0.4, 1.2);
+  root.add(gearL);
+
+  // Right main gear
+  const gearR = makeGear(false);
+  gearR.position.set(1.8, -0.4, 1.2);
+  root.add(gearR);
+
+  // --- Afterburner glow ---
+  const abMat = new THREE.MeshBasicMaterial({
+    color: 0xff8833,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const abGeo = new THREE.ConeGeometry(0.55, 3.5, 14, 1, true);
+  abGeo.translate(0, -1.75, 0);
+  const afterburner = new THREE.Mesh(abGeo, abMat);
+  afterburner.rotation.x = -Math.PI / 2;
+  afterburner.position.z = 8.6;
+  root.add(afterburner);
+
+  // Secondary glow (inner, hotter)
+  const ab2 = new THREE.Mesh(
+    new THREE.ConeGeometry(0.35, 2, 12, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffddaa,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  ab2.geometry.translate(0, -1, 0);
+  ab2.rotation.x = -Math.PI / 2;
+  ab2.position.z = 8.6;
+  root.add(ab2);
+
+  // ============ COCKPIT INTERIOR (visible through canopy) ============
+  const seatMat = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.85 });
+  const helmetMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e4d8, roughness: 0.4, metalness: 0.2
+  });
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: 0x0a0f18, roughness: 0.1, metalness: 1.0
+  });
+  // Ejection seat
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.85, 0.55), seatMat);
+  seat.position.set(0, 0.1, -1.5);
+  root.add(seat);
+  const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.18), seatMat);
+  seatBack.position.set(0, 0.55, -1.25);
+  root.add(seatBack);
+  // Pilot helmet
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), helmetMat);
+  helmet.position.set(0, 1.0, -1.6);
+  root.add(helmet);
+  // Visor (front of helmet)
+  const visor = new THREE.Mesh(
+    new THREE.SphereGeometry(0.225, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    visorMat
+  );
+  visor.rotation.x = Math.PI * 0.4;
+  visor.position.set(0, 1.0, -1.62);
+  root.add(visor);
+  // HUD glass plate in front of pilot
+  const hudGlass = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.45, 0.3),
+    new THREE.MeshStandardMaterial({
+      color: 0x66ff99, transparent: true, opacity: 0.18,
+      side: THREE.DoubleSide, emissive: 0x224422, emissiveIntensity: 0.4
+    })
+  );
+  hudGlass.position.set(0, 0.95, -2.05);
+  hudGlass.rotation.x = -0.15;
+  root.add(hudGlass);
+  // Instrument panel
+  const panel = new THREE.Mesh(
+    new THREE.BoxGeometry(0.6, 0.25, 0.15),
+    new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.7 })
+  );
+  panel.position.set(0, 0.6, -2.4);
+  root.add(panel);
+
+  // ============ PITOT TUBE on nose tip ============
+  const pitot = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.04, 0.025, 0.9, 6), matDark
+  );
+  pitot.rotation.x = Math.PI / 2;
+  pitot.position.z = -8.3;
+  root.add(pitot);
+
+  // ============ ANTENNAS ============
+  const ant1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.35, 0.18), matDark);
+  ant1.position.set(0, 1.15, 3.5);
+  root.add(ant1);
+  const ant2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.12), matDark);
+  ant2.position.set(0, -0.85, -3.2);
+  root.add(ant2);
+
+  // ============ WEAPONS LOADOUT ============
+  function makeMissile(length, dia, bodyColor) {
+    const grp = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: bodyColor, metalness: 0.35, roughness: 0.45
+    });
+    const finMat = new THREE.MeshStandardMaterial({
+      color: 0x33363a, metalness: 0.5, roughness: 0.6
+    });
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(dia, dia, length * 0.78, 12), bodyMat
+    );
+    body.rotation.x = Math.PI / 2;
+    body.position.z = length * 0.05;
+    grp.add(body);
+    const tip = new THREE.Mesh(
+      new THREE.ConeGeometry(dia, length * 0.22, 12), bodyMat
+    );
+    tip.rotation.x = -Math.PI / 2;
+    tip.position.z = -length * 0.45;
+    grp.add(tip);
+    // 4 tail fins (cruciform)
+    for (let i = 0; i < 4; i++) {
+      const finWrap = new THREE.Group();
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.025, dia * 2.4, length * 0.18), finMat
+      );
+      fin.position.y = dia + dia * 1.0;
+      finWrap.add(fin);
+      finWrap.rotation.z = i * Math.PI / 2;
+      finWrap.position.z = length * 0.36;
+      grp.add(finWrap);
+    }
+    // Front canards (smaller fins toward nose)
+    for (let i = 0; i < 4; i++) {
+      const finWrap = new THREE.Group();
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.02, dia * 1.6, length * 0.10), finMat
+      );
+      fin.position.y = dia + dia * 0.6;
+      finWrap.add(fin);
+      finWrap.rotation.z = i * Math.PI / 2 + Math.PI / 4;
+      finWrap.position.z = -length * 0.18;
+      grp.add(finWrap);
+    }
+    return grp;
+  }
+
+  const pylonMat = new THREE.MeshStandardMaterial({
+    color: 0x4a4f58, metalness: 0.6, roughness: 0.5
+  });
+
+  // 4 underwing pylons + AAMs (inner = larger, outer = sidewinder)
+  const hardpoints = [
+    { x: -3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+    { x: -1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+    { x:  1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+    { x:  3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+  ];
+  for (const hp of hardpoints) {
+    const pylon = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, hp.pylonH, 0.55), pylonMat
+    );
+    pylon.position.set(hp.x, -0.32 - hp.pylonH * 0.5, 0.95);
+    root.add(pylon);
+    const m = makeMissile(hp.len, hp.dia, hp.color);
+    m.position.set(hp.x, -0.32 - hp.pylonH - hp.dia, 0.95);
+    root.add(m);
+  }
+
+  // Wingtip launch rails — small AIM-9 style sidewinders
+  for (const x of [-5.35, 5.35]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.15, 0.7), pylonMat);
+    rail.position.set(x, 0.05, 1.05);
+    root.add(rail);
+    const aim = makeMissile(1.6, 0.10, 0xeeeae0);
+    aim.position.set(x, 0.05, 1.05);
+    root.add(aim);
+  }
+
+  // Belly centerline fuel tank
+  const cfTank = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.32, 3.2, 14),
+    new THREE.MeshStandardMaterial({ color: 0x6d7580, metalness: 0.4, roughness: 0.6 })
+  );
+  cfTank.rotation.x = Math.PI / 2;
+  cfTank.position.set(0, -0.85, 1.0);
+  root.add(cfTank);
+  const cfTip = new THREE.Mesh(
+    new THREE.ConeGeometry(0.32, 0.7, 14),
+    cfTank.material
+  );
+  cfTip.rotation.x = -Math.PI / 2;
+  cfTip.position.set(0, -0.85, -0.85);
+  root.add(cfTip);
+  const cfBack = new THREE.Mesh(
+    new THREE.ConeGeometry(0.32, 0.6, 14),
+    cfTank.material
+  );
+  cfBack.rotation.x = Math.PI / 2;
+  cfBack.position.set(0, -0.85, 2.85);
+  root.add(cfBack);
+
+  // Hookup refs for animation + particle emitters
+  root.userData.gearNose = gearNose;
+  root.userData.gearL = gearL;
+  root.userData.gearR = gearR;
+  root.userData.afterburner = afterburner;
+  root.userData.ab2 = ab2;
+  // Local-space anchor points for vapor trails (used by emitters)
+  root.userData.wingtipL = new THREE.Vector3(-5.45, 0.05, 1.2);
+  root.userData.wingtipR = new THREE.Vector3( 5.45, 0.05, 1.2);
+  root.userData.engineExhaust = new THREE.Vector3(0, 0, 9.5);
+
+  return root;
+}
+
+const jet = makeJet();
+scene.add(jet);
+
+// =============================================================
+//  STYLE TOGGLE — realistic ↔ low-poly stylised
+// =============================================================
+const styleMode = { current: 'realistic' };
+
+// Low-poly rock material — flat shaded, brighter
+const rockMatLowPoly = new THREE.MeshLambertMaterial({
+  color: 0xc88555, flatShading: true
+});
+
+function applyStyle() {
+  const lowPoly = styleMode.current === 'lowpoly';
+  const sandM = lowPoly ? sandMatLowPoly : sandMat;
+  const rockM = lowPoly ? rockMatLowPoly : rockMat;
+
+  // Swap terrain + rock materials on every existing chunk
+  for (const c of chunks.values()) {
+    if (c.terrainMesh) c.terrainMesh.material = sandM;
+    c.group.children.forEach(child => {
+      if (child.isInstancedMesh) child.material = rockM;
+    });
+  }
+
+  // Toggle flat shading on the entire jet
+  jet.traverse(obj => {
+    const m = obj.material;
+    if (!m || Array.isArray(m)) return;
+    if (m.type === 'MeshStandardMaterial' ||
+        m.type === 'MeshLambertMaterial' ||
+        m.type === 'MeshPhongMaterial') {
+      if (m.flatShading !== lowPoly) {
+        m.flatShading = lowPoly;
+        m.needsUpdate = true;
+      }
+    }
+  });
+
+  // Sky reads stronger in low-poly mode (less subtle gradient)
+  skyMat.uniforms.exponent.value = lowPoly ? 0.35 : 0.55;
+
+  // Update HUD indicator
+  if (typeof $styleInd !== 'undefined' && $styleInd) {
+    $styleInd.textContent = lowPoly ? 'LOW POLY' : 'REALISTIC';
+    $styleInd.className = lowPoly ? 'warn' : 'ok';
+  }
+}
+
+function toggleStyle() {
+  styleMode.current = styleMode.current === 'realistic' ? 'lowpoly' : 'realistic';
+  applyStyle();
+}
+
+// =============================================================
+//  ATMOSPHERIC EFFECTS — particles, clouds, sun glow
+// =============================================================
+
+// Round soft sprite texture (white radial gradient → transparent)
+function makeSpriteTexture(size = 64, soft = 0.85) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(soft * 0.6, 'rgba(255,255,255,0.5)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.needsUpdate = true;
+  return t;
+}
+
+// Generic point-sprite particle pool with custom shader for size + alpha attenuation
+class ParticlePool {
+  constructor(scene, opts) {
+    this.max = opts.max || 200;
+    this.tex = opts.texture;
+    this.particles = [];
+    this.geo = new THREE.BufferGeometry();
+    this.positions = new Float32Array(this.max * 3);
+    this.alphas = new Float32Array(this.max);
+    this.sizes = new Float32Array(this.max);
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geo.setAttribute('alpha', new THREE.BufferAttribute(this.alphas, 1));
+    this.geo.setAttribute('psize', new THREE.BufferAttribute(this.sizes, 1));
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: {
+        color: { value: new THREE.Color(opts.color || 0xffffff) },
+        map: { value: this.tex },
+      },
+      vertexShader: `
+        attribute float alpha;
+        attribute float psize;
+        varying float vAlpha;
+        void main() {
+          vAlpha = alpha;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = psize * (320.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        uniform vec3 color;
+        uniform sampler2D map;
+        varying float vAlpha;
+        void main() {
+          vec4 t = texture2D(map, gl_PointCoord);
+          gl_FragColor = vec4(color, t.a * vAlpha);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: opts.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    this.points = new THREE.Points(this.geo, this.mat);
+    this.points.frustumCulled = false;
+    scene.add(this.points);
+    this.baseSize = opts.size || 1.0;
+    this.lifeBase = opts.life || 1.0;
+    this.growth = opts.growth || 1.0;
+  }
+
+  emit(pos, lifeMul = 1.0, sizeMul = 1.0) {
+    if (this.particles.length >= this.max) this.particles.shift();
+    this.particles.push({
+      pos: pos.clone(),
+      life: this.lifeBase * lifeMul,
+      maxLife: this.lifeBase * lifeMul,
+      sizeMul,
+    });
+  }
+
+  update(dt) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      this.particles[i].life -= dt;
+      if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+    }
+    for (let i = 0; i < this.max; i++) {
+      if (i < this.particles.length) {
+        const p = this.particles[i];
+        const t = 1 - p.life / p.maxLife; // 0→1 as it ages
+        this.positions[i * 3] = p.pos.x;
+        this.positions[i * 3 + 1] = p.pos.y;
+        this.positions[i * 3 + 2] = p.pos.z;
+        this.alphas[i] = (1 - t) * (1 - t);  // ease-out fade
+        this.sizes[i] = this.baseSize * p.sizeMul * (1 + t * this.growth);
+      } else {
+        this.alphas[i] = 0;
+      }
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.alpha.needsUpdate = true;
+    this.geo.attributes.psize.needsUpdate = true;
+    this.geo.setDrawRange(0, this.particles.length);
+  }
+}
+
+const sharedSpriteTex = makeSpriteTexture(64, 0.7);
+
+// Wingtip vapor — white, dense, short-lived. Forms under high G / high AoA.
+const vaporL = new ParticlePool(scene, {
+  max: 120, color: 0xffffff, size: 1.4,
+  life: 1.4, growth: 4.5, additive: false, texture: sharedSpriteTex,
+});
+const vaporR = new ParticlePool(scene, {
+  max: 120, color: 0xffffff, size: 1.4,
+  life: 1.4, growth: 4.5, additive: false, texture: sharedSpriteTex,
+});
+// Engine contrail — fades over longer time, slight gray tint
+const contrail = new ParticlePool(scene, {
+  max: 220, color: 0xeae8e0, size: 1.8,
+  life: 3.0, growth: 5.0, additive: false, texture: sharedSpriteTex,
+});
+
+let vaporTimer = 0;
+let contrailTimer = 0;
+function updateAtmospheric(dt) {
+  // Compute world positions of jet anchors
+  const wlL = jet.userData.wingtipL.clone().applyQuaternion(plane.quat).add(plane.pos);
+  const wlR = jet.userData.wingtipR.clone().applyQuaternion(plane.quat).add(plane.pos);
+  const wlE = jet.userData.engineExhaust.clone().applyQuaternion(plane.quat).add(plane.pos);
+
+  const speed = plane.vel.length();
+  const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+  const fwdSpd = -localVel.z;
+  const aoa = fwdSpd > 1 ? Math.atan2(-localVel.y, fwdSpd) : 0;
+  const rollRate = Math.abs(plane.angVel.z);
+
+  // Vapor condition: high AoA (>9°) at speed, OR aggressive roll
+  const vaporIntensity = Math.max(
+    Math.max(0, Math.abs(aoa) - 0.16) * 4,
+    Math.max(0, rollRate - 1.5) * 0.6
+  ) * Math.min(1, fwdSpd / 60);
+
+  vaporTimer += dt;
+  if (vaporIntensity > 0.05 && vaporTimer > 0.025) {
+    vaporTimer = 0;
+    vaporL.emit(wlL, Math.min(1.5, vaporIntensity), 0.6 + vaporIntensity * 0.6);
+    vaporR.emit(wlR, Math.min(1.5, vaporIntensity), 0.6 + vaporIntensity * 0.6);
+  }
+
+  // Engine contrail: emits when throttle is up and we're above ground
+  const altAGL = plane.pos.y - getHeight(plane.pos.x, plane.pos.z);
+  contrailTimer += dt;
+  const emitInterval = plane.throttle > 0.55 ? 0.04 : 0.09;
+  if (plane.throttle > 0.25 && altAGL > 4 && contrailTimer > emitInterval) {
+    contrailTimer = 0;
+    contrail.emit(wlE, 1.0, 0.7 + plane.throttle * 0.5);
+  }
+
+  vaporL.update(dt);
+  vaporR.update(dt);
+  contrail.update(dt);
+}
+
+// =============================================================
+//  DISTANT CLOUDS — scattered sprites, attached to camera so they
+//  stay at apparent infinity (always visible, no chunk dependency)
+// =============================================================
+function buildClouds() {
+  const tex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    // Pile up several soft circles to make a fluffy cloud
+    for (let i = 0; i < 12; i++) {
+      const x = 30 + Math.random() * 70;
+      const y = 50 + Math.random() * 28;
+      const r = 12 + Math.random() * 22;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 128, 128);
+    }
+    const t = new THREE.CanvasTexture(c);
+    return t;
+  })();
+
+  const cloudGroup = new THREE.Group();
+  for (let i = 0; i < 28; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      color: 0xfff5e8,
+      transparent: true,
+      opacity: 0.55 + srand(i, 11, 7) * 0.25,
+      depthWrite: false,
+      fog: false,
+    });
+    const s = new THREE.Sprite(mat);
+    const angle = i / 28 * Math.PI * 2 + srand(i, 1, 7) * 0.8;
+    const dist = 2200 + srand(i, 2, 7) * 1500;
+    const sx = 700 + srand(i, 3, 7) * 600;
+    const sy = 220 + srand(i, 4, 7) * 80;
+    s.position.set(
+      Math.cos(angle) * dist,
+      550 + srand(i, 5, 7) * 350,
+      Math.sin(angle) * dist
+    );
+    s.scale.set(sx, sy, 1);
+    cloudGroup.add(s);
+  }
+  scene.add(cloudGroup);
+  return cloudGroup;
+}
+const clouds = buildClouds();
+
+// =============================================================
+//  SUN — bright billboard with corona (lens-flare-ish glow)
+// =============================================================
+const sunDir = sun.position.clone().normalize();
+function makeSunSprites() {
+  const grp = new THREE.Group();
+  const coreTex = makeSpriteTexture(128, 0.5);
+  const haloTex = makeSpriteTexture(128, 0.85);
+
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: coreTex, color: 0xffffe0,
+    blending: THREE.AdditiveBlending, transparent: true,
+    depthWrite: false, depthTest: false, fog: false,
+  }));
+  core.scale.set(180, 180, 1);
+  core.renderOrder = 999;
+  grp.add(core);
+
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTex, color: 0xffd680,
+    blending: THREE.AdditiveBlending, transparent: true,
+    opacity: 0.6, depthWrite: false, depthTest: false, fog: false,
+  }));
+  halo.scale.set(550, 550, 1);
+  halo.renderOrder = 998;
+  grp.add(halo);
+
+  const outer = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTex, color: 0xff9944,
+    blending: THREE.AdditiveBlending, transparent: true,
+    opacity: 0.25, depthWrite: false, depthTest: false, fog: false,
+  }));
+  outer.scale.set(1100, 1100, 1);
+  outer.renderOrder = 997;
+  grp.add(outer);
+
+  scene.add(grp);
+  return grp;
+}
+const sunGrp = makeSunSprites();
+
+// =============================================================
+//  PLANE STATE + PHYSICS
+// =============================================================
+const plane = {
+  pos: new THREE.Vector3(0, 2.3, 120),  // on runway
+  vel: new THREE.Vector3(0, 0, 0),
+  quat: new THREE.Quaternion(),
+  angVel: new THREE.Vector3(),       // local pitch/yaw/roll rates
+  throttle: 0,
+  throttleTarget: 0,
+  gear: 1, gearTarget: 1,
+  brake: 0,
+  onGround: true,
+  crashed: false,
+};
+
+const GRAVITY = 9.81;
+const MAX_THRUST = 28;         // m/s² (≈ 2.8 G — arcade fighter punch)
+const LIFT_K = 0.012;          // 0.5·ρ·S/m, tuned for cruise balance
+const CL0 = 0.06;              // base lift coefficient at AoA = 0
+const CL_ALPHA = 4.5;          // lift slope per radian of AoA
+const DRAG_PARASITE = 0.00028; // gives terminal ≈ 580 kts at sea level
+const DRAG_INDUCED = 0.018;    // multiplied by CL²
+const GEAR_DRAG = 0.00050;
+const GEAR_HEIGHT = 2.3;       // wheel clearance below jet center
+const STALL_AOA = 0.30;        // ~17°
+const MAX_ANG_VEL = 5.0;       // rad/s clamp to prevent runaway spin
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['KeyG', 'KeyR', 'KeyB', 'KeyT'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+let gearPressed = false;
+let resetPressed = false;
+let stylePressed = false;
+
+function resetPlane() {
+  plane.pos.set(0, 2.3, 120);
+  plane.vel.set(0, 0, 0);
+  plane.quat.identity();
+  plane.angVel.set(0, 0, 0);
+  plane.throttle = 0;
+  plane.throttleTarget = 0;
+  plane.gear = 1;
+  plane.gearTarget = 1;
+  plane.brake = 0;
+  plane.crashed = false;
+  statusMsg.textContent = 'READY FOR DEPARTURE';
+  statusMsg.className = 'panel';
+}
+
+function updatePhysics(dt) {
+  if (plane.crashed) return;
+
+  // ----- Input -----
+  const pitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
+  const rollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+  const yawIn   = (keys['KeyE'] ? 1 : 0) - (keys['KeyQ'] ? 1 : 0);
+
+  if (keys['ShiftLeft'] || keys['ShiftRight']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
+  if (keys['ControlLeft'] || keys['ControlRight']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
+  plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
+
+  plane.brake = keys['KeyB'] ? 1 : 0;
+
+  if (keys['KeyG']) {
+    if (!gearPressed) {
+      plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
+      gearPressed = true;
+    }
+  } else gearPressed = false;
+
+  if (keys['KeyR']) {
+    if (!resetPressed) { resetPlane(); resetPressed = true; }
+  } else resetPressed = false;
+
+  if (keys['KeyT']) {
+    if (!stylePressed) { toggleStyle(); stylePressed = true; }
+  } else stylePressed = false;
+
+  // Animate gear
+  plane.gear += (plane.gearTarget - plane.gear) * Math.min(1, dt * 1.8);
+
+  // ----- Forces & rotations -----
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+
+  const invQ = plane.quat.clone().invert();
+  const localVel = plane.vel.clone().applyQuaternion(invQ);
+  const forwardSpeed = -localVel.z;        // m/s-ish along nose
+  const speed = plane.vel.length();
+
+  // Angle of attack: angle between nose and velocity in pitch plane
+  let aoa = 0;
+  if (Math.abs(forwardSpeed) > 0.5) {
+    aoa = Math.atan2(-localVel.y, Math.max(1, forwardSpeed));
+  }
+
+  // Control authority scales with airspeed (surfaces need airflow)
+  const q = Math.max(0, forwardSpeed);
+  const authPitch = Math.min(1.3, q / 35);
+  const authRoll = Math.min(1.5, q / 30);
+  const authYaw = Math.min(1.0, q / 50);
+
+  // Apply torque (pitch=X, yaw=Y, roll=Z in local frame)
+  plane.angVel.x += pitchIn * 1.8 * authPitch * dt;
+  plane.angVel.z += -rollIn * 3.2 * authRoll * dt;
+  plane.angVel.y += -yawIn * 0.9 * authYaw * dt;
+
+  // Self-correcting stability (dihedral, weathervane)
+  // Level roll restore
+  const worldUpLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(invQ);
+  plane.angVel.z += -worldUpLocal.x * 0.6 * authRoll * dt;
+  // Weathervane: yaw toward velocity
+  plane.angVel.y += -localVel.x * 0.002 * authYaw * dt;
+
+  // Damping
+  const damp = Math.pow(0.05, dt);
+  plane.angVel.multiplyScalar(damp);
+
+  // Hard clamp on rotation rate
+  if (plane.angVel.length() > MAX_ANG_VEL) {
+    plane.angVel.setLength(MAX_ANG_VEL);
+  }
+
+  // Integrate rotation
+  const dQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    plane.angVel.x * dt, plane.angVel.y * dt, plane.angVel.z * dt, 'XYZ'
+  ));
+  plane.quat.multiply(dQ).normalize();
+
+  // ----- Aerodynamic forces -----
+  // Lift coefficient: linear in AoA below stall, collapses past STALL_AOA
+  let cl;
+  const aoaAbs = Math.abs(aoa);
+  if (aoaAbs <= STALL_AOA) {
+    cl = CL0 + CL_ALPHA * aoa;
+  } else {
+    const peak = CL_ALPHA * STALL_AOA;
+    const excess = aoaAbs - STALL_AOA;
+    cl = CL0 + Math.sign(aoa) * Math.max(0.2, peak - excess * 5.0);
+  }
+  // Lift only when moving forward through the air
+  const v = Math.max(0, forwardSpeed);
+  const liftMag = LIFT_K * v * v * cl;
+  const lift = up.clone().multiplyScalar(liftMag);
+
+  // Drag: parasitic + induced (∝ CL²) + gear
+  const cd = DRAG_PARASITE + DRAG_INDUCED * cl * cl + GEAR_DRAG * plane.gear;
+  const dragMag = cd * speed * speed;
+  const drag = speed > 0.01
+    ? plane.vel.clone().normalize().multiplyScalar(-dragMag)
+    : new THREE.Vector3();
+
+  // Thrust
+  const thrust = forward.clone().multiplyScalar(plane.throttle * MAX_THRUST);
+
+  // Gravity
+  const gravity = new THREE.Vector3(0, -GRAVITY, 0);
+
+  const accel = new THREE.Vector3()
+    .add(thrust)
+    .add(lift)
+    .add(drag)
+    .add(gravity);
+
+  plane.vel.addScaledVector(accel, dt);
+
+  // ----- Ground interaction -----
+  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000
+    ? 0  // on the flat airfield
+    : getHeight(plane.pos.x, plane.pos.z);
+
+  const altAbove = plane.pos.y - groundH;
+  const wheelAlt = altAbove - GEAR_HEIGHT * plane.gear;
+
+  if (wheelAlt < 0) {
+    if (plane.gear < 0.4) {
+      // Gear up — crash
+      plane.crashed = true;
+      statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
+      statusMsg.className = 'panel warn';
+      plane.vel.set(0, 0, 0);
+    } else {
+      // Touchdown / rolling
+      const vertVel = plane.vel.y;
+      plane.pos.y = groundH + GEAR_HEIGHT;
+
+      if (vertVel < -12) {
+        plane.crashed = true;
+        statusMsg.textContent = 'HARD LANDING — PRESS R';
+        statusMsg.className = 'panel warn';
+        plane.vel.set(0, 0, 0);
+      } else {
+        plane.vel.y = Math.max(0, plane.vel.y);
+        plane.onGround = true;
+
+        // Rolling friction + brake
+        const rollFric = 0.015 + plane.brake * 2.0;
+        const horiz = new THREE.Vector3(plane.vel.x, 0, plane.vel.z);
+        horiz.multiplyScalar(Math.max(0, 1 - rollFric * dt));
+        plane.vel.x = horiz.x;
+        plane.vel.z = horiz.z;
+
+        // Align to ground smoothly (kill roll/pitch when on ground at low speed)
+        if (speed < 8) {
+          // Lerp quaternion toward level with current yaw preserved
+          const euler = new THREE.Euler().setFromQuaternion(plane.quat, 'YXZ');
+          euler.x *= 0.9; euler.z *= 0.9;
+          plane.quat.setFromEuler(euler);
+        }
+      }
+    }
+  } else {
+    plane.onGround = false;
+  }
+
+  // Integrate position
+  plane.pos.addScaledVector(plane.vel, dt);
+
+  // World limits (shouldn't hit — infinite terrain)
+  plane.pos.y = Math.max(plane.pos.y, -10);
+}
+
+// =============================================================
+//  JET VISUAL UPDATE — gear animation, afterburner
+// =============================================================
+function updateJetVisual() {
+  jet.position.copy(plane.pos);
+  jet.quaternion.copy(plane.quat);
+
+  // Gear rotations (1 = down, 0 = up)
+  const g = plane.gear;
+  // Nose gear folds forward
+  jet.userData.gearNose.rotation.x = (1 - g) * (Math.PI * 0.55);
+  // Main gear folds inward
+  jet.userData.gearL.rotation.z = (1 - g) * (Math.PI * 0.5);
+  jet.userData.gearR.rotation.z = -(1 - g) * (Math.PI * 0.5);
+
+  // Afterburner — active at high throttle
+  const ab = jet.userData.afterburner;
+  const ab2 = jet.userData.ab2;
+  const burn = Math.max(0, (plane.throttle - 0.55) / 0.45);
+  ab.material.opacity = burn * 0.75;
+  ab.scale.set(
+    0.6 + burn * 0.5,
+    0.6 + burn * 0.5,
+    0.8 + burn * 1.8
+  );
+  ab2.material.opacity = burn * 0.9;
+  ab2.scale.set(
+    0.5 + burn * 0.4,
+    0.5 + burn * 0.4,
+    0.6 + burn * 1.4
+  );
+  // Flicker
+  const fl = 0.92 + Math.sin(performance.now() * 0.08) * 0.04 + Math.random() * 0.04;
+  ab.scale.z *= fl;
+  ab2.scale.z *= fl;
+}
+
+// =============================================================
+//  CAMERA — chase that stays locked behind the plane
+// =============================================================
+const camLocalOffset = new THREE.Vector3(0, 3.0, 14);
+
+function updateCamera(dt) {
+  // Desired camera position: offset in the plane's local frame,
+  // so it stays behind no matter how the plane is oriented
+  const offsetWorld = camLocalOffset.clone().applyQuaternion(plane.quat);
+  const desired = plane.pos.clone().add(offsetWorld);
+
+  // Frame-rate-independent exponential smoothing — tight enough to
+  // keep up with hard maneuvers but smooth enough to avoid jitter
+  const followK = 9.0;
+  const t = 1 - Math.exp(-followK * dt);
+  camera.position.lerp(desired, t);
+
+  // Ground clearance — never let the camera dip into terrain
+  const gH = getHeight(camera.position.x, camera.position.z);
+  if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
+
+  // Look at a point slightly ahead of the plane's nose
+  const aheadLocal = new THREE.Vector3(0, 0, -6).applyQuaternion(plane.quat);
+  const lookTarget = plane.pos.clone().add(aheadLocal);
+
+  // Camera up = blend of world up and plane up (mostly plane up so
+  // banking & loops feel right, with a touch of world up for stability)
+  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
+  const blendedUp = new THREE.Vector3(0, 1, 0)
+    .multiplyScalar(0.25)
+    .addScaledVector(planeUp, 0.75)
+    .normalize();
+  camera.up.copy(blendedUp);
+
+  camera.lookAt(lookTarget);
+}
+
+// =============================================================
+//  HUD
+// =============================================================
+const $speed = document.getElementById('speed');
+const $alt = document.getElementById('altitude');
+const $hdg = document.getElementById('heading');
+const $vs = document.getElementById('vspeed');
+const $aoa = document.getElementById('aoa');
+const $gforce = document.getElementById('gforce');
+const $gear = document.getElementById('gear');
+const $throttleVal = document.getElementById('throttle-val');
+const $throttleBar = document.getElementById('throttle-bar');
+const $abStatus = document.getElementById('ab-status');
+const $seedDisp = document.getElementById('seed-disp');
+const $styleInd = document.getElementById('style-ind');
+const statusMsg = document.getElementById('status-msg');
+$seedDisp.textContent = SEED;
+
+// Button click toggles style (in addition to T key)
+document.getElementById('style-btn').addEventListener('click', toggleStyle);
+
+let vsSmoothed = 0;
+let gSmoothed = 1;
+let lastVel = new THREE.Vector3();
+function updateHUD() {
+  // Speed — m/s * ~1.94 = knots
+  const sp = plane.vel.length() * 1.94;
+  $speed.textContent = Math.round(sp);
+
+  // Altitude in feet (y in m × 3.28)
+  const ft = Math.max(0, Math.round(plane.pos.y * 3.28));
+  $alt.textContent = ft;
+
+  // Heading from forward vector
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  let hdg = Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI;
+  if (hdg < 0) hdg += 360;
+  $hdg.textContent = String(Math.round(hdg)).padStart(3, '0');
+
+  // Vertical speed
+  vsSmoothed += (plane.vel.y * 197 - vsSmoothed) * 0.1;
+  $vs.textContent = Math.round(vsSmoothed);
+
+  // AoA
+  const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+  const fwdSpd = -localVel.z;
+  const aoa = fwdSpd > 1 ? Math.atan2(-localVel.y, fwdSpd) * 180 / Math.PI : 0;
+  $aoa.textContent = aoa.toFixed(1);
+  if (Math.abs(aoa) > 17) $aoa.className = 'warn';
+  else $aoa.className = '';
+
+  // G-force estimate: lift acceleration / g (smoothed)
+  // Approx via rate of change of velocity perpendicular to motion
+  const accel = plane.vel.clone().sub(lastVel).divideScalar(Math.max(0.001, 1/60));
+  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
+  const gInst = (accel.dot(planeUp) / GRAVITY) + Math.cos(aoa * Math.PI / 180);
+  gSmoothed += (gInst - gSmoothed) * 0.15;
+  $gforce.textContent = gSmoothed.toFixed(1);
+  lastVel.copy(plane.vel);
+
+  // Gear status
+  if (plane.gear > 0.95) {
+    $gear.textContent = 'DOWN'; $gear.className = 'ok';
+  } else if (plane.gear < 0.05) {
+    $gear.textContent = 'UP'; $gear.className = '';
+  } else {
+    $gear.textContent = 'MOVING'; $gear.className = 'warn';
+  }
+
+  const tp = Math.round(plane.throttle * 100);
+  $throttleVal.textContent = tp;
+  $throttleBar.style.width = tp + '%';
+  $abStatus.textContent = tp > 55 ? '◈ AFTERBURNER' : ' ';
+  $abStatus.className = tp > 55 ? 'warn' : '';
+}
+
+// =============================================================
+//  MAIN LOOP
+// =============================================================
+let lastTime = 0;
+let running = false;
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
+  lastTime = now;
+  if (!running) { renderer.render(scene, camera); return; }
+
+  updatePhysics(dt);
+  updateJetVisual();
+  updateChunks(plane.pos.x, plane.pos.z);
+  updateCamera(dt);
+  updateAtmospheric(dt);
+  updateHUD();
+
+  // Sky + sun + clouds follow the camera so they stay at "infinity"
+  sky.position.copy(camera.position);
+  // Sun positioned far away in the sun direction from the camera
+  sunGrp.position.copy(camera.position).addScaledVector(sunDir, 4500);
+  // Clouds drift with the camera (only XZ — they keep their altitude)
+  clouds.position.x = camera.position.x;
+  clouds.position.z = camera.position.z;
+
+  // Subtle high-speed camera shake (engine/buffeting feel)
+  const sp = plane.vel.length();
+  const shakeAmt = Math.max(0, (sp - 60) / 200) * 0.08;
+  if (shakeAmt > 0) {
+    camera.position.x += (Math.random() - 0.5) * shakeAmt;
+    camera.position.y += (Math.random() - 0.5) * shakeAmt;
+  }
+
+  renderer.render(scene, camera);
+}
+
+// Initial chunk load before first frame
+updateChunks(plane.pos.x, plane.pos.z);
+updateJetVisual();
+updateCamera(0.016);
+renderer.render(scene, camera);
+
+// =============================================================
+//  START SCREEN
+// =============================================================
+const title = document.getElementById('title');
+document.getElementById('seed-display').textContent = SEED;
+title.addEventListener('click', () => {
+  title.classList.add('hide');
+  running = true;
+  renderer.domElement.focus();
+});
+// Also allow any key to start
+window.addEventListener('keydown', () => {
+  if (!running) {
+    title.classList.add('hide');
+    running = true;
+  }
+}, { once: true });
+
+// =============================================================
+//  RESIZE
+// =============================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

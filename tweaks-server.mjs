@@ -29,6 +29,13 @@ const MIME = {
   '.css':  'text/css; charset=utf-8',
   '.svg':  'image/svg+xml',
   '.ico':  'image/x-icon',
+  '.wav':  'audio/wav',
+  '.mp3':  'audio/mpeg',
+  '.ogg':  'audio/ogg',
+  '.m4a':  'audio/mp4',
+  '.flac': 'audio/flac',
+  '.aac':  'audio/aac',
+  '.opus': 'audio/opus',
 };
 
 const isLocalhost = (req) => {

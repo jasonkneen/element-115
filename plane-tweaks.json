@@ -1,1 +1,10 @@
-{}
+{
+  "models/disney_planes_-_dusty_turbo.glb": {
+    "rx": 11,
+    "ry": 180,
+    "rz": 0,
+    "px": 0,
+    "py": -2,
+    "pz": 0
+  }
+}

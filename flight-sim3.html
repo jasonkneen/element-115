@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Canyon Flight Sim</title>
+<link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='24' font-size='24'>✈</text></svg>">
 <style>
   * { box-sizing: border-box; }
   body {
@@ -97,6 +98,37 @@
   #controls-help {
     transition: opacity 0.25s ease;
   }
+  /* Graphics panel range sliders — match HUD amber theme */
+  #graphics-panel input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 6px;
+    background: rgba(255,204,102,0.15);
+    outline: none;
+    border: 0;
+    margin: 0;
+    padding: 0;
+  }
+  #graphics-panel input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px; height: 10px;
+    background: #ffcc66;
+    border: 0;
+    cursor: pointer;
+  }
+  #graphics-panel input[type="range"]::-moz-range-thumb {
+    width: 10px; height: 10px;
+    background: #ffcc66;
+    border: 0;
+    cursor: pointer;
+  }
+  #graphics-panel button:hover {
+    color: #ffe0a0 !important;
+  }
+  #graphics-panel::-webkit-scrollbar { width: 4px; }
+  #graphics-panel::-webkit-scrollbar-thumb { background: rgba(255,204,102,0.25); }
 </style>
 </head>
 <body class="preflight">
@@ -108,6 +140,11 @@
     <div>HDG <span id="heading">000</span>° &nbsp; V/S <span id="vspeed">0</span></div>
     <div>AOA <span id="aoa">0</span>° &nbsp; G <span id="gforce">1.0</span></div>
     <div style="margin-top:6px;">GEAR <span id="gear" class="ok">DOWN</span></div>
+    <div style="margin-top:4px;">HULL <span class="big" id="hull-pct">100</span>%</div>
+    <div class="bar" style="margin-top:2px;"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
+    <div style="margin-top:4px;">AMMO <span id="ammo-val">300</span>/<span id="ammo-max">300</span></div>
+    <div class="bar" style="margin-top:2px;"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
+    <div style="margin-top:4px;">SCORE <span class="big" id="score-val">0</span> <span style="opacity:0.5;font-size:10px;">· <span id="score-streak">0</span>×</span></div>
     <div style="margin-top:4px; font-size:10px; opacity:0.6;">SEED <span id="seed-disp">—</span></div>
   </div>
   <div class="panel" id="throttle-wrap">
@@ -116,6 +153,8 @@
     <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
     <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
       <div>TIME <span id="tod-ind" class="ok">MORNING</span></div>
+      <div>NET <span id="mp-ind">SOLO</span></div>
+      <button type="button" class="hud-action" id="prop-model-btn" style="margin-top:3px;">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
       <button type="button" class="hud-action" id="landing-btn" style="margin-top:3px;">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
       <button type="button" class="hud-action" id="style-btn" style="margin-top:3px;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
       <button type="button" class="hud-action" id="biome-btn" style="margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
@@ -125,7 +164,7 @@
   <div class="panel" id="controls-help">
     <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
     <div id="ch-line2">SHIFT THROTTLE UP &nbsp; CTRL THROTTLE DOWN &nbsp; B BRAKE</div>
-    <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
+    <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
   <div class="panel" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
@@ -141,10 +180,12 @@
     <p>FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
-      <div>2 · HOLD SHIFT TO BUILD SPEED</div>
-      <div>3 · PRESS S TO ROTATE AND CLIMB</div>
-      <div>4 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
-      <div>5 · PRESS R ANY TIME TO RESET</div>
+      <div>2 · PRESS M TO CYCLE PROP MODELS</div>
+      <div>3 · HOLD SHIFT TO BUILD SPEED</div>
+      <div>4 · PRESS S TO ROTATE AND CLIMB</div>
+      <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
+      <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
+      <div>7 · PRESS R ANY TIME TO RESET</div>
     </div>
     <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
     <div class="cta">&gt; CLICK OR PRESS ANY KEY TO FLY &lt;</div>
@@ -171,6 +212,60 @@ const bootParamSource = (() => {
 const bootParams = new URLSearchParams(bootParamSource);
 const DEBUG_UI = bootParams.get('debug') === '1';
 const AUTOPILOT_UI = DEBUG_UI || bootParams.get('autopilot') === '1';
+let MULTIPLAYER_URL = (() => {
+  try {
+    return bootParams.get('mp') || localStorage.getItem('flight_mp_url') || '';
+  } catch {
+    return bootParams.get('mp') || '';
+  }
+})();
+const MULTIPLAYER_ROOM = bootParams.get('room') || 'default';
+const PROP_MODEL_PRESETS = [
+  { key: 'dusty', label: 'DUSTY TURBO', file: 'models/disney_planes_-_dusty_turbo.glb' },
+  { key: 'lowprop', label: 'LOW-POLY PROP', file: 'models/low_poly_plane.glb' },
+];
+const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
+
+function getStoredPropModelKey() {
+  try { return localStorage.getItem('flight_prop_model_key') || PROP_MODEL_PRESETS[0].key; }
+  catch { return PROP_MODEL_PRESETS[0].key; }
+}
+
+function findPropPresetByPlaneFile(file) {
+  return PROP_MODEL_PRESETS.find(p => p.file === file) || null;
+}
+
+function applyPropPresetToParams(params, preset) {
+  params.set('plane', preset.file);
+  if (preset.s != null) params.set('s', String(preset.s)); else params.delete('s');
+  if (preset.rx != null) params.set('rx', String(preset.rx)); else params.delete('rx');
+  if (preset.ry != null) params.set('ry', String(preset.ry)); else params.delete('ry');
+  if (preset.rz != null) params.set('rz', String(preset.rz)); else params.delete('rz');
+  if (preset.dy != null) params.set('dy', String(preset.dy)); else params.delete('dy');
+}
+
+function getActivePropPreset() {
+  const explicitPlane = bootParams.get('plane');
+  if (explicitPlane) return findPropPresetByPlaneFile(explicitPlane) || PROP_MODEL_BY_KEY.get(getStoredPropModelKey()) || PROP_MODEL_PRESETS[0];
+  return PROP_MODEL_BY_KEY.get(getStoredPropModelKey()) || PROP_MODEL_PRESETS[0];
+}
+
+function applyPropModelPreset(key) {
+  const preset = PROP_MODEL_BY_KEY.get(key);
+  if (!preset) return;
+  try { localStorage.setItem('flight_prop_model_key', preset.key); } catch {}
+  const url = new URL(location.href);
+  applyPropPresetToParams(url.searchParams, preset);
+  if ((url.hash || '').includes('=')) url.hash = '';
+  location.assign(url.toString());
+}
+
+function cyclePropModel(direction = 1) {
+  const active = getActivePropPreset();
+  const idx = Math.max(0, PROP_MODEL_PRESETS.findIndex(p => p.key === active.key));
+  const next = PROP_MODEL_PRESETS[(idx + direction + PROP_MODEL_PRESETS.length) % PROP_MODEL_PRESETS.length];
+  applyPropModelPreset(next.key);
+}
 
 // =============================================================
 //  SEED + NOISE — deterministic worldgen
@@ -325,9 +420,33 @@ const timeOfDay = {
   label: 'MORNING',
 };
 
+// =============================================================
+//  BOOT LOG — prefixed `[flight-sim]` so it's easy to grep.
+//  Every major init block emits a single ✓ or ✗ line so load-time
+//  regressions (missing GLBs, TDZ errors, CDN script failures) show
+//  up immediately in the devtools console instead of being buried.
+// =============================================================
+const bootLog = {
+  t0: performance.now(),
+  step(name, ok = true, extra = '') {
+    const dt = (performance.now() - this.t0).toFixed(1);
+    const mark = ok ? '✓' : '✗';
+    const fn = ok ? console.log : console.error;
+    fn(`[flight-sim] ${mark} ${name}${extra ? ' — ' + extra : ''}  (+${dt}ms)`);
+  },
+};
+window.addEventListener('error', (e) => {
+  console.error('[flight-sim] ✗ runtime error:', e.message,
+    e.filename ? `at ${e.filename.split('/').pop()}:${e.lineno}:${e.colno}` : '');
+});
+bootLog.step('three.js', typeof THREE === 'object', typeof THREE === 'object' ? ('r' + (THREE.REVISION || '?')) : 'MISSING');
+bootLog.step('GLTFLoader', typeof THREE !== 'undefined' && typeof THREE.GLTFLoader === 'function');
+bootLog.step('post-processing', typeof THREE !== 'undefined' && typeof THREE.EffectComposer === 'function');
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG_COLOR);
 scene.fog = new THREE.Fog(FOG_COLOR, ATMOS_LOWPOLY.fogNear, ATMOS_LOWPOLY.fogFar);
+bootLog.step('scene created');
 
 // =============================================================
 //  WATER — flat shader plane at WATER_LEVEL. Any terrain below this
@@ -465,6 +584,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
+bootLog.step('WebGL renderer', !!renderer.getContext(),
+  renderer.capabilities ? `${renderer.capabilities.maxTextureSize}px · ${renderer.capabilities.precision}` : '');
 
 const postFX = {
   enabled: false,
@@ -716,6 +837,8 @@ const LOWPOLY_FS = `
   uniform vec3 sunDir;
   uniform vec3 sunColor;
   uniform vec3 ambientColor;
+  uniform vec3 skyTint;
+  uniform vec3 groundTint;
   uniform vec3 fogColor;
   uniform float fogNear;
   uniform float fogFar;
@@ -735,15 +858,19 @@ const LOWPOLY_FS = `
     if (N.y < 0.0) N = -N;
 
     vec3 L = normalize(sunDir);
-    float NdotL = dot(N, L);
+    float rawNdotL = dot(N, L);
+    float NdotL = max(rawNdotL, 0.0);
     vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 H = normalize(L + V);
 
-    // Cel-shaded: 4 softer light bands so low-poly mode feels less harsh
+    // Cel-shaded: 4 softer light bands so low-poly mode keeps the faceted
+    // read, but now responds to the same richer sun / sky / ground lighting
+    // palette as the realistic terrain.
     float band;
     if (NdotL > 0.72)       band = 1.00;
-    else if (NdotL > 0.38) band = 0.86;
+    else if (NdotL > 0.38)  band = 0.86;
     else if (NdotL > 0.02)  band = 0.74;
-    else                   band = 0.62;
+    else                    band = 0.62;
 
     // Posterise color, but with more steps and a gentler boost
     vec3 c = vColor * 1.04;
@@ -751,20 +878,31 @@ const LOWPOLY_FS = `
     float lum = dot(c, vec3(0.299, 0.587, 0.114));
     c = mix(vec3(lum), c, 1.08);
 
-    // Subtle hemisphere fill
-    float hemi = N.y * 0.5 + 0.5;
-    vec3 hemiCol = mix(vec3(0.55, 0.40, 0.30), vec3(0.65, 0.78, 0.92), hemi);
+    // Dynamic hemisphere fill — same warm ground bounce / cool sky fill
+    // used by the realistic terrain, but slightly simplified for low-poly.
+    float hemi = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 hemiCol = mix(groundTint, skyTint, hemi);
+    float sunFacing = smoothstep(-0.18, 0.78, rawNdotL);
+    float backLight = max(dot(-N, L), 0.0);
+    float spec = pow(max(dot(N, H), 0.0), 18.0) * 0.08;
+    float rim = pow(1.0 - max(dot(N, V), 0.0), 2.5) * 0.12;
+    vec3 rimCol = mix(c, fogColor, 0.55) * rim;
+    vec3 shadowCol = mix(groundTint, skyTint, 0.70 + hemi * 0.24);
+    vec3 litCol = band * sunColor + hemiCol * 0.52 + ambientColor;
+    vec3 shadeCol = shadowCol * (0.56 + hemi * 0.14) + ambientColor * 0.56;
 
-    vec3 color = c * (band * sunColor + hemiCol * 0.30 + ambientColor);
-    float shadowMix = smoothstep(-0.12, 0.45, NdotL);
-    color *= mix(vec3(0.82, 0.85, 0.92), vec3(0.98, 0.97, 0.95), shadowMix);
+    vec3 color = c * mix(shadeCol, litCol, smoothstep(-0.12, 0.34, rawNdotL));
+    color += spec * sunColor;
+    color += c * sunColor * backLight * 0.08;
+    color += rimCol;
+    color *= mix(vec3(0.84, 0.88, 0.95), vec3(1.04, 1.00, 0.96), sunFacing);
 
     // Lighter fog + horizon haze so distant terrain sits deeper in the scene
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
     float horizon = pow(clamp(1.0 - abs(V.y), 0.0, 1.0), hazeExponent);
-    float haze = clamp(fogF * (0.82 + horizon * hazeStrength), 0.0, 1.0);
-    vec3 hazeColor = mix(fogColor, hemiCol, 0.25 + horizon * 0.22);
+    float haze = clamp(fogF * (0.96 + horizon * (hazeStrength + 0.18)), 0.0, 1.0);
+    vec3 hazeColor = mix(fogColor, skyTint, 0.66 + horizon * 0.16);
     color = mix(color, hazeColor, haze);
 
     gl_FragColor = vec4(color, 1.0);
@@ -776,6 +914,8 @@ const sandMatLowPoly = new THREE.ShaderMaterial({
     sunDir:       { value: SUN_DIR.clone() },
     sunColor:     { value: new THREE.Color(0xfff1d4) },
     ambientColor: { value: new THREE.Color(0x3a3328) },
+    skyTint:      { value: new THREE.Color(0x88aacc) },
+    groundTint:   { value: new THREE.Color(0x6a4830) },
     fogColor:     { value: new THREE.Color(0xe8b888) },
     fogNear:      { value: ATMOS_LOWPOLY.fogNear },
     fogFar:       { value: ATMOS_LOWPOLY.fogFar },
@@ -1474,6 +1614,26 @@ function buildAirfield() {
     registerDestructible(drum, { radius: 1.4, kind: 'barrel' });
   }
 
+  // Floating range drones straight down the runway so the new guns have obvious targets.
+  const droneMat = new THREE.MeshStandardMaterial({
+    color: 0xff5533,
+    emissive: 0xff2200,
+    emissiveIntensity: 0.9,
+    roughness: 0.35,
+    metalness: 0.15,
+  });
+  const dronePoints = [
+    { x: 0, y: 4, z: -240 },
+    { x: 18, y: 10, z: -420 },
+    { x: -18, y: 14, z: -620 },
+  ];
+  for (const pt of dronePoints) {
+    const drone = new THREE.Mesh(new THREE.OctahedronGeometry(2.3, 0), droneMat.clone());
+    drone.position.set(pt.x, pt.y, pt.z);
+    g.add(drone);
+    registerDestructible(drone, { radius: 4.2, kind: 'drone' });
+  }
+
   // Radio mast
   const mastMat = new THREE.MeshStandardMaterial({ color: 0xaa3322, roughness: 0.6 });
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.4, 30, 6), mastMat);
@@ -1614,20 +1774,26 @@ function makeJet() {
   nose.position.z = -6.6;
   root.add(nose);
 
-  // Nose gun ports / muzzle anchors
-  function addGunBarrel(x) {
+  // Wing-mounted gun pods / muzzle anchors — pushes the weapon read out to the wings.
+  function addWingGun(side) {
+    const pod = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.18, 1.05),
+      matDark
+    );
+    pod.position.set(side * 4.55, -0.2, 0.15);
+    pod.rotation.y = side * -0.06;
+    root.add(pod);
     const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.04, 0.38, 8),
+      new THREE.CylinderGeometry(0.032, 0.038, 0.62, 8),
       matDark
     );
     barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(x, -0.08, -7.05);
+    barrel.position.set(side * 4.55, -0.21, -0.48);
     root.add(barrel);
+    return new THREE.Vector3(side * 4.55, -0.2, -0.82);
   }
-  addGunBarrel(-0.32);
-  addGunBarrel(0.32);
-  root.userData.gunL = new THREE.Vector3(-0.32, -0.08, -7.15);
-  root.userData.gunR = new THREE.Vector3(0.32, -0.08, -7.15);
+  root.userData.gunL = addWingGun(-1);
+  root.userData.gunR = addWingGun(1);
 
   // Engine nozzle
   const nozzle = new THREE.Mesh(
@@ -2108,10 +2274,15 @@ function makeJet() {
     glow.position.set(xSign * 0.68, -0.12, -6.28);
     root.add(glow);
 
+    // Beam cone — apex at the bulb, base far ahead. Narrow at the
+    // source, diffusing OUT as it projects forward. A wider opening
+    // angle than before gives that volumetric "spotlight in fog" feel.
+    // radius 3.5 at 24m length ⇒ ~8° half-angle, matches real landing
+    // light spread (6–12°).
     const beam = new THREE.Mesh(
-      new THREE.ConeGeometry(1.7, 24, 16, 1, true),
+      new THREE.ConeGeometry(3.5, 24, 20, 1, true),
       new THREE.MeshBasicMaterial({
-        color: 0xffefc8,
+        color: 0xfff1c8,
         toneMapped: false,
         transparent: true,
         opacity: 0.0,
@@ -2120,8 +2291,13 @@ function makeJet() {
         side: THREE.DoubleSide,
       })
     );
-    beam.position.set(xSign * 0.68, -0.65, -17.5);
-    beam.rotation.x = -Math.PI / 2;
+    // Position so cone apex sits right at the bulb (z=-6.28) and base
+    // stretches 24m further forward. Flipping rotation.x sign puts the
+    // apex at +Z local (i.e. near the plane in world), base at -Z
+    // (far ahead) — reversing the old "ice-cream-scoop pointing back"
+    // orientation the user flagged.
+    beam.position.set(xSign * 0.68, -0.35, -18.3);
+    beam.rotation.x = Math.PI / 2;
     root.add(beam);
 
     const splash = new THREE.Mesh(
@@ -2258,9 +2434,323 @@ function makeJet() {
   return root;
 }
 
+// Damage-decal stubs must exist BEFORE the setup IIFE (below) writes
+// to them, and BEFORE damagePlane() (defined in the PLANE STATE block)
+// calls them. Declared with `var` so they're function-scoped and
+// guaranteed hoisted — avoids TDZ if any init order shifts later.
+var spawnDamageDecal = function () {};
+var damageDecalsClear = function () {};
+
 const jet = makeJet();
 applyShadowFlags(jet);
 scene.add(jet);
+bootLog.step('jet built', true,
+  `guns=${!!(jet.userData && jet.userData.gunL && jet.userData.gunR)} · engineSmoke=${!!(jet.userData && jet.userData.engineSmokeL && jet.userData.engineSmokeR)}`);
+
+// =============================================================
+//  DAMAGE DECALS (D12) — scorch-mark sprites attached to the jet.
+//  Each decal is a sprite parented under `jet` so it rides with
+//  the plane. Pool size caps visual clutter; old decals fade.
+// =============================================================
+(function setupDamageDecals() {
+  const DECAL_COUNT = 6;
+  const tex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    // radial gradient: dark core → soft edge, irregular blob via noise
+    const grad = g.createRadialGradient(64, 64, 4, 64, 64, 60);
+    grad.addColorStop(0, 'rgba(14,10,8,0.95)');
+    grad.addColorStop(0.35, 'rgba(38,28,22,0.75)');
+    grad.addColorStop(0.8, 'rgba(60,40,28,0.25)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    // sprinkle a few darker dots for texture variation
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 10 + Math.random() * 40;
+      const x = 64 + Math.cos(a) * r;
+      const y = 64 + Math.sin(a) * r;
+      const s = 2 + Math.random() * 6;
+      g.fillStyle = `rgba(10,8,8,${0.2 + Math.random() * 0.35})`;
+      g.beginPath(); g.arc(x, y, s, 0, Math.PI * 2); g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace || t.colorSpace;
+    return t;
+  })();
+
+  const pool = [];
+  for (let i = 0; i < DECAL_COUNT; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: tex, transparent: true, opacity: 0,
+      depthWrite: false, depthTest: true,
+    });
+    const spr = new THREE.Sprite(mat);
+    spr.visible = false;
+    spr.scale.set(1.4, 1.4, 1);
+    jet.add(spr);
+    pool.push({ sprite: spr, age: Infinity, life: 0, active: false });
+  }
+
+  // Plausible local-space anchor points on the hull (above/below wings,
+  // fuselage top/bottom, tail). Picked randomly at spawn time.
+  const HULL_ANCHORS = [
+    new THREE.Vector3( 1.8, 0.2,  0.6),  // right wing top
+    new THREE.Vector3(-1.8, 0.2,  0.6),  // left wing top
+    new THREE.Vector3( 0.0, 0.6,  0.0),  // fuselage top
+    new THREE.Vector3( 0.0,-0.3, -1.2),  // belly
+    new THREE.Vector3( 0.0, 0.8,  2.2),  // tail
+    new THREE.Vector3( 1.0, 0.0, -1.4),  // nose-right
+    new THREE.Vector3(-1.0, 0.0, -1.4),  // nose-left
+  ];
+
+  spawnDamageDecal = function (worldPos, intensity = 0.5) {
+    // Find oldest or inactive slot
+    let slot = pool.find(p => !p.active);
+    if (!slot) {
+      slot = pool.reduce((a, b) => (a.age > b.age ? a : b));
+    }
+    const anchor = HULL_ANCHORS[(Math.random() * HULL_ANCHORS.length) | 0];
+    slot.sprite.position.copy(anchor);
+    slot.sprite.visible = true;
+    slot.sprite.material.opacity = Math.min(1, 0.5 + intensity * 0.6);
+    const s = 0.7 + intensity * 1.8;
+    slot.sprite.scale.set(s, s, 1);
+    slot.age = 0;
+    slot.life = 9 + intensity * 16;   // seconds on hull before fade-out
+    slot.active = true;
+  };
+
+  damageDecalsClear = function () {
+    for (const p of pool) {
+      p.active = false; p.age = Infinity; p.life = 0;
+      p.sprite.visible = false;
+      p.sprite.material.opacity = 0;
+    }
+  };
+
+  // Registered on the animation loop via a global list probed each frame
+  window.__damageDecalUpdate = (dt) => {
+    for (const p of pool) {
+      if (!p.active) continue;
+      p.age += dt;
+      const remaining = p.life - p.age;
+      if (remaining <= 0) {
+        p.active = false; p.sprite.visible = false; p.sprite.material.opacity = 0;
+        continue;
+      }
+      // Fade in last 2.5s; otherwise hold full opacity
+      if (remaining < 2.5) {
+        p.sprite.material.opacity = Math.max(0, (remaining / 2.5) * 0.95);
+      }
+    }
+  };
+})();
+bootLog.step('damage decals', typeof spawnDamageDecal === 'function' && spawnDamageDecal.length > 0,
+  spawnDamageDecal.length > 0 ? '6 sprite slots' : 'STUB (IIFE did not run — check for earlier errors)');
+
+const multiplayerState = {
+  enabled: false,
+  connected: false,
+  connecting: false,
+  ws: null,
+  playerId: `p_${Math.random().toString(36).slice(2, 10)}`,
+  remotePlayers: new Map(),
+  sendTimer: 0,
+  reconnectAt: 0,
+};
+
+function makeRemotePlayerMesh(colorHex) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.22,
+    roughness: 0.45,
+    metalness: 0.15,
+    transparent: true,
+    opacity: 0.8,
+  });
+  const wingMat = bodyMat.clone();
+  wingMat.opacity = 0.68;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.35, 8, 10), bodyMat);
+  body.rotation.x = Math.PI / 2;
+  group.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.6, 10), bodyMat);
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -4.4;
+  group.add(nose);
+  const wings = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.12, 1.8), wingMat);
+  wings.position.set(0, -0.05, 0.5);
+  wings.rotation.z = 0.04;
+  group.add(wings);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 1.1), wingMat);
+  tail.position.set(0, 0.1, 3.35);
+  group.add(tail);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.1, 1.2), wingMat);
+  fin.position.set(0, 0.6, 3.2);
+  group.add(fin);
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 10, 8),
+    new THREE.MeshBasicMaterial({ color: colorHex, toneMapped: false, transparent: true, opacity: 0.9 })
+  );
+  beacon.position.set(0, 1.8, 0.2);
+  group.add(beacon);
+  group.scale.setScalar(1.35);
+  applyShadowFlags(group, { cast: false, receive: false });
+  return group;
+}
+
+function colorFromId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return new THREE.Color().setHSL((h % 360) / 360, 0.72, 0.62).getHex();
+}
+
+function ensureRemotePlayer(id) {
+  if (!multiplayerState.remotePlayers.has(id)) {
+    const group = makeRemotePlayerMesh(colorFromId(id));
+    scene.add(group);
+    multiplayerState.remotePlayers.set(id, {
+      id,
+      group,
+      targetPos: new THREE.Vector3(),
+      targetQuat: new THREE.Quaternion(),
+      lastSeen: Date.now(),
+    });
+  }
+  return multiplayerState.remotePlayers.get(id);
+}
+
+function removeRemotePlayer(id) {
+  const existing = multiplayerState.remotePlayers.get(id);
+  if (!existing) return;
+  scene.remove(existing.group);
+  multiplayerState.remotePlayers.delete(id);
+}
+
+function handleMultiplayerMessage(raw) {
+  let msg;
+  try { msg = JSON.parse(typeof raw === 'string' ? raw : String(raw)); }
+  catch { return; }
+  if (!msg || msg.id === multiplayerState.playerId) return;
+  if (msg.type === 'welcome') {
+    multiplayerState.enabled = true;
+    syncMultiplayerIndicator();
+    const players = Array.isArray(msg.players) ? msg.players : [];
+    for (const p of players) handleMultiplayerMessage({ type: 'state', ...p });
+    return;
+  }
+  if (msg.type === 'leave') {
+    removeRemotePlayer(msg.id);
+    syncMultiplayerIndicator();
+    return;
+  }
+  if (msg.type === 'state' && msg.state) {
+    const rec = ensureRemotePlayer(msg.id);
+    rec.targetPos.set(msg.state.pos.x, msg.state.pos.y, msg.state.pos.z);
+    rec.targetQuat.set(msg.state.quat.x, msg.state.quat.y, msg.state.quat.z, msg.state.quat.w);
+    rec.lastSeen = Date.now();
+    syncMultiplayerIndicator();
+  }
+}
+
+function connectMultiplayer() {
+  if (!MULTIPLAYER_URL || multiplayerState.ws || multiplayerState.connecting) {
+    syncMultiplayerIndicator();
+    return;
+  }
+  multiplayerState.connecting = true;
+  syncMultiplayerIndicator();
+  try {
+    const ws = new WebSocket(MULTIPLAYER_URL);
+    multiplayerState.ws = ws;
+    ws.addEventListener('open', () => {
+      multiplayerState.connecting = false;
+      multiplayerState.connected = true;
+      multiplayerState.enabled = true;
+      multiplayerState.sendTimer = 0;
+      ws.send(JSON.stringify({ type: 'join', room: MULTIPLAYER_ROOM, id: multiplayerState.playerId }));
+      syncMultiplayerIndicator();
+    });
+    ws.addEventListener('message', ev => handleMultiplayerMessage(ev.data));
+    ws.addEventListener('close', () => {
+      multiplayerState.ws = null;
+      multiplayerState.connected = false;
+      multiplayerState.connecting = false;
+      multiplayerState.reconnectAt = Date.now() + 2000;
+      syncMultiplayerIndicator();
+    });
+    ws.addEventListener('error', () => {
+      try { ws.close(); } catch {}
+    });
+  } catch {
+    multiplayerState.ws = null;
+    multiplayerState.connected = false;
+    multiplayerState.connecting = false;
+    multiplayerState.reconnectAt = Date.now() + 2000;
+    syncMultiplayerIndicator();
+  }
+}
+
+function syncMultiplayerIndicator() {
+  if (typeof $mpInd === 'undefined' || !$mpInd) return;
+  if (!MULTIPLAYER_URL) {
+    $mpInd.textContent = 'SOLO';
+    $mpInd.className = '';
+    return;
+  }
+  if (multiplayerState.connected) {
+    $mpInd.textContent = `ONLINE ${multiplayerState.remotePlayers.size + 1}`;
+    $mpInd.className = 'ok';
+  } else if (multiplayerState.connecting) {
+    $mpInd.textContent = 'CONNECTING';
+    $mpInd.className = 'warn';
+  } else {
+    $mpInd.textContent = 'OFFLINE';
+    $mpInd.className = 'warn';
+  }
+}
+
+function sendMultiplayerState() {
+  if (!multiplayerState.connected || !multiplayerState.ws || multiplayerState.ws.readyState !== WebSocket.OPEN) return;
+  multiplayerState.ws.send(JSON.stringify({
+    type: 'state',
+    room: MULTIPLAYER_ROOM,
+    id: multiplayerState.playerId,
+    state: {
+      pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
+      quat: { x: plane.quat.x, y: plane.quat.y, z: plane.quat.z, w: plane.quat.w },
+      throttle: plane.throttle,
+      gear: plane.gear,
+      lights: plane.landingLights,
+      t: Date.now(),
+    },
+  }));
+}
+
+function updateMultiplayer(dt) {
+  if (MULTIPLAYER_URL && !multiplayerState.connected && !multiplayerState.connecting && Date.now() >= multiplayerState.reconnectAt) {
+    connectMultiplayer();
+  }
+  for (const [id, rec] of multiplayerState.remotePlayers) {
+    if (Date.now() - rec.lastSeen > 7000) {
+      removeRemotePlayer(id);
+      continue;
+    }
+    const t = 1 - Math.exp(-8 * dt);
+    rec.group.position.lerp(rec.targetPos, t);
+    rec.group.quaternion.slerp(rec.targetQuat, t);
+  }
+  if (!running) return;
+  multiplayerState.sendTimer += dt;
+  if (multiplayerState.sendTimer > 0.08) {
+    multiplayerState.sendTimer = 0;
+    sendMultiplayerState();
+  }
+}
 
 // =============================================================
 //  OPTIONAL GLB PLANE SWAP
@@ -2274,7 +2764,14 @@ scene.add(jet);
   const hashStr = (window.location.hash || '').replace(/^#/, '');
   const searchStr = (window.location.search || '').replace(/^\?/, '');
   const params = new URLSearchParams(hashStr || searchStr);
-  const planeFile = params.get('plane');
+  let planeFile = params.get('plane');
+  if (!planeFile) {
+    const preset = getActivePropPreset();
+    if (preset) {
+      applyPropPresetToParams(params, preset);
+      planeFile = params.get('plane');
+    }
+  }
   if (!planeFile || planeFile === 'default') return;
 
   // URL params for tweaking: #plane=X&s=<scale>&rx=&ry=&rz=&dy=
@@ -2298,10 +2795,18 @@ scene.add(jet);
 
   // References to the procedural body meshes — hide immediately so the user
   // sees something changed, even before the GLB finishes downloading.
+  //
+  // Keep ONLY the nav-light meshes (navRed/navGrn/strobe) because those
+  // are functional aircraft markers a GLB model doesn't provide.
+  // `scanner` (cyan belly box) and `bellyLight` (orange sphere) were
+  // stylistic choices tied to the procedural jet — they read as stray
+  // "blue thing / orange ball" floating through the GLB hull, so hide
+  // them with the rest. Afterburner visuals stay hidden on prop planes
+  // (the plane-swap later explicitly hides them for props).
   const keepRefs = new Set([
-    jet.userData.afterburner, jet.userData.ab2,
-    jet.userData.strobe, jet.userData.scanner,
-    jet.userData.bellyLight
+    jet.userData.strobe,
+    jet.userData.navRed,
+    jet.userData.navGrn,
   ]);
   const hiddenProcedural = [];
   jet.traverse(obj => {
@@ -2382,7 +2887,7 @@ scene.add(jet);
       // Hide G GEAR from the on-screen legend AND from the gear indicator
       // so the AI doesn't waste actions trying to retract fixed gear.
       const ch3 = document.getElementById('ch-line3');
-      if (ch3) ch3.textContent = 'L LIGHTS · B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
+      if (ch3) ch3.textContent = 'SPACE FIRE · L LIGHTS · M MODEL · B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
       const gearRow = document.getElementById('gear');
       if (gearRow && gearRow.parentElement) {
         gearRow.parentElement.style.display = 'none';
@@ -2627,7 +3132,15 @@ scene.add(jet);
             propPivot.userData.__sweepR = sweepR;
           }
 
+          // Attach to jet first to lock the computed world position, then
+          // re-attach as a child of the GLB model so future tweak offsets
+          // (py/rx etc) move the prop with the body instead of leaving
+          // it floating mid-fuselage. `Object3D.attach()` preserves the
+          // world transform across the reparent.
           jet.add(propPivot);
+          jet.updateMatrixWorld(true);
+          model.updateMatrixWorld(true);
+          model.attach(propPivot);
           propPivot.userData.__propAxis = 'z';
           propPivot.userData.__isExtractedProp = true;
           props.push(propPivot);
@@ -2756,11 +3269,15 @@ scene.add(jet);
         pz: +model.position.z.toFixed(3),
       });
 
-      // Fetch saved tweak (if any); apply only when URL hash is clean
+      // Fetch saved tweak (if any); apply only when URL hash is clean.
+      // Legacy tweaks were keyed by bare filename; current keys include
+      // the 'models/' prefix. Accept either form so old saves still apply.
       fetch('/api/tweaks')
         .then(r => r.ok ? r.json() : {})
         .then(all => {
-          const saved = all && all[planeFile];
+          if (!all || typeof all !== 'object') return;
+          const bareKey = planeFile.replace(/^models\//, '');
+          const saved = all[planeFile] || all[bareKey] || all['models/' + bareKey];
           if (saved && !hadUrlTweaks) applyTweak(saved);
         })
         .catch(() => {})
@@ -3030,6 +3547,8 @@ function applyBiome(name) {
   sandMat.uniforms.ambientColor.value.setHex(b.ambient);
   sandMat.uniforms.sunColor.value.setHex(b.sunColor);
   sandMatLowPoly.uniforms.fogColor.value.setHex(b.fogColor);
+  sandMatLowPoly.uniforms.skyTint.value.setHex(b.skyTop);
+  sandMatLowPoly.uniforms.groundTint.value.setHex(b.groundTint);
   sandMatLowPoly.uniforms.ambientColor.value.setHex(b.lowPolyAmbient);
   sandMatLowPoly.uniforms.sunColor.value.setHex(b.sunColor);
 
@@ -3291,12 +3810,20 @@ const sharedSpriteTex = makeSpriteTexture(64, 0.7);
 // canvas (128) gives enough resolution that the lobes read on screen.
 const puffTex = makePuffTexture(128, 37);
 
+// Log combat system availability once it's fully wired (moved below)
 const combatState = {
   projectiles: [],
   fireCooldown: 0,
   shotsFired: 0,
   hits: 0,
   crashFxTriggered: false,
+  crashBlastTimer: 0,
+  // E16 — ammo is a belt of 300 rounds. Two rounds per burst (one per
+  // muzzle). Depleted → silent cooldown, regens slowly while not firing.
+  ammo: 300,
+  ammoMax: 300,
+  lastFiredAt: 0,
+  dryClickUntil: 0,
 };
 const projectileGroup = new THREE.Group();
 scene.add(projectileGroup);
@@ -3330,9 +3857,22 @@ const explosionSmokePool = new ParticlePool(scene, {
   max: 320, color: 0x2c2520, size: 4.2,
   life: 2.3, growth: 7.4, additive: false, texture: puffTex,
 });
+const crashBlast = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: makeSpriteTexture(256, 0.32),
+  color: 0xff9a48,
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: false,
+  toneMapped: false,
+}));
+crashBlast.visible = false;
+scene.add(crashBlast);
 const _combatTmpA = new THREE.Vector3();
 const _combatTmpB = new THREE.Vector3();
 const _combatTmpC = new THREE.Vector3();
+const _combatTmpD = new THREE.Vector3();
 const _projectileForward = new THREE.Vector3(0, 0, 1);
 
 function deactivateProjectile(p) {
@@ -3352,29 +3892,120 @@ function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
   impactSparkPool.emitCluster(pos, Math.round(8 + intensity * 10), 1.0 + intensity * 0.7, 0.55, 0.7 + intensity * 0.2, 1.1 + intensity * 0.5);
 }
 
+// Apply damage to a destructible. Falls through to destroyTarget() on kill.
+// For single-shot targets (health == 1 default) this behaves identically
+// to the old instant-kill path. Traffic planes now take 3 hits.
+function damageDestructible(target, pos, damage = 1.0, intensity = 1.0) {
+  if (!target || !target.alive) return false;
+  target.health = Math.max(0, target.health - damage);
+  // Hit feedback spark cluster — scaled to damage
+  impactSparkPool.emitCluster(pos,
+    Math.round(4 + damage * 6),
+    0.6 + damage * 0.5, 0.35, 0.5 + damage * 0.2, 0.9 + damage * 0.4
+  );
+  // Bullet impact ping — variant chosen randomly so repeat shots don't
+  // sound identical. Throttled because multiple projectiles can land in
+  // the same frame on a big target.
+  if (typeof playSfx === 'function') {
+    playSfx('mg-hit', { volume: 0.5 + intensity * 0.2, throttleMs: 60 });
+  }
+  if (target.health <= 0) {
+    destroyTarget(target, pos, intensity);
+    return true;
+  }
+  // Light smoke from damaged but alive targets (visible tell)
+  if (damage > 0.2) {
+    explosionSmokePool.emitCluster(pos, 3, 0.6, 0.3, 0.9, 0.9);
+  }
+  return false;
+}
+
 function destroyTarget(target, pos, intensity = 1.0) {
   if (!target || !target.alive) return;
   target.alive = false;
   target.object.visible = false;
   combatState.hits += 1;
   spawnExplosion(pos, intensity, intensity * 1.1);
-  if (typeof flashStatus === 'function') flashStatus('TARGET DESTROYED', 'panel ok', 1.1);
+  // Reward destruction — mountain targets + big kills top up score,
+  // hull and ammo so the player has a reason to chase them down.
+  let msg = 'TARGET DESTROYED';
+  if (target.rewardPoints && window.__gameScore) {
+    window.__gameScore.points += target.rewardPoints;
+    msg = `+${target.rewardPoints} PTS · TARGET`;
+  }
+  if (target.rewardHealth) {
+    plane.health = Math.min(100, plane.health + target.rewardHealth);
+    msg += ` +${target.rewardHealth} HULL`;
+  }
+  if (target.rewardAmmo && combatState) {
+    combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + target.rewardAmmo);
+    msg += ` +${target.rewardAmmo} AMMO`;
+  }
+  if (typeof flashStatus === 'function') flashStatus(msg, 'panel ok', 1.4);
 }
 
 function resetCombatState() {
   combatState.fireCooldown = 0;
   combatState.crashFxTriggered = false;
+  combatState.crashBlastTimer = 0;
   combatState.shotsFired = 0;
   combatState.hits = 0;
+  combatState.ammo = combatState.ammoMax;
+  combatState.lastFiredAt = 0;
+  combatState.dryClickUntil = 0;
+  crashBlast.visible = false;
+  crashBlast.material.opacity = 0;
   for (const p of combatState.projectiles) deactivateProjectile(p);
   for (const target of destructibleTargets) {
     target.alive = true;
     target.object.visible = true;
   }
 }
+bootLog.step('combat system',
+  combatState.projectiles.length > 0 && typeof damageDestructible === 'function',
+  `${combatState.projectiles.length} projectiles · ${combatState.ammoMax} rounds · ${destructibleTargets.length} static targets`);
+
+function attemptInstantHit(origin, dir) {
+  let best = null;
+  let bestAlong = Infinity;
+  for (const target of destructibleTargets) {
+    if (!target.alive || !target.object.visible) continue;
+    const targetPos = getTargetWorldPosition(target, _combatTmpC);
+    _combatTmpD.copy(targetPos).sub(origin);
+    const along = _combatTmpD.dot(dir);
+    if (along < 0 || along > 900) continue;
+    const nearest = _combatTmpB.copy(dir).multiplyScalar(along).add(origin);
+    const miss = nearest.distanceTo(targetPos);
+    const allowance = target.radius + 1.1;
+    if (miss > allowance) continue;
+    if (along < bestAlong) {
+      bestAlong = along;
+      best = { target, pos: targetPos.clone() };
+    }
+  }
+  if (best) {
+    const intensity = best.target.kind === 'fuel' ? 1.65 : best.target.kind === 'traffic' ? 1.25 : best.target.kind === 'floatingTarget' ? 1.6 : best.target.kind === 'drone' ? 1.25 : best.target.kind === 'barrel' ? 1.1 : 0.75;
+    damageDestructible(best.target, best.pos, 1.0, intensity);
+  }
+}
 
 function fireProjectileBurst() {
   if (!jet.userData.gunL || !jet.userData.gunR) return;
+  if (combatState.ammo <= 0) {
+    const now = performance.now();
+    // Soft dry-click cue: only flash once per second of trying to fire
+    if (now > combatState.dryClickUntil) {
+      combatState.dryClickUntil = now + 1000;
+      if (typeof flashStatus === 'function') flashStatus('OUT OF AMMO', 'panel warn', 0.9);
+    }
+    return;
+  }
+  combatState.ammo = Math.max(0, combatState.ammo - 2);
+  combatState.lastFiredAt = performance.now();
+  // Machine-gun burst sample — throttled so rapid-fire doesn't pile up
+  // identical buffers on top of each other. Volume modestly varied so it
+  // doesn't feel metronomic.
+  playSfx('mg-burst', { throttleMs: 120, volume: 0.55 + Math.random() * 0.2, rate: 0.95 + Math.random() * 0.12 });
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const muzzles = [jet.userData.gunL, jet.userData.gunR];
   for (const muzzle of muzzles) {
@@ -3388,6 +4019,7 @@ function fireProjectileBurst() {
     projectile.mesh.position.copy(projectile.pos);
     projectile.mesh.quaternion.setFromUnitVectors(_projectileForward, projectile.vel.clone().normalize());
     muzzleFlashPool.emitCluster(projectile.pos, 4, 0.16, 0.12, 0.4, 0.75);
+    attemptInstantHit(projectile.pos, forward);
   }
   combatState.shotsFired += 1;
 }
@@ -3395,15 +4027,96 @@ function fireProjectileBurst() {
 function updateCombat(dt) {
   combatState.fireCooldown = Math.max(0, combatState.fireCooldown - dt);
   transientStatus.timer = Math.max(0, transientStatus.timer - dt);
-  if (!plane.crashed && keys['Space'] && combatState.fireCooldown <= 0) {
+  // Ammo regen: 8 rounds/sec after 1.5s without firing. Reaches full
+  // belt from empty in ~38s. Fast enough that players aren't stranded,
+  // slow enough to matter in sustained combat.
+  const sinceFired = (performance.now() - combatState.lastFiredAt) / 1000;
+  if (combatState.ammo < combatState.ammoMax && sinceFired > 1.5) {
+    combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + dt * 8);
+  }
+  // Fire on Space OR left mouse. `combatState.fireHeld` tracks the
+  // mouse button so left-click doesn't need to go through the keys
+  // map (which can get stuck if keyup misses during focus changes).
+  const firing = !plane.crashed && (keys['Space'] || combatState.fireHeld);
+  if (firing && combatState.fireCooldown <= 0) {
     fireProjectileBurst();
     combatState.fireCooldown = 0.085;
   }
 
+  // Player-vs-object collision (D11): flying into any registered
+  // destructible causes mutual damage. Relative speed scales severity
+  // so a nudge at cruise is surface damage, but a head-on at 300kts
+  // is fatal. Glancing hits destroy the target but leave the plane
+  // alive and slightly wounded.
+  if (!plane.crashed) {
+    const playerRadius = 5.0;
+    const playerSpeed = plane.vel.length();
+    for (const target of destructibleTargets) {
+      if (!target.alive || !target.object.visible) continue;
+      const targetPos = getTargetWorldPosition(target, _combatTmpC);
+      const dist = plane.pos.distanceTo(targetPos);
+      if (dist > target.radius + playerRadius) continue;
+      // Relative speed: assume static for non-traffic; for traffic we
+      // have .object position but no velocity — estimate zero (low
+      // path speed relative to player at combat range).
+      const relSpeed = playerSpeed;
+      // Head-on check: dot product of player velocity and direction to
+      // target. >0 = heading into target.
+      _combatTmpD.copy(targetPos).sub(plane.pos);
+      if (_combatTmpD.lengthSq() > 1e-6) _combatTmpD.normalize();
+      const forward = plane.vel.clone();
+      if (forward.lengthSq() > 1e-6) forward.normalize();
+      const approach = Math.max(0, forward.dot(_combatTmpD));
+      // 0..1 severity. 60 m/s head-on = 0.5, 120 m/s head-on = 1.0.
+      const severity = Math.min(1, (relSpeed / 140) * (0.4 + approach * 0.6));
+      // Small targets (barrels, drones) scuff the paint; big ones
+      // (traffic, floating) ruin the plane. Use radius as proxy.
+      const massMul = Math.min(1, target.radius / 10);
+      const playerDmg = severity * (0.2 + massMul * 0.6);
+      const fatal = damagePlane(playerDmg, 'airframe', {
+        reason: 'COLLISION',
+        worldPos: targetPos.clone(),
+      });
+      destroyTarget(target, targetPos.clone(),
+        target.kind === 'fuel' ? 1.65 :
+        target.kind === 'traffic' ? 1.4 :
+        target.kind === 'floatingTarget' ? 1.6 :
+        target.kind === 'drone' ? 1.1 :
+        target.kind === 'barrel' ? 1.0 : 0.8
+      );
+      // Big kinetic transfer: rebound the player away from the target.
+      if (!fatal) {
+        const push = _combatTmpD.clone().multiplyScalar(-playerSpeed * 0.35);
+        plane.vel.addScaledVector(push, 0.6);
+        statusMsg.textContent = `HULL ${Math.round(plane.health)}% — IMPACT`;
+        statusMsg.className = 'panel warn';
+      }
+      // Only collide with one target per frame to avoid cascading kills
+      break;
+    }
+  }
+
   if (plane.crashed && !combatState.crashFxTriggered) {
     combatState.crashFxTriggered = true;
+    combatState.crashBlastTimer = 0.9;
+    crashBlast.visible = true;
+    crashBlast.position.copy(plane.pos).add(new THREE.Vector3(0, 2.4, -1.2));
+    crashBlast.scale.set(34, 34, 1);
+    crashBlast.material.opacity = 1.0;
     spawnExplosion(plane.pos.clone(), 1.7, 1.6);
-    if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R', 'panel warn', 1.8);
+    if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R · OR REPLAY', 'panel warn', 2.5);
+    // Surface the REPLAY panel so the player can watch what killed them.
+    if (typeof syncReplayUI === 'function') syncReplayUI();
+  }
+  if (combatState.crashBlastTimer > 0) {
+    combatState.crashBlastTimer = Math.max(0, combatState.crashBlastTimer - dt);
+    const t = 1 - combatState.crashBlastTimer / 0.9;
+    crashBlast.visible = true;
+    const blastScale = 34 + t * 120;
+    crashBlast.scale.set(blastScale, blastScale, 1);
+    crashBlast.material.opacity = (1 - t) * 1.0;
+  } else {
+    crashBlast.visible = false;
   }
 
   for (const p of combatState.projectiles) {
@@ -3429,8 +4142,8 @@ function updateCombat(dt) {
       if (!target.alive || !target.object.visible) continue;
       const targetPos = getTargetWorldPosition(target, _combatTmpC);
       if (p.pos.distanceTo(targetPos) < target.radius) {
-        const intensity = target.kind === 'fuel' ? 1.65 : target.kind === 'traffic' ? 1.25 : target.kind === 'barrel' ? 1.1 : 0.75;
-        destroyTarget(target, targetPos.clone(), intensity);
+        const intensity = target.kind === 'fuel' ? 1.65 : target.kind === 'traffic' ? 1.25 : target.kind === 'floatingTarget' ? 1.6 : target.kind === 'drone' ? 1.25 : target.kind === 'barrel' ? 1.1 : 0.75;
+        damageDestructible(target, targetPos.clone(), 1.0, intensity);
         deactivateProjectile(p);
         break;
       }
@@ -3466,7 +4179,120 @@ const contrail = new ParticlePool(scene, {
   life: 3.0, growth: 5.0, additive: false, texture: sharedSpriteTex,
 });
 
+const greyTurnSmokeL = new ParticlePool(scene, {
+  max: 320, color: 0x8c8984, size: 2.8,
+  life: 4.0, growth: 2.8, additive: false, texture: puffTex,
+});
+const greyTurnSmokeR = new ParticlePool(scene, {
+  max: 320, color: 0x8c8984, size: 2.8,
+  life: 4.0, growth: 2.8, additive: false, texture: puffTex,
+});
+const throatClearSmokeL = new ParticlePool(scene, {
+  max: 240, color: 0x2e2823, size: 2.7,
+  life: 2.8, growth: 2.3, additive: false, texture: puffTex,
+});
+const throatClearSmokeR = new ParticlePool(scene, {
+  max: 240, color: 0x2e2823, size: 2.7,
+  life: 2.8, growth: 2.3, additive: false, texture: puffTex,
+});
+const dirtyExhaustCore = new ParticlePool(scene, {
+  max: 260, color: 0x4b433d, size: 1.9,
+  life: 2.0, growth: 1.7, additive: false, texture: sharedSpriteTex,
+});
+
+const engineSurgeState = {
+  timer: 0,
+  cooldown: 0,
+  phase: 'steady',
+  powerMul: 1,
+  turnStress: 0,
+  greyMix: 0,
+  throatClear: 0,
+};
+
+function resetEngineSurgeFx() {
+  engineSurgeState.timer = 0;
+  engineSurgeState.cooldown = 0;
+  engineSurgeState.phase = 'steady';
+  engineSurgeState.powerMul = 1;
+  engineSurgeState.turnStress = 0;
+  engineSurgeState.greyMix = 0;
+  engineSurgeState.throatClear = 0;
+}
+
+function updateEngineSurge(dt, fastTurnStress) {
+  const propAirframe = !!(plane.props && plane.props.length) || !!plane.suppressJetFX;
+  if (!propAirframe || plane.crashed) {
+    resetEngineSurgeFx();
+    return;
+  }
+
+  engineSurgeState.cooldown = Math.max(0, engineSurgeState.cooldown - dt);
+  const stress = (!plane.onGround && plane.throttle > 0.18)
+    ? clamp01(fastTurnStress)
+    : 0;
+  engineSurgeState.turnStress += (stress - engineSurgeState.turnStress) * Math.min(1, dt * 5.5);
+
+  if (!plane.onGround
+      && plane.throttle > 0.32
+      && engineSurgeState.timer <= 0.05
+      && engineSurgeState.cooldown <= 0
+      && stress > 0.72) {
+    engineSurgeState.timer = 1.35;
+    engineSurgeState.cooldown = 2.4;
+  }
+
+  let targetPowerMul = 1.0;
+  let phase = stress > 0.08 ? 'loaded' : 'steady';
+  let greyMix = clamp01(engineSurgeState.turnStress * 0.85);
+  let throatClear = 0;
+
+  if (engineSurgeState.timer > 0) {
+    engineSurgeState.timer = Math.max(0, engineSurgeState.timer - dt);
+    const p = 1 - engineSurgeState.timer / 1.35;
+    if (p < 0.26) {
+      const t = smoothstep(clamp01(p / 0.26));
+      phase = 'dip';
+      targetPowerMul = 1.0 - 0.16 * t;
+      greyMix = Math.max(greyMix, 0.44 + t * 0.18);
+    } else if (p < 0.58) {
+      const t = smoothstep(clamp01((p - 0.26) / 0.32));
+      phase = 'recover';
+      targetPowerMul = 0.84 + 0.29 * t;
+      greyMix = Math.max(greyMix, 0.58 + t * 0.14);
+      throatClear = 0.24 + t * 0.54;
+    } else if (p < 0.82) {
+      const t = smoothstep(clamp01((p - 0.58) / 0.24));
+      phase = 'throat-clear';
+      targetPowerMul = 1.13 - 0.07 * t;
+      greyMix = Math.max(greyMix, 0.72 - t * 0.18);
+      throatClear = 0.82 - t * 0.22;
+    } else {
+      const t = smoothstep(clamp01((p - 0.82) / 0.18));
+      phase = 'settle';
+      targetPowerMul = 1.06 - 0.06 * t;
+      greyMix = Math.max(greyMix, 0.34 * (1 - t));
+      throatClear = 0.38 * (1 - t);
+    }
+  }
+
+  if (plane.onGround || plane.throttle < 0.18) {
+    targetPowerMul = 1.0;
+    phase = 'steady';
+    greyMix = 0;
+    throatClear = 0;
+  }
+
+  engineSurgeState.phase = phase;
+  engineSurgeState.powerMul += (targetPowerMul - engineSurgeState.powerMul) * Math.min(1, dt * 6.5);
+  engineSurgeState.greyMix += (greyMix - engineSurgeState.greyMix) * Math.min(1, dt * 5.0);
+  engineSurgeState.throatClear += (throatClear - engineSurgeState.throatClear) * Math.min(1, dt * 8.0);
+}
+
 let vaporTimer = 0;
+let greyTurnSmokeTimer = 0;
+let throatClearSmokeTimer = 0;
+let dirtyExhaustCoreTimer = 0;
 let contrailTimer = 0;
 function updateAtmospheric(dt) {
   // Compute world positions of emitter anchors. Smoke now fires from
@@ -3478,6 +4304,8 @@ function updateAtmospheric(dt) {
   const wlL = smokeLAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
   const wlR = smokeRAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
   const wlE = jet.userData.engineExhaust.clone().applyQuaternion(plane.quat).add(plane.pos);
+  const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const wlCore = wlL.clone().lerp(wlR, 0.5).addScaledVector(forwardWorld, -0.35);
 
   const speed = plane.vel.length();
   const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
@@ -3505,6 +4333,8 @@ function updateAtmospheric(dt) {
     Math.max(0, yawRate   - 0.45) * 1.6,
     Math.max(0, fwdAccel  - 4.0) * 0.18
   ) * airborneGate;
+  const greySmokeMix = clamp01(Math.max(engineSurgeState.greyMix * 1.15, Math.max(0, vaporIntensity - 0.28) * 0.8));
+  const throatClearMix = clamp01(engineSurgeState.throatClear);
 
   vaporTimer += dt;
   // Throttle the emit rate a touch — each event now produces 3 puffs, so
@@ -3512,15 +4342,91 @@ function updateAtmospheric(dt) {
   if (vaporIntensity > 0.04 && vaporTimer > 0.045) {
     vaporTimer = 0;
     const ints = Math.min(1.8, vaporIntensity);
-    const sz   = 0.7 + ints * 0.55;
+    const whiteMix = 1 - greySmokeMix * 0.58;
+    const sz   = (0.7 + ints * 0.55) * (0.78 + whiteMix * 0.22);
     // Cluster of 3 puffs per side with small spherical offsets (±0.35 m)
     // and a gentle upward drift (0.6 m/s) so each emission reads as a
     // fluffy multi-lobe puff rather than a single dot. Spread scales
     // slightly with intensity so harder manoeuvres produce bigger blobs.
     const spread  = 0.30 + ints * 0.20;
     const driftUp = 0.55;
-    vaporL.emitCluster(wlL, 3, spread, driftUp, ints, sz);
-    vaporR.emitCluster(wlR, 3, spread, driftUp, ints, sz);
+    const whiteCount = greySmokeMix > 0.65 ? 1 : greySmokeMix > 0.38 ? 2 : 3;
+    vaporL.emitCluster(wlL, whiteCount, spread, driftUp, ints * whiteMix, sz);
+    vaporR.emitCluster(wlR, whiteCount, spread, driftUp, ints * whiteMix, sz);
+  }
+
+  // --- Damage-driven smoke (C8/C9) -----------------------------------
+  //
+  // Smoke is now gated by actual airframe state rather than normal
+  // maneuvering. A healthy plane at cruise emits almost nothing; a
+  // damaged plane emits proportionally. A crippled plane belches black
+  // smoke. Engine events (power-cut restart, stall recovery) trigger a
+  // transient dark puff via plane.engineEvent.
+  plane.engineEvent = Math.max(0, plane.engineEvent - dt * 1.1); // ~1s decay
+  const pScale = (typeof window !== 'undefined' && window.__gfxParticleScale) ? window.__gfxParticleScale() : 1.0;
+
+  // Engine heat — builds at sustained high throttle (>80%) and cools
+  // below 50%. A hot engine (>0.7) joins damage as a trigger for dark
+  // exhaust smoke. Simulates the "running it too hard" case.
+  if (plane.engineHeat == null) plane.engineHeat = 0;
+  const heatIn = plane.throttle > 0.8 ? (plane.throttle - 0.8) * 0.12 : 0;
+  const heatOut = plane.throttle < 0.5 ? 0.15 : 0.04;
+  plane.engineHeat = Math.max(0, Math.min(1, plane.engineHeat + (heatIn - heatOut) * dt));
+
+  const damageMix = clamp01(plane.damage.engine * 0.65 + plane.damage.airframe * 0.45);
+  // Grey damage smoke — ramps in only from ~25% damage, lighter tail.
+  const damageSmokeMix = clamp01(Math.max(0, damageMix - 0.25) * 1.1);
+
+  // Dark/black exhaust — ONLY from real damage or an overheated engine.
+  // No power-cut cough, no stall-recovery puff. Damage floor raised so
+  // a plane that's barely scuffed doesn't belch black smoke.
+  const overheat = Math.max(0, plane.engineHeat - 0.70);
+  const criticalMix = clamp01(
+    Math.max(0, 1 - plane.health / 100 - 0.60) * 1.8 +
+    Math.max(0, plane.damage.engine - 0.35) * 0.9 +
+    overheat * 1.5
+  );
+
+  greyTurnSmokeTimer += dt;
+  if (!plane.crashed && damageSmokeMix > 0.06 && greyTurnSmokeTimer > 0.05) {
+    greyTurnSmokeTimer = 0;
+    const spread = 0.26 + damageSmokeMix * 0.24;
+    const driftUp = 0.30 + damageSmokeMix * 0.14;
+    const lifeMul = 0.95 + damageSmokeMix * 1.05;
+    const sizeMul = 1.02 + damageSmokeMix * 0.85;
+    const count = Math.max(1, Math.round((damageSmokeMix > 0.65 ? 4 : damageSmokeMix > 0.35 ? 3 : 2) * pScale));
+    greyTurnSmokeL.emitCluster(wlL, count, spread, driftUp, lifeMul, sizeMul);
+    greyTurnSmokeR.emitCluster(wlR, count, spread, driftUp, lifeMul, sizeMul);
+  }
+
+  // Throat-clear only fires now when there's actual damage to cough up —
+  // no more dark puff on a routine throttle cut/restart.
+  const throatClearDriven = clamp01(
+    Math.max(throatClearMix, plane.engineEvent * 0.9) * (damageMix > 0.2 ? 1 : 0)
+  );
+  throatClearSmokeTimer += dt;
+  if (!plane.crashed && throatClearDriven > 0.05 && throatClearSmokeTimer > 0.04) {
+    throatClearSmokeTimer = 0;
+    const spread = 0.18 + throatClearDriven * 0.24;
+    const driftUp = 0.22 + throatClearDriven * 0.12;
+    const lifeMul = 0.88 + throatClearDriven * 1.05;
+    const sizeMul = 0.92 + throatClearDriven * 0.95;
+    const count = Math.max(1, Math.round((throatClearDriven > 0.58 ? 4 : 3) * pScale));
+    throatClearSmokeL.emitCluster(wlL, count, spread, driftUp, lifeMul, sizeMul);
+    throatClearSmokeR.emitCluster(wlR, count, spread, driftUp, lifeMul, sizeMul);
+  }
+
+  // Critical black exhaust — only when health has really bled out or
+  // the engine is properly cooked. This is the "trailing black column"
+  // people associate with a doomed plane.
+  dirtyExhaustCoreTimer += dt;
+  if (!plane.crashed && criticalMix > 0.08 && dirtyExhaustCoreTimer > 0.032) {
+    dirtyExhaustCoreTimer = 0;
+    const coreSpread = 0.10 + criticalMix * 0.10;
+    const coreLife = 0.90 + criticalMix * 0.95;
+    const coreSize = 0.82 + criticalMix * 0.72;
+    const coreCount = Math.max(1, Math.round((criticalMix > 0.55 ? 4 : 3) * pScale));
+    dirtyExhaustCore.emitCluster(wlCore, coreCount, coreSpread, 0.10, coreLife, coreSize);
   }
 
   // Engine contrail: emits when throttle is up and we're above ground
@@ -3534,6 +4440,11 @@ function updateAtmospheric(dt) {
 
   vaporL.update(dt);
   vaporR.update(dt);
+  greyTurnSmokeL.update(dt);
+  greyTurnSmokeR.update(dt);
+  throatClearSmokeL.update(dt);
+  throatClearSmokeR.update(dt);
+  dirtyExhaustCore.update(dt);
   contrail.update(dt);
 }
 
@@ -3541,7 +4452,13 @@ function updateAtmospheric(dt) {
 //  VOLUMETRIC CLOUDS — dodecahedron puffs, low-poly stylised,
 //  world-space with wrap-around, biome-tinted
 // =============================================================
-const CLOUD_COUNT = 90;
+
+// Weather state — public so other systems (graphics panel, future
+// weather events) can modulate it. `clouds` in [0,1] scales density
+// at build time (CLOUD_COUNT * clouds). Set before buildClouds().
+const weather = { clouds: 0.6, storm: 0 };
+const CLOUD_COUNT_MAX = 90;
+const CLOUD_COUNT = Math.round(CLOUD_COUNT_MAX * weather.clouds);
 
 // Build several cloud "template" geometries — each a merged cluster of
 // dodecahedra in world-builder style. Picking a template deterministically
@@ -3567,16 +4484,23 @@ const CLOUD_TEMPLATES = [
 ];
 
 // Shared cloud material — respects biome tint via .color
+// Clouds use emissive so they don't go black at dusk/night when direct
+// lighting drops. Emissive is modulated in updateTimeOfDay() to match
+// sky color (warm at sunset, moonlit-blue at night). fog:true still
+// lets distant clouds fade into haze naturally.
 const cloudMat = new THREE.MeshLambertMaterial({
   color: currentBiome.cloudColor,
+  emissive: currentBiome.cloudColor,
+  emissiveIntensity: 0.35,
   transparent: true,
   opacity: currentBiome.cloudOpacity,
-  // Clouds shouldn't write to depth or they'll pop against sky at fog edge
   depthWrite: false,
   fog: true,
 });
 const cloudMatLow = new THREE.MeshPhongMaterial({
   color: currentBiome.cloudColor,
+  emissive: currentBiome.cloudColor,
+  emissiveIntensity: 0.35,
   transparent: true,
   opacity: currentBiome.cloudOpacity,
   flatShading: true,
@@ -3621,6 +4545,8 @@ function buildClouds() {
   return { group, data };
 }
 const clouds = buildClouds();
+bootLog.step('clouds', clouds && clouds.data && clouds.data.length > 0,
+  `${clouds && clouds.data ? clouds.data.length : 0} puffs · density=${weather.clouds}`);
 
 function updateClouds(dt, px, pz) {
   for (const c of clouds.data) {
@@ -3821,6 +4747,7 @@ const todFog = new THREE.Color();
 const todSun = new THREE.Color();
 const todGround = new THREE.Color();
 const todAmbient = new THREE.Color();
+const todLowPolyAmbient = new THREE.Color();
 
 function updateTimeOfDay(dt = 0) {
   timeOfDay.phase = (timeOfDay.phase + dt / timeOfDay.cycleSeconds) % 1;
@@ -3853,6 +4780,7 @@ function updateTimeOfDay(dt = 0) {
   todSun.setHex(currentBiome.sunColor).lerp(TOD_MOON, 1 - daylight).lerp(TOD_WARM, warmth * 0.82);
   todGround.setHex(currentBiome.groundTint).lerp(TOD_NIGHT_GROUND, 1 - daylight).lerp(TOD_WARM, warmth * 0.1);
   todAmbient.setHex(currentBiome.ambient).lerp(TOD_NIGHT_GROUND, (1 - daylight) * 0.7).lerp(TOD_WARM, warmth * 0.08);
+  todLowPolyAmbient.copy(todAmbient).lerp(todGround, 0.18).lerp(todSkyTop, (1 - daylight) * 0.14);
 
   scene.background.copy(todFog);
   scene.fog.color.copy(todFog);
@@ -3864,23 +4792,57 @@ function updateTimeOfDay(dt = 0) {
   sandMat.uniforms.sunColor.value.copy(todSun);
   sandMat.uniforms.fogColor.value.copy(todFog);
   sandMat.uniforms.skyTint.value.copy(todSkyTop);
+  sandMat.uniforms.groundTint.value.copy(todGround);
+  sandMat.uniforms.ambientColor.value.copy(todAmbient);
   sandMatLowPoly.uniforms.sunDir.value.copy(sunDir);
   sandMatLowPoly.uniforms.sunColor.value.copy(todSun);
   sandMatLowPoly.uniforms.fogColor.value.copy(todFog);
+  sandMatLowPoly.uniforms.skyTint.value.copy(todSkyTop);
+  sandMatLowPoly.uniforms.groundTint.value.copy(todGround);
+  sandMatLowPoly.uniforms.ambientColor.value.copy(todLowPolyAmbient);
 
   sun.color.copy(todSun);
   sun.intensity = 0.08 + daylight * 1.55 + twilight * 0.18;
   hemiLight.color.copy(todSkyTop);
   hemiLight.groundColor.copy(todGround);
-  hemiLight.intensity = 0.08 + daylight * 0.36 + twilight * 0.05;
+  // Moonlight — at night (daylight=0) the hemisphere light is tinted cool
+  // blue and gets a baseline intensity so surfaces aren't pitch black.
+  // Previously 0.08 floor left the plane as pure silhouette.
+  const nightFloor = 1 - daylight;
+  hemiLight.intensity = 0.18 + daylight * 0.36 + twilight * 0.05 + nightFloor * 0.22;
   ambientLight.color.copy(todAmbient);
-  ambientLight.intensity = 0.04 + daylight * 0.12 + twilight * 0.02;
+  ambientLight.intensity = 0.10 + daylight * 0.12 + twilight * 0.02 + nightFloor * 0.10;
   renderer.toneMappingExposure = 0.68 + daylight * 0.38 + twilight * 0.08;
   updateRunwayLights(1 - daylight, twilight);
 
-  const dayCloudOpacity = currentBiome.cloudOpacity * (0.72 + daylight * 0.28);
+  // Clouds: bright + wispy at midday, fuller + darker at dusk/night.
+  // Opacity drops with daylight (less overcast look); color trends toward
+  // pure white at midday regardless of biome tint. Storm weather overrides
+  // back toward dense + grey.
+  const stormMix = Math.max(0, Math.min(1, weather.storm || 0));
+  const baseCloudOp = currentBiome.cloudOpacity * (0.55 + daylight * 0.15);
+  const dayCloudOpacity = baseCloudOp * (1 - stormMix * 0.1) + stormMix * 0.35;
   cloudMat.opacity = dayCloudOpacity;
   cloudMatLow.opacity = dayCloudOpacity;
+
+  const CLOUD_WHITE = 0xffffff;
+  const biomeCloudCol = new THREE.Color(currentBiome.cloudColor);
+  const stormCloudCol = new THREE.Color(0x5a6070);
+  const brightenMix = daylight * 0.75 * (1 - stormMix);
+  const cloudTarget = biomeCloudCol.clone().lerp(new THREE.Color(CLOUD_WHITE), brightenMix).lerp(stormCloudCol, stormMix * 0.8);
+  cloudMat.color.copy(cloudTarget);
+  cloudMatLow.color.copy(cloudTarget);
+  // Emissive tint keeps clouds from turning black when the sun is low.
+  // At midday (daylight=1) emissive is 0.15 (dim self-glow overridden by sun);
+  // at midnight (daylight=0) emissive is 0.55 so clouds read as moonlit.
+  const cloudEmissive = biomeCloudCol.clone()
+    .lerp(new THREE.Color(0x9abaf8), 1 - daylight)   // cool moonlight at night
+    .lerp(new THREE.Color(0x8a5030), stormMix * 0.4); // dusky if storming
+  cloudMat.emissive.copy(cloudEmissive);
+  cloudMatLow.emissive.copy(cloudEmissive);
+  const nightGlow = 0.15 + (1 - daylight) * 0.40;
+  cloudMat.emissiveIntensity = nightGlow;
+  cloudMatLow.emissiveIntensity = nightGlow;
 
   sunGrp.userData.core.material.color.copy(todSun);
   sunGrp.userData.halo.material.color.copy(todSun).lerp(TOD_WARM, 0.18);
@@ -4153,14 +5115,220 @@ function updateBirds(t) {
 }
 
 // =============================================================
-//  SOUND — fully synthesized via WebAudio (engine, wind, warnings)
+//  SOUND — WebAudio + online CC0 prop-engine sample (engine, wind, warnings)
 // =============================================================
+const PROP_ENGINE_SAMPLE = {
+  // Candidate URLs tried in order — first one whose decoded audio is
+  // long enough to loop cleanly wins. `prop-flying-*` are ~30s sustained
+  // clips that loop seamlessly; the shorter "engine-noise" ones are fall-backs.
+  urls: [
+    'audio/engine/prop-flying-1.wav',
+    'audio/engine/prop-flying-2.wav',
+    'audio/engine/prop-flying-3.wav',
+    'audio/engine/prop-flying-4.wav',
+    'audio/engine/prop-engine-noise-3.wav',
+    'audio/engine/prop-engine-noise-4.wav',
+    'audio/engine/isolated-plane-noise.wav',
+    'audio/engine/light-prop-cruise.wav',
+  ],
+  title: 'Local prop engine loop',
+  author: 'local',
+  license: 'project',
+};
+
+// One-shots keyed by event name. Loaded lazily on first trigger; held as
+// decoded AudioBuffers and scheduled against the shared audio.master gain
+// node so they respect mute + master volume.
+const SFX_POOL = {
+  urls: {
+    'prop-start':    ['audio/engine/prop-start-1.wav', 'audio/engine/prop-start-4.wav'],
+    'prop-damaged':  ['audio/engine/prop-damaged-1.wav', 'audio/engine/prop-damaged-2.wav', 'audio/engine/prop-damaged-3.wav', 'audio/engine/prop-damaged-4.wav'],
+    'nosedive':      ['audio/engine/nosedive-1.wav', 'audio/engine/nosedive-2.wav', 'audio/engine/nosedive-3.wav'],
+    'mg-burst':      ['audio/combat/mg-burst-1.wav', 'audio/combat/mg-burst-2.wav'],
+    'mg-hit':        ['audio/impact/mg-hit-1.wav', 'audio/impact/mg-hit-2.wav', 'audio/impact/mg-hit-3.wav', 'audio/impact/mg-hit-4.wav'],
+    'explosion':     ['audio/impact/explosion-big.wav'],
+    'dogfight':      ['audio/combat/dogfight-1.wav', 'audio/combat/dogfight-2.wav', 'audio/combat/dogfight-3.wav'],
+  },
+  buffers: {},   // event → AudioBuffer[]
+  loading: {},   // event → Promise
+  lastPlayAt: {}, // event → perf.now(), for throttling (gun bursts etc)
+};
+
+// Load the buffers for a given SFX event the first time it's needed.
+// Fetch is done via the same origin so cache + mime handling "just works"
+// through tweaks-server.mjs. Errors are logged once and the event goes
+// dormant (returns null from playSfx) rather than hard-failing.
+async function loadSfxEvent(event) {
+  if (!audio.ctx) return null;
+  if (SFX_POOL.buffers[event]) return SFX_POOL.buffers[event];
+  if (SFX_POOL.loading[event]) return SFX_POOL.loading[event];
+  const urls = SFX_POOL.urls[event] || [];
+  if (!urls.length) return null;
+  const p = (async () => {
+    const out = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arr = await res.arrayBuffer();
+        const buf = await new Promise((resolve, reject) =>
+          audio.ctx.decodeAudioData(arr, resolve, reject));
+        out.push(buf);
+      } catch (err) {
+        console.warn(`[sfx] ${event} "${url}" failed:`, err && err.message || err);
+      }
+    }
+    SFX_POOL.buffers[event] = out;
+    return out;
+  })();
+  SFX_POOL.loading[event] = p;
+  return p;
+}
+
+// Fire-and-forget one-shot playback. `opts`:
+//   volume (0..1, default 1), rate (playbackRate, default 1),
+//   throttleMs (skip if same event played within this window),
+//   variantIndex (pick a specific variant; otherwise random).
+function playSfx(event, opts = {}) {
+  if (!audio.ctx || !audio.enabled) return;
+  const now = performance.now();
+  const last = SFX_POOL.lastPlayAt[event] || 0;
+  if (opts.throttleMs && (now - last) < opts.throttleMs) return;
+  const buffers = SFX_POOL.buffers[event];
+  if (!buffers) {
+    // Kick off loading; caller can retry next event.
+    loadSfxEvent(event);
+    return;
+  }
+  if (!buffers.length) return;
+  SFX_POOL.lastPlayAt[event] = now;
+  const buf = (opts.variantIndex != null)
+    ? buffers[opts.variantIndex % buffers.length]
+    : buffers[(Math.random() * buffers.length) | 0];
+  const src = audio.ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = opts.rate || 1;
+  const g = audio.ctx.createGain();
+  g.gain.value = opts.volume != null ? opts.volume : 1;
+  src.connect(g).connect(audio.master);
+  src.start();
+  // Clean up when done
+  src.onended = () => { try { src.disconnect(); g.disconnect(); } catch {} };
+}
+
 const audio = {
   ctx: null, enabled: false, master: null,
   engineGain: null, engineFilter: null,
   engineOsc: null, engineOscGain: null,
   windGain: null,
+  // Prop engine is an AudioBufferSourceNode (web-audio-native loop with
+  // loopStart/loopEnd trimming so the seam is silent). No HTMLAudioElement.
+  propBuffer: null,
+  propBufferNode: null,
+  propPlaybackRate: 1,
+  propSampleLoading: false,
+  propSampleGain: null,
+  propSampleFilter: null,
+  propSampleHighpass: null,
+  propSampleReady: false,
+  propSampleMode: 'none',
+  engineSampleLabel: 'synth',
 };
+
+function isPropAirframe() {
+  return typeof plane !== 'undefined' && !!((plane.props && plane.props.length) || plane.suppressJetFX);
+}
+
+// Engine loop — decoded into an AudioBuffer and played via
+// AudioBufferSourceNode with `loop = true` + `loopStart/loopEnd` trimmed
+// to the sustain portion (skipping attack + release). This avoids the
+// "pop" an HTMLAudioElement emits at the loop seam, and lets us modulate
+// playbackRate cleanly with engine RPM.
+function syncPropSamplePlayback(forcePlay = false) {
+  const alive = !(typeof plane !== 'undefined' && plane.crashed);
+  // Engine loop only runs when the engine is actually engaged. Parked
+  // on the runway with throttle at 0 = silent, as a real cold plane.
+  // Short airspeed grace so throttle-off glides keep the prop audible.
+  const parked = plane && plane.onGround && plane.throttle < 0.02 && plane.throttleTarget < 0.02
+    && (!plane.vel || plane.vel.length() < 2);
+  const shouldPlay = !!(audio.enabled && alive && !parked && (forcePlay || isPropAirframe()));
+  if (shouldPlay && audio.propSampleReady && !audio.propBufferNode) {
+    startPropBuffer();
+  } else if (!shouldPlay && audio.propBufferNode) {
+    stopPropBuffer();
+  }
+}
+
+function startPropBuffer() {
+  if (!audio.ctx || !audio.propBuffer || audio.propBufferNode) return;
+  const src = audio.ctx.createBufferSource();
+  src.buffer = audio.propBuffer;
+  src.loop = true;
+  // Trim 10% off each end so we loop only the sustain. Works for clips
+  // with fade-in/out as well as clean sustained drones.
+  const dur = audio.propBuffer.duration;
+  src.loopStart = dur * 0.10;
+  src.loopEnd   = dur * 0.90;
+  src.playbackRate.value = audio.propPlaybackRate || 1;
+  src.connect(audio.propSampleGain);
+  src.start(0, src.loopStart);
+  audio.propBufferNode = src;
+}
+
+function stopPropBuffer() {
+  if (!audio.propBufferNode) return;
+  try { audio.propBufferNode.stop(0); } catch {}
+  try { audio.propBufferNode.disconnect(); } catch {}
+  audio.propBufferNode = null;
+}
+
+async function ensurePropEngineSample() {
+  if (!audio.ctx || audio.propBuffer || audio.propSampleLoading) return;
+  audio.propSampleLoading = true;
+  audio.engineSampleLabel = 'loading';
+
+  // Build the filter chain once (reused per buffer node restart)
+  if (!audio.propSampleGain) {
+    const hp = audio.ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 55;
+    const lp = audio.ctx.createBiquadFilter();
+    lp.type = 'lowpass';  lp.frequency.value = 1400; lp.Q.value = 0.5;
+    const gain = audio.ctx.createGain();
+    gain.gain.value = 0;
+    hp.connect(lp).connect(gain).connect(audio.master);
+    audio.propSampleHighpass = hp;
+    audio.propSampleFilter = lp;
+    audio.propSampleGain = gain;
+    audio.propSampleMode = 'buffer-node';
+  }
+
+  const urls = PROP_ENGINE_SAMPLE.urls || [PROP_ENGINE_SAMPLE.url];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arr = await res.arrayBuffer();
+      const buf = await new Promise((resolve, reject) =>
+        audio.ctx.decodeAudioData(arr, resolve, reject));
+      // Accept any clip ≥ 1s — shorter ones tend to audibly loop
+      if (buf.duration < 1.0) {
+        console.log(`[audio] skipping ${url} (too short: ${buf.duration.toFixed(2)}s)`);
+        continue;
+      }
+      audio.propBuffer = buf;
+      audio.propSampleReady = true;
+      audio.engineSampleLabel = url.split('/').pop();
+      console.log(`[audio] engine loop loaded: ${audio.engineSampleLabel} (${buf.duration.toFixed(2)}s)`);
+      syncPropSamplePlayback(true);
+      audio.propSampleLoading = false;
+      return;
+    } catch (err) {
+      console.warn(`[audio] ${url} failed:`, err && err.message || err);
+    }
+  }
+  audio.engineSampleLabel = 'synth-fallback';
+  audio.propSampleLoading = false;
+}
 
 function initAudio() {
   if (audio.ctx) return;
@@ -4170,6 +5338,11 @@ function initAudio() {
   audio.master = audio.ctx.createGain();
   audio.master.gain.value = 0.55;
   audio.master.connect(audio.ctx.destination);
+
+  // Preload the combat + impact SFX so the first gun trigger isn't silent
+  // while the fetch+decode happens. Engine one-shots lazy-load on demand
+  // (player may never crash nosedive in a short session).
+  ['mg-burst', 'mg-hit', 'explosion', 'prop-damaged'].forEach(loadSfxEvent);
 
   // Shared looping noise buffer (2s)
   const sr = audio.ctx.sampleRate;
@@ -4218,7 +5391,9 @@ function initAudio() {
   wNoise.start();
   audio.windGain = wGain;
 
+  ensurePropEngineSample();
   audio.enabled = true;
+  syncPropSamplePlayback();
 }
 
 function audioBeep(freq, dur, vol) {
@@ -4258,18 +5433,87 @@ function audioThud(intensity = 0.5) {
 let stallTimer = 0.5;
 function updateAudio(dt) {
   if (!audio.ctx || !audio.enabled) return;
+  if (isPropAirframe() && !audio.propSampleEl) ensurePropEngineSample();
+
   const ct = audio.ctx.currentTime;
-  const t = plane.throttle;
+  const surgePower = plane.crashed ? 1 : engineSurgeState.powerMul;
+  const t = clamp01(plane.throttle * surgePower);
   const sp = plane.vel.length();
+  const surgeDip = clamp01((1 - surgePower) / 0.16);
+  const surgeRecovery = clamp01((surgePower - 1) / 0.13);
+  const propSampleActive = isPropAirframe() && !!audio.propSampleReady;
 
-  // Engine intensity scales with throttle + bit of airspeed
-  audio.engineGain.gain.setTargetAtTime(0.28 * t + 0.04, ct, 0.15);
-  audio.engineFilter.frequency.setTargetAtTime(260 + t * 950 + sp * 1.2, ct, 0.15);
-  audio.engineOscGain.gain.setTargetAtTime(t * 0.08 + 0.015, ct, 0.15);
-  audio.engineOsc.frequency.setTargetAtTime(50 + t * 100, ct, 0.15);
+  // Ground-proximity bounce — as the plane hugs terrain *in flight*,
+  // engine audio reflects off the ground and gets louder. Only applies
+  // when airborne + moving, so a parked plane stays quiet.
+  const __agl = plane && plane.pos ? Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z)) : 999;
+  const moving = plane && plane.vel && plane.vel.length() > 10;
+  const proxBoost = (moving && !plane.onGround)
+    ? 1.0 + 0.35 * Math.max(0, Math.min(1, (80 - __agl) / 40))
+    : 1.0;
+  if (audio.master && audio.enabled && !plane.crashed) {
+    audio.master.gain.setTargetAtTime(0.55 * proxBoost, ct, 0.15);
+  }
 
-  // Wind kicks in above 60kts ish
-  const windV = Math.min(0.45, Math.max(0, sp - 30) / 280);
+  if (audio.propSampleReady) {
+    if (propSampleActive) syncPropSamplePlayback();
+    // Flat playback rate — no doppler sweep, no dive-bomb effect. The
+    // sample just LOOPS at a fixed pitch; throttle is conveyed only
+    // through volume so a throttle cut sounds like a quiet engine, not
+    // a plane slowing into a dive. Tiny ±0.04 swing kept to hint at RPM.
+    const BASE_RATE = 1.15;
+    const clampedRate = Math.max(1.08, Math.min(1.22, BASE_RATE + t * 0.06 + surgeRecovery * 0.02 - surgeDip * 0.02));
+    audio.propPlaybackRate = clampedRate;
+    if (audio.propBufferNode) {
+      audio.propBufferNode.playbackRate.setTargetAtTime(clampedRate, ct, 0.35);
+    }
+    // Higher idle floor so throttle-off still sounds like a running
+    // engine (not silence). Startup SFX (`prop-start`) fires separately.
+    const sampleVol = propSampleActive
+      ? Math.min(1, 0.45 + t * 0.40 + surgeRecovery * 0.04)
+      : 0;
+    if (audio.propSampleGain) {
+      audio.propSampleGain.gain.setTargetAtTime(sampleVol, ct, 0.12);
+    }
+    if (audio.propSampleFilter) {
+      audio.propSampleFilter.frequency.setTargetAtTime(
+        880 + t * 2200 + sp * 2.2 + surgeRecovery * 180 - surgeDip * 160,
+        ct,
+        0.12,
+      );
+    }
+    if (audio.propSampleHighpass) {
+      audio.propSampleHighpass.frequency.setTargetAtTime(50 + t * 85, ct, 0.12);
+    }
+  }
+
+  // When the recorded prop sample is playing, silence the synth engine
+  // layers entirely. Previously they blended at 0.18 which left an
+  // audible hiss baseline. The bandpass wind noise (at 1700 Hz, i.e.
+  // exactly the "sssss" band) also gets killed — the sample already
+  // contains airstream noise.
+  const synthBlend = propSampleActive ? 0 : 1.0;
+  const synthFilterTarget = propSampleActive
+    ? 210 + t * 680 + sp * 0.8 + surgeRecovery * 70 - surgeDip * 55
+    : 260 + t * 950 + sp * 1.2 + surgeRecovery * 120 - surgeDip * 110;
+  const synthOscFreq = propSampleActive
+    ? 36 + t * 62 + surgeRecovery * 10 - surgeDip * 8
+    : 50 + t * 100 + surgeRecovery * 18 - surgeDip * 12;
+
+  // When the plane is crashed we silence every engine/wind synth layer.
+  // Without this the filtered noise + sawtooth osc keep droning on top of
+  // the explosion FX, which reads as "engine keeps running after I died".
+  const deadMul = plane.crashed ? 0 : 1;
+  audio.engineGain.gain.setTargetAtTime((0.28 * t + 0.04) * synthBlend * deadMul, ct, 0.12);
+  audio.engineFilter.frequency.setTargetAtTime(synthFilterTarget, ct, 0.12);
+  audio.engineOscGain.gain.setTargetAtTime((t * 0.08 + 0.015 + surgeRecovery * 0.012) * (propSampleActive ? 0 : 1) * deadMul, ct, 0.12);
+  audio.engineOsc.frequency.setTargetAtTime(synthOscFreq, ct, 0.12);
+
+  // Wind noise — entirely disabled when the prop sample is live (the
+  // sample already contains airstream), and killed on crash.
+  const windV = propSampleActive || plane.crashed
+    ? 0
+    : Math.min(0.45, Math.max(0, sp - 30) / 280);
   audio.windGain.gain.setTargetAtTime(windV, ct, 0.2);
 
   // Stall warning beep
@@ -4283,12 +5527,41 @@ function updateAudio(dt) {
 }
 
 function setAudioEnabled(on) {
+  const wasOn = audio.enabled;
   if (on && !audio.ctx) initAudio();
   if (!audio.ctx) return;
   if (audio.ctx.state === 'suspended') audio.ctx.resume();
   audio.enabled = on;
+  if (on) ensurePropEngineSample();
   audio.master.gain.setTargetAtTime(on ? 0.55 : 0, audio.ctx.currentTime, 0.1);
+  if (!on && audio.propSampleGain) audio.propSampleGain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
+  syncPropSamplePlayback();
+  // Startup growl — plays once when audio transitions off → on (i.e. the
+  // "engine starts" moment in this sim since the prop loop begins with it).
+  if (on && !wasOn) {
+    loadSfxEvent('prop-start').then(() => {
+      // Fires via playSfx so it respects master gain and will skip if the
+      // user toggled sound back off before the fetch completed.
+      playSfx('prop-start', { volume: 0.7 });
+    });
+  }
 }
+
+// Throttle-based start trigger: even if audio is already on, replay the
+// startup growl when throttle transitions from truly idle to engaged.
+// Called from updatePhysics.
+let _prevThrottleForStart = 0;
+function maybeTriggerEngineStart() {
+  const t = plane.throttle;
+  if (_prevThrottleForStart < 0.02 && t > 0.08 && !plane.crashed) {
+    playSfx('prop-start', { volume: 0.6, throttleMs: 3000 });
+  }
+  _prevThrottleForStart = t;
+}
+
+// NOTE: `spawnDamageDecal` and `damageDecalsClear` are declared above
+// (near the jet creation) with `var` so the decal setup IIFE can assign
+// them before this block runs. Do not re-declare here.
 
 // =============================================================
 //  PLANE STATE + PHYSICS
@@ -4305,6 +5578,74 @@ const plane = {
   landingLights: true,
   onGround: true,
   crashed: false,
+  // Graduated damage model. health is 0..100; crashed = (health <= 0).
+  // Damage buckets feed smoke state + flight-model instability.
+  health: 100,
+  damage: {
+    airframe: 0,    // 0..1, general hull integrity loss
+    engine: 0,      // 0..1, engine efficiency loss (→ more dark smoke)
+    leftWing: 0,    // 0..1, roll bias to left when damaged
+    rightWing: 0,   // 0..1, roll bias to right
+  },
+  // Transient engine event mix that the smoke system reads. Set by
+  // power-cut/restart, hard acceleration, stall events, etc.
+  engineEvent: 0,   // 0..1, decays over ~1s
+  lastDamageAt: -Infinity,
+};
+
+// Apply damage; returns whether this blow was fatal.
+// `kind` is one of 'airframe', 'engine', 'leftWing', 'rightWing'; amount in 0..1.
+function damagePlane(amount, kind = 'airframe', opts = {}) {
+  if (plane.crashed) return false;
+  const a = Math.max(0, Math.min(1, amount));
+  if (a <= 0) return false;
+  plane.health = Math.max(0, plane.health - a * 100);
+  if (plane.damage[kind] != null) {
+    plane.damage[kind] = Math.min(1, plane.damage[kind] + a);
+  } else {
+    plane.damage.airframe = Math.min(1, plane.damage.airframe + a);
+  }
+  plane.engineEvent = Math.min(1, plane.engineEvent + a * 0.6);
+  plane.lastDamageAt = performance.now();
+  if (typeof spawnDamageDecal === 'function' && opts.worldPos) {
+    spawnDamageDecal(opts.worldPos, a);
+  }
+  // Damaged-engine cough every time we take a meaningful blow.
+  if (typeof playSfx === 'function' && a >= 0.15) {
+    playSfx('prop-damaged', { volume: 0.55 + a * 0.35, throttleMs: 400 });
+  }
+  if (plane.health <= 0) {
+    plane.crashed = true;
+    if (typeof statusMsg !== 'undefined' && statusMsg) {
+      statusMsg.textContent = (opts.reason || 'AIRFRAME FAILURE') + ' — PRESS R';
+    }
+    if (typeof playSfx === 'function') {
+      playSfx('explosion', { volume: 0.9 });
+    }
+    return true;
+  }
+  return false;
+}
+function healPlane(resetAll = true) {
+  plane.health = 100;
+  plane.damage.airframe = 0;
+  plane.damage.engine = 0;
+  plane.damage.leftWing = 0;
+  plane.damage.rightWing = 0;
+  plane.engineEvent = 0;
+  if (resetAll) damageDecalsClear();
+}
+bootLog.step('plane state + damage model', typeof damagePlane === 'function', `health=${plane.health}`);
+// Dev handle — inspect state from devtools (`window.__sim.plane.health` etc).
+// Not load-bearing; a regression that removes this just costs a bit of debug.
+// Deliberately exposes reset + keys so automated tests can drive the sim.
+window.__sim = { plane, jet, scene, camera, renderer, weather, THREE,
+  get keys() { return keys; },
+  get audio() { return audio; },
+  get combat() { return combatState; },
+  resetPlane: () => resetPlane(),
+  damagePlane: (a, k, o) => damagePlane(a, k, o),
+  playSfx: (e, o) => playSfx(e, o),
 };
 
 const GRAVITY = 9.81;
@@ -4335,12 +5676,13 @@ const MAX_ANG_VEL = 5.0;       // rad/s clamp to prevent runaway spin
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['Space', 'KeyG', 'KeyL', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyG', 'KeyL', 'KeyM', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
 let gearPressed = false;
 let lightsPressed = false;
+let modelPressed = false;
 let resetPressed = false;
 let stylePressed = false;
 let biomePressed = false;
@@ -4357,26 +5699,32 @@ function resetPlane() {
   plane.brake = 0;
   plane.landingLights = true;
   plane.crashed = false;
+  healPlane();
   resetCombatState();
+  // Fresh slate for flight-review.
+  if (typeof replayStop === 'function') replayStop();
+  if (typeof replayClear === 'function') replayClear();
+  if (typeof syncReplayUI === 'function') syncReplayUI();
+  // Camera orbit (right-mouse drag) back to default.
+  if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
+  if (typeof resetGateScoring === 'function') resetGateScoring();
+  resetEngineSurgeFx();
   statusMsg.textContent = 'READY FOR DEPARTURE';
   statusMsg.className = 'panel';
   if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
 }
 
-function updatePhysics(dt) {
+// Latched-key inputs that must work regardless of crash state. Separated
+// from updatePhysics() so R (reset) still fires even when plane.crashed
+// bails physics out. Called unconditionally from animate().
+function updateInputLatches(dt) {
+  // R — reset. Must work during crash (that's the whole point).
+  if (keys['KeyR']) {
+    if (!resetPressed) { resetPlane(); resetPressed = true; }
+  } else resetPressed = false;
+
+  // The rest of the latches only make sense when alive.
   if (plane.crashed) return;
-
-  // ----- Input -----
-  const pitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
-  const rollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
-  const yawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
-                - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
-
-  if (keys['ShiftLeft'] || keys['ShiftRight']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
-  if (keys['ControlLeft'] || keys['ControlRight']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
-  plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
-
-  plane.brake = keys['KeyB'] ? 1 : 0;
 
   if (keys['KeyG']) {
     if (!gearPressed) {
@@ -4395,9 +5743,9 @@ function updatePhysics(dt) {
     }
   } else lightsPressed = false;
 
-  if (keys['KeyR']) {
-    if (!resetPressed) { resetPlane(); resetPressed = true; }
-  } else resetPressed = false;
+  if (keys['KeyM']) {
+    if (!modelPressed) { cyclePropModel(1); modelPressed = true; }
+  } else modelPressed = false;
 
   if (keys['KeyT']) {
     if (!stylePressed) { toggleStyle(); stylePressed = true; }
@@ -4406,6 +5754,23 @@ function updatePhysics(dt) {
   if (keys['KeyY']) {
     if (!biomePressed) { cycleBiome(); biomePressed = true; }
   } else biomePressed = false;
+}
+
+function updatePhysics(dt) {
+  if (plane.crashed) return;
+
+  // ----- Input -----
+  const pitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
+  const rollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+  const yawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
+                - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
+
+  if (keys['ShiftLeft'] || keys['ShiftRight']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
+  if (keys['ControlLeft'] || keys['ControlRight']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
+  plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
+  maybeTriggerEngineStart();
+
+  plane.brake = keys['KeyB'] ? 1 : 0;
 
   // Animate gear
   if (plane.fixedGear) { plane.gear = 1; plane.gearTarget = 1; }
@@ -4456,10 +5821,27 @@ function updatePhysics(dt) {
   // Apply torque (pitch=X, yaw=Y, roll=Z in local frame).
   //   pitch  1.8 → 3.4 — S/W now flicks the nose around ≈55°/s at cruise
   //   roll   3.2 → 5.0 — banks snap in ≈45° per key-press
-  //   yaw    unchanged (rudder stays a fine-tuning input)
+  //   yaw    0.9 → 3.2 — rudder is a first-class input; arrow keys
+  //          swing the nose at ≈50°/s at cruise.
   plane.angVel.x += pitchIn * 3.4 * authPitch * dt;
-  plane.angVel.z += -rollIn * 5.0 * authRoll * dt;
-  plane.angVel.y += -yawIn * 0.9 * authYaw * dt;
+  plane.angVel.z += -rollIn * 5.6 * authRoll * dt;
+  plane.angVel.y += -yawIn * 3.2 * authYaw * dt;
+
+  // D13 — Airframe integrity: damaged wings introduce a roll bias and
+  // general instability. Effect is subtle at full health, meaningful
+  // below ~50%. Engine damage causes yaw drift (asymmetric thrust).
+  const wingBias = plane.damage.rightWing - plane.damage.leftWing;
+  if (Math.abs(wingBias) > 0.01) {
+    plane.angVel.z += wingBias * 0.7 * dt;
+  }
+  if (plane.damage.airframe > 0.15) {
+    const jitter = (plane.damage.airframe - 0.15) * 0.6;
+    plane.angVel.x += (Math.random() - 0.5) * jitter * dt;
+    plane.angVel.z += (Math.random() - 0.5) * jitter * dt;
+  }
+  if (plane.damage.engine > 0.25) {
+    plane.angVel.y += (plane.damage.engine - 0.25) * 0.35 * dt;
+  }
 
   // ----- AUTO-RUDDER (turn coordination) -----
   // A banked aircraft needs yaw input to keep the nose tracking the turn.
@@ -4494,6 +5876,15 @@ function updatePhysics(dt) {
   if (plane.angVel.length() > MAX_ANG_VEL) {
     plane.angVel.setLength(MAX_ANG_VEL);
   }
+
+  const fastTurnStress = (
+    Math.max(0, bankAmount - 0.42) * 1.55 +
+    Math.max(0, Math.abs(plane.angVel.z) - 0.58) * 0.52 +
+    Math.max(0, Math.abs(plane.angVel.y) - 0.34) * 0.95 +
+    Math.max(0, Math.abs(localVel.x) - 5.0) * 0.06 +
+    Math.max(0, Math.abs(aoa) - 0.10) * 0.85
+  ) * Math.min(1, q / 42) * (0.45 + plane.throttle * 0.8);
+  updateEngineSurge(dt, fastTurnStress);
 
   // Integrate rotation
   const dQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(
@@ -4547,10 +5938,18 @@ function updatePhysics(dt) {
   // creep forward at 0% throttle the instant the sim starts.
   const _thrGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < 40000)
     ? 0 : getHeight(plane.pos.x, plane.pos.z);
+  // Flight-idle floor only kicks in when throttle is actively engaged.
+  // Holding CTRL all the way to 0% = genuine engine-off (glide-only).
+  // Small hysteresis (0.03) so a slight breath on throttle doesn't jitter.
+  const engineEngaged = plane.throttle > 0.03 || plane.throttleTarget > 0.03;
   const effectiveThrottle = plane.onGround
     ? plane.throttle
-    : Math.max(IDLE_THRUST_FRAC, plane.throttle);
-  const thrust = forward.clone().multiplyScalar(effectiveThrottle * MAX_THRUST);
+    : (engineEngaged ? Math.max(IDLE_THRUST_FRAC, plane.throttle) : 0);
+  // Engine damage directly reduces available thrust. At 100% damage
+  // the engine produces only 25% of rated thrust (windmilling).
+  const engineFactor = 1 - plane.damage.engine * 0.75;
+  const effectiveThrottleWithSurge = effectiveThrottle * engineSurgeState.powerMul * engineFactor;
+  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST);
 
   // Gravity
   const gravity = new THREE.Vector3(0, -GRAVITY, 0);
@@ -4602,30 +6001,69 @@ function updatePhysics(dt) {
     const intoSlope = (plane.vel.x * hX + plane.vel.z * hZ) / EPS;
 
     if (slopeDeg > 22 && intoSlope > 10 && horizSpd > 15) {
-      plane.crashed = true;
-      statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
+      // Driving into a mountainside at speed: severe damage scaling
+      // with how hard we hit. Survivable if airframe was pristine and
+      // speed is modest; fatal if already wounded or going fast.
+      const severity = Math.min(1, (intoSlope / 60) + (horizSpd / 120));
+      const dmg = 0.55 + severity * 0.45;
       statusMsg.className = 'panel warn';
-      plane.vel.set(0, 0, 0);
-      audioThud(0.95);
+      audioThud(0.6 + severity * 0.35);
+      const fatal = damagePlane(dmg, 'airframe', {
+        reason: 'TERRAIN IMPACT',
+        worldPos: plane.pos.clone(),
+      });
+      if (fatal) {
+        plane.vel.set(0, 0, 0);
+      } else {
+        // Survive but bounce back off the slope — kill momentum into slope
+        plane.vel.x *= 0.35; plane.vel.z *= 0.35;
+        plane.vel.y = Math.max(plane.vel.y, 6);
+        statusMsg.textContent = `HULL ${Math.round(plane.health)}% — TERRAIN STRIKE`;
+      }
     } else if (plane.gear < 0.4) {
-      // Gear up — crash
-      plane.crashed = true;
-      statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
+      // Gear up: belly-landing damage scales with descent rate.
+      const vertVel = plane.vel.y;
+      const sev = Math.min(1, Math.max(0, -vertVel - 3) / 18);
+      const dmg = 0.35 + sev * 0.55;
       statusMsg.className = 'panel warn';
-      plane.vel.set(0, 0, 0);
-      audioThud(0.9);
+      audioThud(0.55 + sev * 0.3);
+      const fatal = damagePlane(dmg, 'airframe', {
+        reason: 'BELLY LANDING',
+        worldPos: plane.pos.clone(),
+      });
+      plane.pos.y = groundH + 0.4;
+      if (fatal) {
+        plane.vel.set(0, 0, 0);
+      } else {
+        plane.vel.y = 0;
+        plane.vel.x *= 0.7; plane.vel.z *= 0.7;
+        statusMsg.textContent = `HULL ${Math.round(plane.health)}% — GEAR UP!`;
+      }
     } else {
       // Touchdown / rolling
       const vertVel = plane.vel.y;
       const wasAirborne = !plane.onGround;
       plane.pos.y = groundH + GEAR_HEIGHT;
 
-      if (vertVel < -12) {
-        plane.crashed = true;
-        statusMsg.textContent = 'HARD LANDING — PRESS R';
+      if (vertVel < -8) {
+        // Hard landing — scale damage with descent rate; 8-18 m/s is
+        // recoverable, beyond ~22 m/s is fatal on a healthy plane.
+        const sev = Math.min(1, (-vertVel - 8) / 14);
+        const dmg = 0.25 + sev * 0.85;
         statusMsg.className = 'panel warn';
-        plane.vel.set(0, 0, 0);
-        audioThud(0.8);
+        audioThud(0.5 + sev * 0.35);
+        const fatal = damagePlane(dmg, 'airframe', {
+          reason: 'HARD LANDING',
+          worldPos: plane.pos.clone(),
+        });
+        if (fatal) {
+          plane.vel.set(0, 0, 0);
+        } else {
+          plane.vel.y = Math.max(0, vertVel * 0.2);
+          plane.vel.x *= 0.85; plane.vel.z *= 0.85;
+          plane.onGround = true;
+          statusMsg.textContent = `HULL ${Math.round(plane.health)}% — HARD LANDING`;
+        }
       } else {
         // Soft touchdown thud — proportional to descent rate, only on transition
         if (wasAirborne && vertVel < -2) {
@@ -4641,11 +6079,31 @@ function updatePhysics(dt) {
         plane.vel.x = horiz.x;
         plane.vel.z = horiz.z;
 
-        // Align to ground smoothly (kill roll/pitch when on ground at low speed)
-        if (speed < 8) {
-          // Lerp quaternion toward level with current yaw preserved
+        // Ground attitude — taildragger "three-point" stance at rest,
+        // tail-up rotation as speed builds to takeoff. Fixed-gear
+        // (taildragger) planes sit nose-up ~11° when parked; tricycle
+        // gear sits level. Either way, roll always lerps to 0 while
+        // rolling so the wings stay level on the runway.
+        //
+        //   Taildragger:   speed=0 → pitch +0.19 rad  (nose up, tail down)
+        //                  speed=TAIL_LIFT → pitch 0  (tail has risen)
+        //
+        // Above TAIL_LIFT_SPEED the pilot has authority — we stop forcing
+        // the ground attitude so a pitch-input doesn't fight the stance.
+        const TAIL_LIFT_SPEED = 18;        // m/s ≈ 35 kt
+        const TAILDRAGGER_PITCH = 0.225;   // ~13°, extra tail-down stance
+        const isTaildragger = !!plane.fixedGear;
+        if (speed < TAIL_LIFT_SPEED) {
           const euler = new THREE.Euler().setFromQuaternion(plane.quat, 'YXZ');
-          euler.x *= 0.9; euler.z *= 0.9;
+          // Roll always decays on ground
+          euler.z *= Math.max(0, 1 - dt * 4);
+          // Pitch: lerp toward the ground-attitude target
+          const tailBlend = isTaildragger
+            ? Math.max(0, 1 - speed / TAIL_LIFT_SPEED)   // 1 at rest → 0 at lift speed
+            : 0;
+          const pitchTarget = TAILDRAGGER_PITCH * tailBlend;
+          const k = Math.min(1, dt * 3.5);
+          euler.x += (pitchTarget - euler.x) * k;
           plane.quat.setFromEuler(euler);
         }
       }
@@ -4656,6 +6114,15 @@ function updatePhysics(dt) {
 
   // Integrate position
   plane.pos.addScaledVector(plane.vel, dt);
+
+  // Altitude ceiling — hard cap at 3000 ft (914 m). Above the cap we
+  // clamp y and zero any remaining upward velocity so the plane "tops
+  // out" cleanly rather than bumping against an invisible wall.
+  const ALT_CEIL_M = 914;
+  if (plane.pos.y > ALT_CEIL_M) {
+    plane.pos.y = ALT_CEIL_M;
+    if (plane.vel.y > 0) plane.vel.y = 0;
+  }
 
   // World limits (shouldn't hit — infinite terrain)
   plane.pos.y = Math.max(plane.pos.y, -10);
@@ -4678,8 +6145,12 @@ function updatePhysics(dt) {
 //  JET VISUAL UPDATE — gear animation, afterburner
 // =============================================================
 function updateJetVisual() {
-  jet.position.copy(plane.pos);
-  jet.quaternion.copy(plane.quat);
+  // During flight-review replay the replay system puppets jet directly
+  // from recorded frames. Don't stomp it with live plane state.
+  if (!replay.playing) {
+    jet.position.copy(plane.pos);
+    jet.quaternion.copy(plane.quat);
+  }
 
   // Gear rotations (1 = down, 0 = up)
   const g = plane.gear;
@@ -4740,8 +6211,15 @@ function updateJetVisual() {
     // (≈63 rad/s) and cruise at 2000–2700 RPM (≈210–280 rad/s). We
     // scale to that range so the blades look convincingly fast but
     // still individually visible at idle for a visual RPM cue.
-    const omega = 60 + plane.throttle * 240;     // 60 → 300 rad/s
-    const dRot = omega * 0.016;                  // per-frame @ 60 fps
+    const propThrottle = Math.max(0, Math.min(1.15, plane.throttle * engineSurgeState.powerMul));
+    // With throttle truly at zero, the prop is stopped (no idle windmill).
+    // Above 2% throttle we interpolate from idle (60 rad/s) to full.
+    // Engine damage also kills prop rotation proportionally so the
+    // visuals match the audio cue.
+    const engineRunning = plane.throttle > 0.02 && !plane.crashed;
+    const engineHealth = 1 - plane.damage.engine;
+    const omega = engineRunning ? (60 + propThrottle * 240) * engineHealth : 0;
+    const dRot = omega * 0.016;                    // per-frame @ 60 fps
 
     // Motion-blur / strobe disc opacity. Stays invisible at low RPM so
     // you can see the individual blades spinning. Above ~40% throttle it
@@ -4749,7 +6227,7 @@ function updateJetVisual() {
     // beat between the prop and the frame rate — this is what sells the
     // "real" strobe look alongside the still-visible blades.
     const t = performance.now() * 0.001;
-    const rpmN = Math.max(0, (plane.throttle - 0.35) / 0.65); // 0 below 35%, 1 at full
+    const rpmN = clamp01((propThrottle - 0.35) / 0.65); // 0 below 35%, 1 at full-ish
     const flicker = (Math.sin(t * 48) * 0.5 + Math.sin(t * 73 + 1.3) * 0.5) * 0.15
                   + (Math.random() - 0.5) * 0.08;
     const discOpacity = Math.max(0, Math.min(0.55, rpmN * 0.45 + flicker * rpmN));
@@ -4763,8 +6241,8 @@ function updateJetVisual() {
       p.rotation.z += dRot;
       const disc = p.userData.__disc;
       if (disc) disc.material.opacity = p.userData.__isProceduralProp
-        ? 0.15 + plane.throttle * 0.4            // older procedural curve
-        : discOpacity;                           // extracted prop → flicker
+        ? 0.15 + Math.min(1, propThrottle) * 0.4    // older procedural curve
+        : discOpacity;                              // extracted prop → flicker
       if (p.userData.__isExtractedProp) {
         p.traverse(child => {
           if (!child.isMesh || child === p) return;
@@ -4793,14 +6271,20 @@ function updateJetVisual() {
 
   // Landing lights — brightest at night / dusk but still usable by day.
   const nightFactor = 1 - timeOfDay.daylight;
+  // Landing light physical character: a narrow FORWARD cone. Previous
+  // settings inflated the beam + glow into a near-spherical bloom that
+  // read as "light sphere around plane". Tuned down so:
+  //   • glow is a tiny point source at the bulb (max scale 1.2, not 1.8)
+  //   • beam cone is narrow, low opacity — visible only in proper dark
+  //   • splash on ground is wider (where the beam actually hits)
   const landingIntensity = plane.landingLights
     ? (0.65 + nightFactor * 3.0 + (plane.onGround ? 0.55 : 0))
     : 0;
   const beamOpacity = plane.landingLights
-    ? Math.min(0.34, 0.07 + nightFactor * 0.24 + (plane.onGround ? 0.08 : 0))
+    ? Math.min(0.18, 0.02 + nightFactor * 0.16 + (plane.onGround ? 0.04 : 0))
     : 0;
   const glowOpacity = plane.landingLights
-    ? Math.min(1, 0.26 + nightFactor * 0.82 + (plane.onGround ? 0.18 : 0))
+    ? Math.min(0.6, 0.10 + nightFactor * 0.45 + (plane.onGround ? 0.10 : 0))
     : 0;
   if (jet.userData.landingRigs) {
     const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
@@ -4809,9 +6293,9 @@ function updateJetVisual() {
       rig.light.intensity = landingIntensity;
       rig.light.distance = 260 + nightFactor * 180;
       rig.glow.material.opacity = glowOpacity;
-      rig.glow.scale.setScalar(1.0 + glowOpacity * 0.8);
+      rig.glow.scale.setScalar(1.0 + glowOpacity * 0.25);
       rig.beam.material.opacity = beamOpacity;
-      rig.beam.scale.setScalar(1.2 + beamOpacity * 2.2);
+      rig.beam.scale.setScalar(0.8 + beamOpacity * 1.4);
       rig.beam.visible = beamOpacity > 0.01;
 
       const splashCenter = plane.pos.clone()
@@ -4853,10 +6337,307 @@ function updateJetVisual() {
 // =============================================================
 const camLocalOffset = new THREE.Vector3(0, 3.0, 14);
 
+// =============================================================
+//  FLIGHT RECORDER / REPLAY
+//  Ring buffer of recent flight states. When the plane crashes, the
+//  user can replay the last ~30 seconds from multiple camera angles.
+//  Recording stops during replay so the user doesn't erase what they
+//  wanted to watch.
+// =============================================================
+const REPLAY_FPS = 60;
+const REPLAY_SECONDS = 30;
+const REPLAY_MAX = REPLAY_FPS * REPLAY_SECONDS;
+const replay = {
+  buffer: [],       // {pos:Vector3, quat:Quaternion, throttle, t} ring entries
+  head: 0,          // next write index
+  size: 0,          // number of valid entries (≤ REPLAY_MAX)
+  startT: 0,        // perf.now() of first recorded sample in buffer
+  playing: false,
+  playIdx: 0,       // current frame being replayed (absolute into logical timeline)
+  playT: 0,         // accumulated time since play started
+  mode: 'chase',    // 'chase' | 'cockpit' | 'wingL' | 'wingR' | 'movie'
+  movieAnchors: [], // {pos, lookAt, t0, t1}
+  ui: null,
+};
+function replayRecord() {
+  if (replay.playing) return;
+  const slot = {
+    pos: plane.pos.clone(),
+    quat: plane.quat.clone(),
+    throttle: plane.throttle,
+    t: performance.now(),
+  };
+  if (replay.size < REPLAY_MAX) {
+    replay.buffer[replay.size++] = slot;
+  } else {
+    replay.buffer[replay.head] = slot;
+    replay.head = (replay.head + 1) % REPLAY_MAX;
+  }
+}
+function replayGetFrames() {
+  // Return buffer entries in chronological order.
+  if (replay.size < REPLAY_MAX) return replay.buffer.slice(0, replay.size);
+  return replay.buffer.slice(replay.head).concat(replay.buffer.slice(0, replay.head));
+}
+function replayClear() {
+  replay.buffer = [];
+  replay.head = 0;
+  replay.size = 0;
+}
+
+// Build 4–5 movie-cam anchors spaced along the recorded path so the
+// camera cuts between dramatic angles as the plane flies past.
+function replayBuildMovieAnchors() {
+  const frames = replayGetFrames();
+  if (frames.length < 8) { replay.movieAnchors = []; return; }
+  replay.movieAnchors = [];
+  const anchors = Math.min(5, Math.max(3, Math.floor(frames.length / (REPLAY_FPS * 5))));
+  for (let i = 0; i < anchors; i++) {
+    const start = Math.floor((i / anchors) * frames.length);
+    const end   = Math.floor(((i + 1) / anchors) * frames.length);
+    const mid = Math.floor((start + end) / 2);
+    const f = frames[mid];
+    // Position camera off to the side + a bit up, looking at the plane.
+    const side = (i % 2 === 0 ? 1 : -1) * (140 + (i * 40));
+    const up = 40 + (i * 10);
+    const forward = 60 * ((i % 3) - 1);   // -60, 0, 60 — vary forward/back
+    const pos = f.pos.clone().add(new THREE.Vector3(side, up, forward));
+    replay.movieAnchors.push({
+      pos,
+      lookAt: f.pos.clone(),
+      startFrame: start,
+      endFrame: end,
+    });
+  }
+}
+
+function replayStart() {
+  if (replay.size < 4) {
+    if (typeof flashStatus === 'function') flashStatus('NOT ENOUGH FLIGHT DATA', 'panel warn', 1.6);
+    return;
+  }
+  replay.playing = true;
+  replay.playIdx = 0;
+  replay.playT = performance.now();
+  replayBuildMovieAnchors();
+  // Hide the crashBlast so the replay isn't drowned in the explosion sprite
+  if (typeof crashBlast !== 'undefined') crashBlast.visible = false;
+  syncReplayUI();
+}
+function replayStop() {
+  replay.playing = false;
+  syncReplayUI();
+}
+// Called from animate() when replay is active, BEFORE updateJetVisual +
+// updateCamera. Writes the recorded frame into plane.pos/plane.quat so
+// the rest of the pipeline (chase cam, chunks, visual jet position)
+// follows naturally — avoiding the fight where live updateCamera
+// overwrites the replay camera every frame.
+function replaySyncState(frames, idx) {
+  const f = frames[Math.min(idx, frames.length - 1)];
+  plane.pos.copy(f.pos);
+  plane.quat.copy(f.quat);
+  plane.vel.set(0, 0, 0);
+  plane.angVel.set(0, 0, 0);
+  plane.throttle = f.throttle;
+}
+
+// Called AFTER updateCamera for non-chase modes, overriding the camera
+// to a different viewpoint. Chase mode leaves the live updateCamera
+// result alone.
+function replayApplyCamera(frames, idx) {
+  if (replay.mode === 'chase') return;  // updateCamera already did the right thing
+  const f = frames[Math.min(idx, frames.length - 1)];
+  const pos = f.pos;
+  const q = f.quat;
+
+  if (replay.mode === 'cockpit') {
+    const local = new THREE.Vector3(0, 0.55, -1.0).applyQuaternion(q);
+    camera.position.copy(pos).add(local);
+    camera.up.set(0, 1, 0).applyQuaternion(q);
+    const lookFwd = new THREE.Vector3(0, 0, -20).applyQuaternion(q);
+    camera.lookAt(pos.clone().add(lookFwd));
+  } else if (replay.mode === 'wingL' || replay.mode === 'wingR') {
+    const sign = replay.mode === 'wingL' ? -1 : 1;
+    const local = new THREE.Vector3(sign * 4.8, 0.1, 1.2).applyQuaternion(q);
+    camera.position.copy(pos).add(local);
+    camera.up.set(0, 1, 0).applyQuaternion(q);
+    const look = new THREE.Vector3(-sign * 2.0, 0.2, -0.5).applyQuaternion(q);
+    camera.lookAt(pos.clone().add(look));
+  } else if (replay.mode === 'movie') {
+    const anchor = replay.movieAnchors.find(a => idx >= a.startFrame && idx < a.endFrame)
+                || replay.movieAnchors[replay.movieAnchors.length - 1];
+    if (anchor) {
+      camera.position.copy(anchor.pos);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(pos);
+    }
+  }
+}
+// Phase 1 (before updateJetVisual/updateCamera): sync plane state.
+function replayPreStep(dt) {
+  const frames = replayGetFrames();
+  if (frames.length === 0) { replayStop(); return; }
+  const elapsed = (performance.now() - replay.playT) / 1000;
+  const totalDur = (frames[frames.length - 1].t - frames[0].t) / 1000;
+  if (totalDur <= 0) { replayStop(); return; }
+  const loop = elapsed % (totalDur + 2.5);
+  const idx = (loop >= totalDur)
+    ? frames.length - 1
+    : Math.min(frames.length - 1, Math.floor((loop / totalDur) * frames.length));
+  replay.playIdx = idx;
+  replaySyncState(frames, idx);
+}
+// Phase 2 (after updateCamera): override camera for non-chase modes.
+function replayPostStep() {
+  const frames = replayGetFrames();
+  if (frames.length === 0) return;
+  replayApplyCamera(frames, replay.playIdx);
+}
+function syncReplayUI() {
+  if (!replay.ui) return;
+  replay.ui.panel.style.display = plane.crashed ? 'block' : 'none';
+  replay.ui.modeButtons.forEach(b => {
+    const isActive = b.dataset.mode === replay.mode;
+    b.style.background = isActive ? 'rgba(255,204,102,0.25)' : 'rgba(255,204,102,0.04)';
+    b.style.color = isActive ? '#ffe0a0' : '#ffcc66';
+  });
+  replay.ui.playBtn.textContent = replay.playing ? '■ STOP' : '▶ REPLAY';
+}
+function replayBuildUI() {
+  const hud = document.getElementById('hud');
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  panel.id = 'replay-panel';
+  panel.style.cssText = 'bottom:18px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none;pointer-events:auto;min-width:300px;text-align:center;';
+  const title = document.createElement('div');
+  title.style.cssText = 'letter-spacing:0.14em;margin-bottom:6px;color:#ffe0a0;';
+  title.textContent = 'FLIGHT REVIEW';
+  panel.appendChild(title);
+
+  const playBtn = document.createElement('button');
+  playBtn.type = 'button';
+  playBtn.style.cssText = 'padding:3px 14px;background:rgba(255,204,102,0.25);color:#ffe0a0;border:1px solid rgba(255,204,102,0.35);font:inherit;letter-spacing:0.1em;cursor:pointer;margin-bottom:6px;';
+  playBtn.textContent = '▶ REPLAY';
+  playBtn.addEventListener('click', () => {
+    if (replay.playing) replayStop();
+    else replayStart();
+  });
+  panel.appendChild(playBtn);
+  panel.appendChild(document.createElement('br'));
+
+  const modeWrap = document.createElement('span');
+  modeWrap.style.cssText = 'display:inline-flex;gap:3px;';
+  const modes = [
+    { k: 'chase',    label: 'CHASE' },
+    { k: 'cockpit',  label: 'COCKPIT' },
+    { k: 'wingL',    label: 'WING L' },
+    { k: 'wingR',    label: 'WING R' },
+    { k: 'movie',    label: 'MOVIE' },
+  ];
+  const modeButtons = [];
+  modes.forEach(m => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.mode = m.k;
+    b.textContent = m.label;
+    b.style.cssText = 'padding:2px 8px;background:rgba(255,204,102,0.04);color:#ffcc66;border:1px solid rgba(255,204,102,0.35);font:inherit;letter-spacing:0.1em;cursor:pointer;';
+    b.addEventListener('click', () => { replay.mode = m.k; syncReplayUI(); });
+    modeWrap.appendChild(b);
+    modeButtons.push(b);
+  });
+  panel.appendChild(modeWrap);
+  hud.appendChild(panel);
+  replay.ui = { panel, playBtn, modeButtons };
+}
+replayBuildUI();
+bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
+
+// Right-mouse orbit state. `yaw` + `pitch` (radians) accumulate from
+// drag input and rotate the chase camera offset around the plane. A
+// right-click without drag (total movement < CLICK_THRESHOLD px and
+// duration < CLICK_TIME_MS) resets the orbit back to defaults.
+const camOrbit = {
+  yaw: 0, pitch: 0,
+  dragging: false, startX: 0, startY: 0,
+  totalDist: 0, pressedAt: 0,
+};
+const CLICK_THRESHOLD = 6;
+const CLICK_TIME_MS = 250;
+
+// Kill the native context menu and bind right-mouse orbit at the
+// window level. HUD overlay panels don't eat our pointer events this
+// way, and setPointerCapture isn't needed because we track state
+// ourselves against drag/click thresholds.
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('contextmenu', (e) => e.preventDefault(), true);
+
+window.addEventListener('pointerdown', (e) => {
+  // Left mouse = fire; right mouse = camera orbit start.
+  if (e.button === 0) {
+    // Skip if the click is on a UI control (panel buttons, inputs)
+    const t = e.target;
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.closest('#graphics-panel') || t.closest('#replay-panel') || t.closest('#tweak-hud'))) return;
+    combatState.fireHeld = true;
+    return;
+  }
+  if (e.button !== 2) return;
+  camOrbit.dragging = true;
+  camOrbit.startX = e.clientX;
+  camOrbit.startY = e.clientY;
+  camOrbit.totalDist = 0;
+  camOrbit.pressedAt = performance.now();
+  e.preventDefault();
+}, true);
+
+window.addEventListener('pointermove', (e) => {
+  if (!camOrbit.dragging) return;
+  // Some browsers don't populate movementX/Y reliably for right-button
+  // drags; fall back to delta from startX/Y.
+  const dx = e.movementX || (e.clientX - (camOrbit.lastX || camOrbit.startX));
+  const dy = e.movementY || (e.clientY - (camOrbit.lastY || camOrbit.startY));
+  camOrbit.lastX = e.clientX;
+  camOrbit.lastY = e.clientY;
+  camOrbit.totalDist += Math.abs(dx) + Math.abs(dy);
+  // 0.0035 rad/px ≈ gentle orbit. Pitch clamped to avoid gimbal flip.
+  camOrbit.yaw   -= dx * 0.0035;
+  camOrbit.pitch -= dy * 0.0035;
+  camOrbit.pitch = Math.max(-1.1, Math.min(1.1, camOrbit.pitch));
+}, true);
+
+window.addEventListener('pointerup', (e) => {
+  if (e.button === 0) { combatState.fireHeld = false; return; }
+  if (e.button !== 2 || !camOrbit.dragging) return;
+  camOrbit.dragging = false;
+  camOrbit.lastX = null;
+  camOrbit.lastY = null;
+  const heldMs = performance.now() - camOrbit.pressedAt;
+  const wasClick = camOrbit.totalDist < CLICK_THRESHOLD && heldMs < CLICK_TIME_MS;
+  if (wasClick) {
+    camOrbit.yaw = 0;
+    camOrbit.pitch = 0;
+  }
+}, true);
+window.addEventListener('pointercancel', () => { combatState.fireHeld = false; }, true);
+
+// Safety: if focus leaves the window, clear drag + all keys so Space
+// can't stay "stuck down" if keyup was lost to a modal/alt-tab. Fire
+// trigger also releases on blur for the same reason.
+window.addEventListener('blur', () => {
+  camOrbit.dragging = false;
+  combatState.fireHeld = false;
+  for (const k of Object.keys(keys)) keys[k] = false;
+});
+
 function updateCamera(dt) {
   // Desired camera position: offset in the plane's local frame,
-  // so it stays behind no matter how the plane is oriented
-  const offsetWorld = camLocalOffset.clone().applyQuaternion(plane.quat);
+  // so it stays behind no matter how the plane is oriented.
+  // Apply user orbit (right-mouse drag) on top of the plane frame.
+  const orbitQ = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(camOrbit.pitch, camOrbit.yaw, 0, 'YXZ')
+  );
+  const offsetRotated = camLocalOffset.clone().applyQuaternion(orbitQ);
+  const offsetWorld = offsetRotated.applyQuaternion(plane.quat);
   const desired = plane.pos.clone().add(offsetWorld);
 
   // Frame-rate-independent exponential smoothing — tight enough to
@@ -4896,6 +6677,12 @@ const $vs = document.getElementById('vspeed');
 const $aoa = document.getElementById('aoa');
 const $gforce = document.getElementById('gforce');
 const $gear = document.getElementById('gear');
+const $hullPct = document.getElementById('hull-pct');
+const $hullBar = document.getElementById('hull-bar');
+const $ammoVal = document.getElementById('ammo-val');
+const $ammoBar = document.getElementById('ammo-bar');
+const $scoreVal = document.getElementById('score-val');
+const $scoreStreak = document.getElementById('score-streak');
 const _aiBall = document.getElementById('ai-ball');
 const _aiRollText = document.getElementById('ai-roll-text');
 const _devInfo = document.getElementById('dev-planeinfo');
@@ -4906,6 +6693,8 @@ const $seedDisp = document.getElementById('seed-disp');
 const $styleInd = document.getElementById('style-ind');
 const $biomeInd = document.getElementById('biome-ind');
 const $todInd = document.getElementById('tod-ind');
+const $mpInd = document.getElementById('mp-ind');
+const $propModelInd = document.getElementById('prop-model-ind');
 const $landingInd = document.getElementById('landing-ind');
 const statusMsg = document.getElementById('status-msg');
 const $devOverlay = document.getElementById('dev-overlay');
@@ -4915,6 +6704,14 @@ if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 // Button click toggles style (in addition to T key)
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
 document.getElementById('biome-btn').addEventListener('click', cycleBiome);
+document.getElementById('prop-model-btn').addEventListener('click', () => cyclePropModel(1));
+
+function syncPropModelIndicator() {
+  if (!$propModelInd) return;
+  const preset = getActivePropPreset();
+  $propModelInd.textContent = preset.label;
+  $propModelInd.className = 'ok';
+}
 
 document.getElementById('landing-btn').addEventListener('click', () => {
   plane.landingLights = !plane.landingLights;
@@ -4937,6 +6734,8 @@ document.getElementById('audio-btn').addEventListener('click', () => {
 });
 syncAudioIndicator();
 syncLandingIndicator();
+syncMultiplayerIndicator();
+syncPropModelIndicator();
 
 const transientStatus = { text: '', className: 'panel', timer: 0 };
 function flashStatus(text, className = 'panel ok', duration = 1.2) {
@@ -5046,6 +6845,29 @@ function updateHUD() {
     $gear.textContent = 'MOVING'; $gear.className = 'warn';
   }
 
+  // Hull + ammo readouts
+  if ($hullPct) {
+    const pct = Math.max(0, Math.round(plane.health));
+    $hullPct.textContent = pct;
+    if ($hullBar) {
+      $hullBar.style.width = pct + '%';
+      $hullBar.style.background = pct > 65 ? '#63d27a' : pct > 30 ? '#ffd56b' : '#ff6f6f';
+    }
+    $hullPct.className = pct > 65 ? 'ok' : pct > 30 ? 'warn' : 'err';
+  }
+  if ($ammoVal) {
+    const a = Math.floor(combatState.ammo);
+    $ammoVal.textContent = a;
+    if ($ammoBar) {
+      $ammoBar.style.width = (a / combatState.ammoMax * 100).toFixed(0) + '%';
+      $ammoBar.style.background = a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
+    }
+  }
+  if ($scoreVal && window.__gameScore) {
+    $scoreVal.textContent = window.__gameScore.points;
+    if ($scoreStreak) $scoreStreak.textContent = window.__gameScore.streak;
+  }
+
   // ——— Dev overlay: show prop count, fixed-gear, world-rev, throttle ———
   // This makes it trivial to see whether the prop fallback fired and
   // whether the plane config flags are set as expected.
@@ -5091,6 +6913,7 @@ function animate(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
   lastTime = now;
   updateTimeOfDay(dt);
+  updateMultiplayer(dt);
   if (!running) {
     updateSunShadowRig();
     sky.position.copy(camera.position);
@@ -5103,7 +6926,17 @@ function animate(now) {
     return;
   }
 
-  updatePhysics(dt);
+  updateInputLatches(dt);
+  // Flight-review replay freezes live physics and writes the recorded
+  // frame into plane.pos/quat so the rest of the pipeline (visual jet,
+  // chase camera, world streaming) naturally follows the playback. The
+  // second phase after updateCamera handles alternate viewpoints.
+  if (replay.playing) {
+    replayPreStep(dt);
+  } else {
+    updatePhysics(dt);
+    replayRecord();
+  }
   updateJetVisual();
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
@@ -5115,10 +6948,17 @@ function animate(now) {
   updateBirds(now);
   updateDustDevils(now, plane.pos.x, plane.pos.z);
   updateTraffic(dt);
+  updateFloatingTarget(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAudio(dt);
   updateHUD();
   updateCombat(dt);
+  if (typeof updateGateScoring === 'function') updateGateScoring(dt);
+  if (window.__damageDecalUpdate) window.__damageDecalUpdate(dt);
+  if (window.__gfxTick) window.__gfxTick();
+  // Replay phase 2 — override camera to cockpit/wing/movie viewpoints
+  // (chase mode leaves the live chase cam alone).
+  if (replay.playing) replayPostStep();
 
   // Sky + celestial bodies stay at apparent infinity by following the camera
   sky.position.copy(camera.position);
@@ -5305,107 +7145,243 @@ applyStyle();
   scene.add(markerGroup);
 })();
 
-// __world_feature_climb_rings__ — Glowing magenta ring gates for climb curriculum
-(function addClimbRings() {
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: 0xff00ff,
-    emissive: 0xff00ff,
-    emissiveIntensity: 0.8,
-    roughness: 0.2,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.9
-  });
-  
-  const ringGeo = new THREE.TorusGeometry(30, 1.5, 16, 64);
-  
-  const positions = [
-    { x: 0, y: 60, z: -400 },
-    { x: 0, y: 150, z: -800 },
-    { x: 0, y: 250, z: -1200 }
-  ];
-  
-  positions.forEach((pos, i) => {
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.set(pos.x, pos.y, pos.z);
-    ring.rotation.x = Math.PI / 2; // horizontal orientation
-    ring.userData.ringIndex = i;
-    ring.userData.baseY = pos.y;
-    scene.add(ring);
-  });
-  
-  // Simple pulse animation in the animate loop via a helper
-  const originalAnimate = animate;
-  window._ringPulsePhase = 0;
-})();
+// =============================================================
+//  GATE SCORING — every ring registered via registerGate() gets
+//  pass-through detection. First traversal awards points, plays a
+//  chime, and flashes the ring white briefly.
+// =============================================================
+window.__allGates = [];
+window.__gameScore = {
+  points: 0,
+  streak: 0,        // count of gates in the current chain
+  lastHitAt: 0,
+  lastKind: null,   // kind of the last gate hit (for same-color bonus)
+  kindRun: 0,       // how many of the same kind in a row
+  bestStreak: 0,
+};
 
-// __world_feature_climb_rings__ — Glowing magenta ring gates for climb curriculum
-(function addClimbRings() {
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: 0xff00ff,
-    emissive: 0xff00ff,
-    emissiveIntensity: 0.8,
-    roughness: 0.2,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.9
-  });
-  
-  const ringGeo = new THREE.TorusGeometry(30, 1.5, 16, 64);
-  
-  const positions = [
-    { x: 0, y: 60, z: -400 },
-    { x: 0, y: 150, z: -800 },
-    { x: 0, y: 250, z: -1200 }
-  ];
-  
-  positions.forEach((pos, i) => {
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.set(pos.x, pos.y, pos.z);
-    ring.rotation.x = Math.PI / 2; // horizontal orientation
-    ring.userData.ringIndex = i;
-    ring.userData.baseY = pos.y;
-    scene.add(ring);
-  });
-  
-  // Simple pulse animation in the animate loop via a helper
-  const originalAnimate = animate;
-  window._ringPulsePhase = 0;
+// Top-of-screen notification banner. Big floating text that fades in/out
+// for combo milestones, stunts, and streak bonuses. Uses the HUD theme
+// palette so it stays visually consistent with the rest of the UI.
+(function setupComboBanner() {
+  const hud = document.getElementById('hud');
+  if (!hud) return;
+  const banner = document.createElement('div');
+  banner.id = 'combo-banner';
+  banner.style.cssText = [
+    'position:absolute','top:72px','left:50%','transform:translateX(-50%)',
+    'padding:12px 28px','border:1px solid rgba(255,204,102,0.5)',
+    'background:rgba(20,10,5,0.6)','backdrop-filter:blur(8px)',
+    'color:#ffe0a0','font:18px/1.2 "SF Mono","Courier New",monospace',
+    'letter-spacing:0.2em','text-align:center','min-width:240px',
+    'pointer-events:none','opacity:0','transition:opacity 0.25s ease, transform 0.25s ease',
+    'text-shadow:0 0 6px #000','z-index:30',
+  ].join(';');
+  hud.appendChild(banner);
+  let hideTimer = null;
+  window.showComboBanner = (text, sub, accent) => {
+    banner.style.color = accent || '#ffe0a0';
+    banner.style.borderColor = accent ? accent.replace(/[^#0-9a-fA-F]/g, '') + '66' : 'rgba(255,204,102,0.5)';
+    while (banner.firstChild) banner.removeChild(banner.firstChild);
+    const big = document.createElement('div');
+    big.textContent = text;
+    big.style.cssText = 'font-size:22px;font-weight:bold;';
+    banner.appendChild(big);
+    if (sub) {
+      const s = document.createElement('div');
+      s.textContent = sub;
+      s.style.cssText = 'font-size:12px;opacity:0.75;margin-top:4px;letter-spacing:0.15em;';
+      banner.appendChild(s);
+    }
+    banner.style.opacity = '1';
+    banner.style.transform = 'translateX(-50%) translateY(0)';
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      banner.style.opacity = '0';
+      banner.style.transform = 'translateX(-50%) translateY(-8px)';
+    }, 1600);
+  };
 })();
+function registerGate(ring, opts = {}) {
+  ring.userData.isGate = true;
+  ring.userData.scored = false;
+  ring.userData.gateRadius = opts.radius || 30;
+  ring.userData.gatePoints = opts.points || 100;
+  ring.userData.gateKind = opts.kind || 'ring';
+  window.__allGates.push(ring);
+  return ring;
+}
+// Plays a short WebAudio chime (two-tone arpeggio) — no sample needed.
+// Pitch shifts up with streak so back-to-back hits feel more rewarding.
+function playGateChime(streak) {
+  if (!audio.ctx || !audio.enabled) return;
+  const ct = audio.ctx.currentTime;
+  const baseFreq = 680 + Math.min(streak, 10) * 55;
+  [0, 0.08].forEach((off, i) => {
+    const osc = audio.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = baseFreq * (i === 0 ? 1 : 1.5);
+    const g = audio.ctx.createGain();
+    g.gain.setValueAtTime(0, ct + off);
+    g.gain.linearRampToValueAtTime(0.22, ct + off + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, ct + off + 0.45);
+    osc.connect(g).connect(audio.master);
+    osc.start(ct + off);
+    osc.stop(ct + off + 0.5);
+  });
+}
+function updateGateScoring(dt) {
+  if (plane.crashed || replay.playing) return;
+  const now = performance.now();
+  const score = window.__gameScore;
+  // Break the streak if more than 6s since last hit
+  if (now - score.lastHitAt > 6000) score.streak = 0;
+  for (const ring of window.__allGates) {
+    if (!ring.userData.isGate || ring.userData.scored) continue;
+    if (!ring.parent) continue;
+    const ringWorldPos = new THREE.Vector3();
+    ring.getWorldPosition(ringWorldPos);
+    const d = plane.pos.distanceTo(ringWorldPos);
+    if (d < ring.userData.gateRadius) {
+      ring.userData.scored = true;
+      score.streak += 1;
+      score.bestStreak = Math.max(score.bestStreak, score.streak);
 
-// __world_feature_climb_rings__ — Glowing magenta ring gates for climb curriculum
+      // Same-kind chain bonus: passing successive gates of the same
+      // type (e.g. climb → climb → climb) multiplies the reward.
+      const kind = ring.userData.gateKind || 'ring';
+      if (score.lastKind === kind) {
+        score.kindRun += 1;
+      } else {
+        score.kindRun = 1;
+        score.lastKind = kind;
+      }
+      const kindBonus = Math.min(4, score.kindRun);
+
+      // Stunt detection — reward unusual attitudes when threading a gate.
+      // Reads attitude from the live plane state at the moment of pass.
+      const euler = new THREE.Euler().setFromQuaternion(plane.quat, 'YXZ');
+      const rollDeg = Math.abs(euler.z * 57.3);
+      const pitchDeg = Math.abs(euler.x * 57.3);
+      const rollRate = Math.abs(plane.angVel.z);
+      const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+      const fwdSpd = Math.max(0, -localVel.z);
+      const aoa = fwdSpd > 1 ? Math.abs(Math.atan2(-localVel.y, fwdSpd)) * 57.3 : 0;
+
+      const stunts = [];
+      let stuntMul = 1;
+      if (rollDeg > 150) { stunts.push('INVERTED'); stuntMul *= 3; }
+      else if (rollDeg > 80) { stunts.push('KNIFE-EDGE'); stuntMul *= 2.5; }
+      else if (rollDeg > 45) { stunts.push('BANKED'); stuntMul *= 1.5; }
+      if (rollRate > 2.5) { stunts.push('BARREL-ROLL'); stuntMul *= 1.8; }
+      if (pitchDeg > 60) { stunts.push('VERTICAL'); stuntMul *= 2; }
+      if (aoa > 18) { stunts.push('HIGH-α'); stuntMul *= 1.4; }
+
+      // Final point calc: base × streak × kind × stunt — caps at 5×
+      // streak so late-game points don't run away.
+      const streakMul = Math.min(5, score.streak);
+      const pts = Math.round(ring.userData.gatePoints * streakMul * kindBonus * stuntMul);
+      score.points += pts;
+      score.lastHitAt = now;
+
+      playGateChime(score.streak);
+      if (combatState) combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + 20);
+      if (plane.health < 100) plane.health = Math.min(100, plane.health + 2);
+
+      if (ring.material && ring.material.emissive) {
+        const origCol = ring.material.emissive.clone();
+        ring.material.emissive.setHex(0xffffff);
+        ring.material.emissiveIntensity = 2.5;
+        setTimeout(() => {
+          if (ring.material) {
+            ring.material.emissive.copy(origCol);
+            ring.material.emissiveIntensity = 0.15;
+            ring.material.opacity = 0.35;
+          }
+        }, 400);
+      }
+
+      // Top-banner notifications for milestones + stunts.
+      if (typeof window.showComboBanner === 'function') {
+        if (stunts.length > 0) {
+          window.showComboBanner(
+            stunts.join(' + ') + '!',
+            `+${pts}  ×${streakMul * kindBonus * stuntMul.toFixed(1)}`,
+            '#ffe0a0'
+          );
+        } else if (score.streak === 3) {
+          window.showComboBanner('TRIPLE!', `+${pts}`, '#ffcc66');
+        } else if (score.streak === 5) {
+          window.showComboBanner('STREAK ×5', `${score.points} TOTAL`, '#ff9448');
+        } else if (score.streak >= 10 && score.streak % 5 === 0) {
+          window.showComboBanner(`STREAK ×${score.streak}`, `${score.points} TOTAL`, '#ff5533');
+        } else if (score.kindRun >= 3) {
+          window.showComboBanner(
+            `${kind.toUpperCase()} CHAIN ×${score.kindRun}`,
+            `+${pts}`, '#66ff99'
+          );
+        }
+      }
+
+      if (typeof flashStatus === 'function') {
+        flashStatus(`+${pts} · ${score.streak}× · ${score.points}`, 'panel ok', 1.2);
+      }
+    }
+  }
+}
+function resetGateScoring() {
+  const score = window.__gameScore;
+  score.points = 0;
+  score.streak = 0;
+  score.lastHitAt = 0;
+  score.lastKind = null;
+  score.kindRun = 0;
+  score.bestStreak = 0;
+  for (const ring of window.__allGates) {
+    ring.userData.scored = false;
+    if (ring.material && ring.userData.__origEmissive != null) {
+      ring.material.emissive.setHex(ring.userData.__origEmissive);
+      ring.material.emissiveIntensity = ring.userData.__origEmissiveInt;
+      ring.material.opacity = ring.userData.__origOpacity;
+    }
+  }
+}
+
+// __world_feature_climb_rings__ — Magenta ring gates for climb practice.
+// Spaced out along the corridor and topped up with a few alternates so
+// the player always has a gate in sight. All registered for scoring.
 (function addClimbRings() {
   const ringMat = new THREE.MeshStandardMaterial({
-    color: 0xff00ff,
-    emissive: 0xff00ff,
-    emissiveIntensity: 0.8,
-    roughness: 0.2,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.9
+    color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 0.8,
+    roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9,
   });
-  
   const ringGeo = new THREE.TorusGeometry(30, 1.5, 16, 64);
-  
   const positions = [
-    { x: 0, y: 60, z: -400 },
-    { x: 0, y: 150, z: -800 },
-    { x: 0, y: 250, z: -1200 }
+    { x:    0, y:  80, z:  -400 },
+    { x: -120, y: 150, z:  -900 },
+    { x:  140, y: 220, z: -1500 },
+    { x:    0, y: 300, z: -2200 },
+    { x: -180, y: 380, z: -3000 },
+    { x:  220, y: 460, z: -3900 },
+    { x:    0, y: 540, z: -4900 },
+    { x: -260, y: 620, z: -6000 },
+    { x:  300, y: 700, z: -7200 },
   ];
-  
+
   window.__climbRings = [];
   positions.forEach((pos, i) => {
     const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     ring.position.set(pos.x, pos.y, pos.z);
-    ring.rotation.x = Math.PI / 2;
     ring.userData.ringIndex = i;
     ring.userData.baseY = pos.y;
     ring.userData.phase = i * 2.1;
+    ring.userData.__origEmissive = 0xff00ff;
+    ring.userData.__origEmissiveInt = 0.8;
+    ring.userData.__origOpacity = 0.9;
     scene.add(ring);
     window.__climbRings.push(ring);
+    registerGate(ring, { radius: 32, points: 100, kind: 'climb' });
   });
-  
-  // Pulse animation hook - runs in animate loop via _ringPulsePhase
   window._ringPulsePhase = 0;
 })();
 
@@ -5458,20 +7434,211 @@ applyStyle();
     const ring = new THREE.Mesh(ringGeo, mat);
     ring.position.set(x, y, z);
     
-    // Rings tilt slightly to follow the curve tangent
+    // Rings stand vertical (hole on Z, facing the player). A small yaw
+    // rotation orients each gate to face the S-curve tangent so the hole
+    // aligns with the approach heading, and a mild bank tilt sells the
+    // "follow the line" feel.
     const tangentX = Math.cos(t * Math.PI) * S_AMPLITUDE * Math.PI / (END_Z - START_Z) * (END_Z - START_Z);
-    const tiltAngle = Math.atan2(tangentX, 1) * 0.3; // subtle bank
-    ring.rotation.x = Math.PI / 2 + tiltAngle * (i % 2 === 0 ? 1 : -1);
-    ring.rotation.y = tiltAngle * 0.5;
+    const headingY = Math.atan2(tangentX, (END_Z - START_Z) / RING_COUNT) * 0.8;
+    const bankTilt = headingY * 0.35 * (i % 2 === 0 ? 1 : -1);
+    ring.rotation.y = headingY;
+    ring.rotation.z = bankTilt;
     
     ring.userData.ringIndex = i;
     ring.userData.baseY = y;
-    ring.userData.phase = i * 0.7; // for animation offset
+    ring.userData.phase = i * 0.7;
+    ring.userData.__origEmissive = i % 2 === 0 ? 0x00ffff : 0xff00ff;
+    ring.userData.__origEmissiveInt = 0.9;
+    ring.userData.__origOpacity = 0.85;
     scene.add(ring);
+    registerGate(ring, { radius: 30, points: 120, kind: 'cruise' });
   }
-  
-  // Store for potential animation updates
   window._cruiseRingsAdded = true;
+})();
+
+// __world_feature_rock_arches__ — Natural-looking rock arches that
+// the player can fly under. Built from a torus half (the arch) plus
+// two tapered base columns seated on the terrain. Each arch doubles
+// as a scoring gate that awards extra points for the "flew under"
+// moment.
+(function addRockArches() {
+  const rockMat = new THREE.MeshStandardMaterial({
+    color: 0x887a65, roughness: 0.95, metalness: 0.02,
+    flatShading: true,
+  });
+  const archPositions = [
+    { x:  -800, z: -1400, yaw:  0.3, scale: 1.2 },
+    { x:  1600, z: -2600, yaw: -0.6, scale: 1.5 },
+    { x: -1800, z: -3800, yaw:  1.1, scale: 1.0 },
+    { x:   600, z: -5200, yaw: -0.2, scale: 1.8 },
+    { x:  2400, z:  -400, yaw:  0.9, scale: 1.3 },
+    { x: -2200, z:   600, yaw: -1.3, scale: 1.6 },
+  ];
+  window.__rockArches = [];
+  archPositions.forEach((p, i) => {
+    const arch = new THREE.Group();
+    const baseH = Math.max(15, getHeight(p.x, p.z));
+    const archR = 55 * p.scale;       // opening radius — big enough to fly through
+    const tubeR = 10 * p.scale;       // thickness
+    // Upper arch: half torus
+    const torus = new THREE.Mesh(
+      new THREE.TorusGeometry(archR, tubeR, 9, 24, Math.PI),
+      rockMat.clone()
+    );
+    torus.rotation.z = Math.PI;        // flat side down
+    torus.position.y = archR * 0.5;
+    arch.add(torus);
+    // Base columns: stone feet on either side of the opening
+    for (const side of [-1, 1]) {
+      const col = new THREE.Mesh(
+        new THREE.CylinderGeometry(tubeR * 1.6, tubeR * 1.9, archR, 7),
+        rockMat.clone()
+      );
+      col.position.set(side * archR, archR * 0.0, 0);
+      arch.add(col);
+    }
+    arch.position.set(p.x, baseH, p.z);
+    arch.rotation.y = p.yaw;
+    applyShadowFlags(arch);
+    scene.add(arch);
+    window.__rockArches.push(arch);
+    // Score gate sitting inside the opening. Radius slightly smaller
+    // than the arch so the player has to actually fly through, not
+    // just near it.
+    const gate = new THREE.Mesh(
+      new THREE.TorusGeometry(archR * 0.75, 0.6, 8, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff3a8, transparent: true, opacity: 0.18, toneMapped: false,
+      })
+    );
+    gate.position.copy(arch.position);
+    gate.position.y += archR * 0.45;
+    gate.rotation.y = p.yaw + Math.PI / 2;
+    scene.add(gate);
+    gate.userData.__origEmissive = 0xfff3a8;
+    gate.userData.__origEmissiveInt = 0;
+    gate.userData.__origOpacity = 0.18;
+    registerGate(gate, { radius: archR * 0.7, points: 400, kind: 'arch' });
+  });
+})();
+
+// __world_feature_sky_bridges__ — Sci-fi bridges spanning canyons.
+// Flat slab held up by pylon supports at each end. Tall enough that
+// the player can pass OVER them and low enough to buzz UNDER in the
+// right approach.
+(function addSkyBridges() {
+  const deckMat = new THREE.MeshStandardMaterial({
+    color: 0x3d4756, roughness: 0.55, metalness: 0.4, flatShading: true,
+  });
+  const railMat = new THREE.MeshBasicMaterial({
+    color: 0xffcc66, toneMapped: false,
+  });
+  const pylonMat = new THREE.MeshStandardMaterial({
+    color: 0x2a313a, roughness: 0.6, metalness: 0.3,
+  });
+  const bridges = [
+    { x:     0, z: -2000, yaw: 0,          span: 320, h: 160 },
+    { x:  -600, z: -4600, yaw: 0.8,        span: 420, h: 220 },
+    { x:  1800, z:   800, yaw: Math.PI / 2, span: 280, h: 140 },
+    { x: -2000, z:  -800, yaw: -0.3,       span: 360, h: 200 },
+  ];
+  window.__skyBridges = [];
+  bridges.forEach((b, i) => {
+    const g = new THREE.Group();
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(b.span, 4, 14),
+      deckMat.clone()
+    );
+    deck.position.y = b.h;
+    g.add(deck);
+    // Side guard rails — thin emissive strips that read at night
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(b.span, 0.4, 0.3),
+        railMat.clone()
+      );
+      rail.position.set(0, b.h + 2.2, side * 7);
+      g.add(rail);
+    }
+    // Pylons — one at each end, tapered cones
+    const pylonH = b.h + 8;
+    for (const end of [-1, 1]) {
+      const pylon = new THREE.Mesh(
+        new THREE.CylinderGeometry(4, 11, pylonH, 7),
+        pylonMat.clone()
+      );
+      pylon.position.set(end * b.span * 0.5, pylonH * 0.5, 0);
+      g.add(pylon);
+    }
+    g.position.set(b.x, 0, b.z);
+    g.rotation.y = b.yaw;
+    applyShadowFlags(g);
+    scene.add(g);
+    window.__skyBridges.push(g);
+    // Score gate positioned MID-DECK, below the deck — awards the
+    // player for flying *under* a bridge. Radius is narrow so the
+    // player must actually thread the gap.
+    const underGate = new THREE.Mesh(
+      new THREE.TorusGeometry(35, 0.5, 6, 20),
+      new THREE.MeshBasicMaterial({ color: 0x4ecbff, transparent: true, opacity: 0.18, toneMapped: false })
+    );
+    underGate.position.set(b.x, b.h * 0.55, b.z);
+    underGate.rotation.y = b.yaw + Math.PI / 2;
+    scene.add(underGate);
+    underGate.userData.__origEmissive = 0x4ecbff;
+    underGate.userData.__origEmissiveInt = 0;
+    underGate.userData.__origOpacity = 0.18;
+    registerGate(underGate, { radius: 34, points: 500, kind: 'bridge' });
+  });
+})();
+
+// __world_feature_mountain_targets__ — Glowing spheres parked on
+// mountain peaks. Shooting one rewards points + heals hull. Positions
+// sampled from the heightfield so they sit just above the peak.
+(function addMountainTargets() {
+  const positions = [
+    { x:  1800, z: -1600 }, { x: -2100, z: -2200 }, { x:   900, z: -3400 },
+    { x: -1400, z: -4100 }, { x:  2400, z: -2800 }, { x: -2800, z: -3600 },
+    { x:   200, z: -5400 }, { x:  3200, z: -4200 }, { x: -2600, z:  1800 },
+    { x:  2100, z:  2400 },
+  ];
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0xffeb5a, emissive: 0xffb820, emissiveIntensity: 1.1,
+    roughness: 0.3, metalness: 0.2,
+  });
+  const coreGeo = new THREE.OctahedronGeometry(4.2, 1);
+  const haloGeo = new THREE.SphereGeometry(6, 16, 12);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0xfff3a8, transparent: true, opacity: 0.28,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  window.__mountainTargets = [];
+  positions.forEach((p, i) => {
+    const h = Math.max(60, getHeight(p.x, p.z));
+    const group = new THREE.Group();
+    const core = new THREE.Mesh(coreGeo, glowMat.clone());
+    group.add(core);
+    const halo = new THREE.Mesh(haloGeo, haloMat.clone());
+    group.add(halo);
+    group.position.set(p.x, h + 12, p.z);
+    group.userData.spinPhase = i * 0.6;
+    scene.add(group);
+    const target = registerDestructible(group, { radius: 6, kind: 'mountainTarget', health: 1 });
+    target.rewardPoints = 500;
+    target.rewardHealth = 15;
+    target.rewardAmmo = 40;
+    window.__mountainTargets.push({ group, target });
+  });
+  // Spin animation — piggybacks on updateAtmospheric timer
+  window.__mountainTargetSpin = (dt) => {
+    if (!window.__mountainTargets) return;
+    for (const mt of window.__mountainTargets) {
+      if (!mt.target.alive) continue;
+      mt.group.userData.spinPhase += dt * 0.8;
+      mt.group.rotation.y = mt.group.userData.spinPhase;
+      mt.group.position.y += Math.sin(mt.group.userData.spinPhase * 1.6) * dt * 0.8;
+    }
+  };
 })();
 
 // =============================================================
@@ -5518,6 +7685,7 @@ function spawnTraffic(file, pathFn, opts) {
     model.traverse(o => { o.userData.__isTrafficPlane = true; });
     applyShadowFlags(model);
     group.add(model);
+    rec.destructible = registerDestructible(group, { radius: Math.max(4, (opts.targetSize || 10) * 0.6), kind: 'traffic', health: 3 });
     rec.child = model;
     rec.loaded = true;
     group.visible = true;
@@ -5603,19 +7771,19 @@ function updateTraffic(dt) {
 // ---- Populate: three aircraft at varied altitudes and patrol types.
 // Phase offsets stop them from bunching up.
 spawnTraffic(
-  'low_poly_plane.glb',
+  'models/low_poly_plane.glb',
   pathOrbit(1400, 260, -1800, 1100, false),
   { speed: 72, targetSize: 9, phaseOffset:   0 }
 );
 spawnTraffic(
-  'low_poly_f14_tomcat.glb',
+  'models/low_poly_f14_tomcat.glb',
   pathTransit(
     new THREE.Vector3(-3500, 520, -3200),
     new THREE.Vector3( 3500, 520,  3200), 90),
   { speed: 140, targetSize: 12, phaseOffset: 140 }
 );
 spawnTraffic(
-  'low_poly_a-10_warthog.glb',
+  'models/low_poly_a-10_warthog.glb',
   pathFigure8(-1600, 220, 1200, 900),
   { speed: 95, targetSize: 11, phaseOffset: 280 }
 );
@@ -5654,19 +7822,20 @@ spawnTraffic(
     
     const ring = new THREE.Mesh(ringGeo, yellowMat.clone());
     ring.position.set(x, y, z);
-    ring.rotation.x = Math.PI / 2; // horizontal, facing forward
-    
-    // Slight tilt to suggest descent path
-    const tiltAmount = 0.08; // subtle nose-down angle
-    ring.rotation.x = Math.PI / 2 - tiltAmount * (1 - t * 0.5);
-    
+    // Vertical gate (hole on Z) with a forward-tilt matching the descent
+    // slope, so each ring is perpendicular to the ideal glide path.
+    const descentAngle = Math.atan2(START.y - END.y, -(END.z - START.z));
+    ring.rotation.x = descentAngle * (0.7 + t * 0.3);
     ring.userData.ringIndex = i;
     ring.userData.baseY = y;
-    ring.userData.phase = i * 1.5; // animation offset
+    ring.userData.phase = i * 1.5;
     ring.userData.isDescendRing = true;
-    
+    ring.userData.__origEmissive = 0xffaa00;
+    ring.userData.__origEmissiveInt = 0.9;
+    ring.userData.__origOpacity = 0.9;
     scene.add(ring);
     window.__descendRings.push(ring);
+    registerGate(ring, { radius: 32, points: 150, kind: 'descend' });
   }
   
   // Add helper arrow markers pointing down at each ring
@@ -5728,7 +7897,9 @@ spawnTraffic(
       const z = thresholdZ - dir * dist;
       const ring = new THREE.Mesh(ringGeo, ringMat.clone());
       ring.position.set(0, y, z);
-      ring.rotation.x = Math.PI / 2 - (0.12 - t * 0.05);
+      // Vertical gate tilted forward to match the 3° glide slope at t=0,
+      // flattening to near-vertical at t=1 (the threshold).
+      ring.rotation.x = -(0.22 - t * 0.17) * dir;
       ring.userData.isLandingTraining = true;
       ring.userData.sequence = i;
       scene.add(ring);
@@ -5764,6 +7935,60 @@ spawnTraffic(
   addApproach(150, -1);
 })();
 
+// __world_feature_space_target__ — Big floating practice target inspired by the space game.
+(function addFloatingTarget() {
+  const group = new THREE.Group();
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x62d6ff,
+    emissive: 0x2aa8ff,
+    emissiveIntensity: 0.9,
+    roughness: 0.18,
+    metalness: 0.2,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0xff6b4a,
+    emissive: 0xff3c1a,
+    emissiveIntensity: 1.1,
+    roughness: 0.25,
+    metalness: 0.1,
+  });
+  const outerRing = new THREE.Mesh(new THREE.TorusGeometry(26, 2.1, 18, 84), ringMat);
+  outerRing.rotation.x = Math.PI / 2;
+  group.add(outerRing);
+  const innerRing = new THREE.Mesh(new THREE.TorusGeometry(12.5, 0.95, 14, 56), ringMat.clone());
+  innerRing.rotation.y = Math.PI / 2;
+  group.add(innerRing);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(4.8, 20, 16), coreMat);
+  group.add(core);
+  const pointer = new THREE.Mesh(new THREE.ConeGeometry(3.2, 9, 12), new THREE.MeshBasicMaterial({ color: 0xfff3c0, toneMapped: false }));
+  pointer.rotation.x = Math.PI / 2;
+  pointer.position.z = -22;
+  group.add(pointer);
+  group.position.set(0, 18, -120);
+  group.userData.baseY = 18;
+  group.userData.spin = 0;
+  group.userData.outerRing = outerRing;
+  group.userData.innerRing = innerRing;
+  group.userData.core = core;
+  group.userData.pointer = pointer;
+  scene.add(group);
+  registerDestructible(group, { radius: 15, kind: 'floatingTarget' });
+  window.__floatingTarget = group;
+})();
+
+function updateFloatingTarget(dt) {
+  const target = window.__floatingTarget;
+  if (!target || !target.visible) return;
+  target.userData.spin += dt;
+  target.position.y = target.userData.baseY + Math.sin(target.userData.spin * 1.7) * 2.2;
+  if (target.userData.outerRing) target.userData.outerRing.rotation.z += dt * 0.85;
+  if (target.userData.innerRing) target.userData.innerRing.rotation.x += dt * 1.35;
+  if (target.userData.core) target.userData.core.scale.setScalar(1 + Math.sin(target.userData.spin * 4.0) * 0.08);
+  if (target.userData.pointer) target.userData.pointer.rotation.z = Math.sin(target.userData.spin * 2.8) * 0.16;
+}
+
 // __world_feature_turn_left_rings__ — Two orange ring gates forcing left turn
 (function addTurnLeftRings() {
   const RING_RADIUS = 30;
@@ -5781,21 +8006,21 @@ spawnTraffic(
   
   const ringGeo = new THREE.TorusGeometry(RING_RADIUS, TUBE_RADIUS, 16, 64);
   
-  // Gate 1: ahead on centerline, forcing initial climb then turn
+  // Gate 1: ahead on centerline — vertical gate facing straight down -Z.
   const ring1 = new THREE.Mesh(ringGeo, orangeMat.clone());
   ring1.position.set(0, 180, -800);
-  ring1.rotation.x = Math.PI / 2;
   ring1.userData.ringIndex = 0;
   ring1.userData.baseY = 180;
   ring1.userData.phase = 0;
   ring1.userData.isTurnLeftRing = true;
   scene.add(ring1);
-  
-  // Gate 2: far left, requiring left bank to reach
+
+  // Gate 2: far left — vertical gate rotated to face the approach heading
+  // from gate 1, with a left-bank tilt so it reads as "enter in a turn".
   const ring2 = new THREE.Mesh(ringGeo, orangeMat.clone());
   ring2.position.set(-900, 180, -1400);
-  ring2.rotation.x = Math.PI / 2;
-  ring2.rotation.z = Math.PI / 8; // slight tilt suggesting left bank entry
+  ring2.rotation.y = Math.atan2(900, 600);  // face back toward gate 1
+  ring2.rotation.z = Math.PI / 8;            // bank-entry tilt
   ring2.userData.ringIndex = 1;
   ring2.userData.baseY = 180;
   ring2.userData.phase = 2.5;
@@ -5804,6 +8029,10 @@ spawnTraffic(
   
   // Track for animation
   window.__turnLeftRings = [ring1, ring2];
+  ring1.userData.__origEmissive = 0xff6600; ring1.userData.__origEmissiveInt = 0.8; ring1.userData.__origOpacity = 0.92;
+  ring2.userData.__origEmissive = 0xff6600; ring2.userData.__origEmissiveInt = 0.8; ring2.userData.__origOpacity = 0.92;
+  registerGate(ring1, { radius: 32, points: 200, kind: 'turn' });
+  registerGate(ring2, { radius: 32, points: 200, kind: 'turn' });
   
   // Add small arrow markers pointing toward next gate
   const arrowMat = new THREE.MeshBasicMaterial({
@@ -5932,6 +8161,235 @@ spawnTraffic(
   }
 })();
 
+// =============================================================
+//  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
+// =============================================================
+(function setupGraphicsPanel() {
+  const LS_KEY = 'gfx-settings-v1';
+  const DEFAULTS = {
+    fxaa: true, shadowsOn: true, shadowQuality: 'med',
+    dof: false, fog: true, cloudDensity: 0.6, particleScale: 1.0,
+    fps: false, renderScale: 1.0, bloom: false, motionBlur: false,
+  };
+  const PRESETS = {
+    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  dof: false, fog: true, cloudDensity: 0.35, particleScale: 0.5, renderScale: 0.65 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  dof: false, fog: true, cloudDensity: 0.55, particleScale: 0.85, renderScale: 0.85 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', dof: true,  fog: true, cloudDensity: 0.75, particleScale: 1.0, renderScale: 1.0 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', dof: true,  fog: true, cloudDensity: 0.9,  particleScale: 1.25, renderScale: 1.0 },
+  };
+
+  const gfx = Object.assign({}, DEFAULTS);
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if (saved && typeof saved === 'object') Object.assign(gfx, saved);
+  } catch {}
+  window.gfx = gfx;
+  window.__gfxParticleScale = () => gfx.particleScale;
+
+  const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(gfx)); } catch {} };
+
+  let fpsDiv = null, fpsFrames = 0, fpsLast = performance.now(), fpsSmoothed = 60;
+  function tickFps() {
+    fpsFrames++;
+    const now = performance.now();
+    if (now - fpsLast >= 500) {
+      fpsSmoothed = fpsSmoothed * 0.6 + (fpsFrames * 1000 / (now - fpsLast)) * 0.4;
+      fpsFrames = 0; fpsLast = now;
+      if (fpsDiv && gfx.fps) fpsDiv.textContent = 'FPS ' + Math.round(fpsSmoothed);
+    }
+  }
+
+  function applyShadows() {
+    renderer.shadowMap.enabled = !!gfx.shadowsOn;
+    const sizeMap = { low: 512, med: 1024, high: 2048 };
+    const size = sizeMap[gfx.shadowQuality] || 1024;
+    scene.traverse(obj => {
+      if (obj.isDirectionalLight && obj.shadow) {
+        if (obj.shadow.mapSize.x !== size) {
+          obj.shadow.mapSize.set(size, size);
+          if (obj.shadow.map) { obj.shadow.map.dispose(); obj.shadow.map = null; }
+        }
+      }
+    });
+  }
+  function applyFog() {
+    if (!scene.fog) return;
+    if (!scene.userData.__origFogFar) scene.userData.__origFogFar = scene.fog.far;
+    scene.fog.far = gfx.fog ? scene.userData.__origFogFar : 1e9;
+  }
+  function applyDof() {
+    if (!postFX || !postFX.bokehPass) return;
+    postFX.enabled = !!gfx.dof;
+  }
+  function applyRenderScale() {
+    const ratio = Math.max(0.5, Math.min(1.0, gfx.renderScale));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio, 1.75 * ratio));
+    renderer.setSize(window.innerWidth, window.innerHeight, true);
+    if (postFX.composer) postFX.composer.setSize(window.innerWidth, window.innerHeight);
+  }
+  function applyClouds() {
+    weather.clouds = gfx.cloudDensity;
+    if (typeof clouds !== 'undefined' && clouds && clouds.data) {
+      const active = Math.floor(clouds.data.length * (gfx.cloudDensity / Math.max(0.01, DEFAULTS.cloudDensity)));
+      clouds.data.forEach((c, i) => { c.mesh.visible = (i < active); });
+    }
+  }
+  function applyAll() {
+    applyShadows(); applyFog(); applyDof(); applyRenderScale(); applyClouds();
+    if (fpsDiv) fpsDiv.style.display = gfx.fps ? 'block' : 'none';
+  }
+
+  // DOM helper (no innerHTML)
+  const el = (tag, attrs, ...children) => {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === 'style') n.style.cssText = attrs[k];
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), attrs[k]);
+      else if (k === 'class') n.className = attrs[k];
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of children) {
+      if (c == null) continue;
+      n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return n;
+  };
+  // Match HUD theme: amber on translucent dark, `.panel`-style border,
+  // SF Mono typography, shared letter-spacing. Reuse the existing `.bar`
+  // look for sliders so they blend with HULL/AMMO indicators.
+  const AMBER = '#ffcc66', AMBER_HI = '#ffe0a0', AMBER_BORDER = 'rgba(255,204,102,0.35)';
+  const btnStyle = (on) => `padding:2px 10px;background:${on?'rgba(255,204,102,0.22)':'rgba(255,204,102,0.04)'};color:${on?AMBER_HI:'rgba(255,204,102,0.55)'};border:1px solid ${AMBER_BORDER};font:inherit;letter-spacing:inherit;cursor:pointer;`;
+  const segStyle = (on) => `padding:2px 8px;background:${on?'rgba(255,204,102,0.22)':'rgba(255,204,102,0.04)'};color:${on?AMBER_HI:'rgba(255,204,102,0.55)'};border:1px solid ${AMBER_BORDER};border-right:0;font:inherit;letter-spacing:inherit;cursor:pointer;`;
+  const rowStyle = 'display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:10px;';
+  const headerStyle = 'border-top:1px solid rgba(255,204,102,0.2);padding-top:5px;margin-top:7px;opacity:0.55;font-size:10px;letter-spacing:0.12em;';
+
+  // Panel is a real HUD panel so it shares styling with instruments/throttle.
+  // Positioned top-right, below the throttle-wrap panel (which is ~260px tall).
+  const panel = el('div', {
+    id: 'graphics-panel',
+    class: 'panel',
+    style: 'top:290px;right:18px;width:240px;max-height:calc(100vh - 320px);overflow:auto;font-size:11px;display:none;pointer-events:auto;'
+  });
+
+  const makeToggle = (id) => {
+    const b = el('button', { type: 'button', style: btnStyle(gfx[id]) }, gfx[id] ? 'ON' : 'OFF');
+    b.addEventListener('click', () => {
+      gfx[id] = !gfx[id];
+      b.style.cssText = btnStyle(gfx[id]);
+      b.textContent = gfx[id] ? 'ON' : 'OFF';
+      applyAll(); save();
+    });
+    return b;
+  };
+  const makeSegmented = (id, opts) => {
+    const wrap = el('span');
+    const refresh = () => {
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      opts.forEach(o => {
+        const b = el('button', { type: 'button', style: segStyle(gfx[id] === o) }, o.toUpperCase());
+        b.addEventListener('click', () => { gfx[id] = o; refresh(); applyAll(); save(); });
+        wrap.appendChild(b);
+      });
+    };
+    refresh();
+    return wrap;
+  };
+  // Slider renders as a stacked row — label + inline value on top, full-width
+  // bar below — matching the existing THROTTLE pattern.
+  const makeSliderRow = (id, min, max, step, labelText, formatter) => {
+    const fmt = formatter || ((v) => Math.round(v * 100) + '%');
+    const wrap = el('div', { style: 'margin:4px 0 6px;' });
+    const header = el('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;' });
+    header.appendChild(el('span', {}, labelText));
+    const valSpan = el('span', { style: `color:${AMBER_HI};` }, fmt(gfx[id]));
+    header.appendChild(valSpan);
+    wrap.appendChild(header);
+    const input = el('input', { type: 'range', min, max, step, value: gfx[id], style: 'width:100%;display:block;margin-top:3px;' });
+    input.addEventListener('input', () => {
+      gfx[id] = parseFloat(input.value);
+      valSpan.textContent = fmt(gfx[id]);
+      applyAll(); save();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  };
+  // Toggles stay inline (label | ON/OFF button) — the existing "LIGHTS [L] ON" pattern
+  const row = (labelText, controlEl) => {
+    const r = el('div', { style: rowStyle });
+    r.appendChild(el('span', {}, labelText));
+    r.appendChild(controlEl);
+    return r;
+  };
+
+  const rebuild = () => {
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+    const title = el('div', { style: `font-size:12px;letter-spacing:0.14em;margin-bottom:6px;color:${AMBER_HI};` }, 'GRAPHICS [P]');
+    title.appendChild(el('span', { style: 'float:right;opacity:0.5;font-size:10px;' }, 'close'));
+    panel.appendChild(title);
+
+    panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;' }, 'PRESETS'));
+    const presetRow = el('div', { style: 'display:flex;gap:3px;margin-bottom:7px;' });
+    ['low','med','high','ultra'].forEach(p => {
+      const key = p === 'med' ? 'medium' : p;
+      const b = el('button', {
+        type: 'button',
+        style: `flex:1;padding:3px 0;background:rgba(255,204,102,0.04);color:${AMBER};border:1px solid ${AMBER_BORDER};font:inherit;letter-spacing:0.1em;cursor:pointer;text-transform:uppercase;`
+      }, p);
+      b.addEventListener('click', () => { Object.assign(gfx, DEFAULTS, PRESETS[key]); rebuild(); applyAll(); save(); });
+      presetRow.appendChild(b);
+    });
+    panel.appendChild(presetRow);
+
+    panel.appendChild(el('div', { style: headerStyle }, 'POST-FX'));
+    panel.appendChild(row('FXAA', makeToggle('fxaa')));
+    panel.appendChild(row('Depth of field', makeToggle('dof')));
+    panel.appendChild(row('Bloom ·', makeToggle('bloom')));
+    panel.appendChild(row('Motion blur ·', makeToggle('motionBlur')));
+
+    panel.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
+    panel.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
+    panel.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
+
+    panel.appendChild(el('div', { style: headerStyle }, 'WORLD'));
+    panel.appendChild(row('Fog', makeToggle('fog')));
+    panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
+    panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'PARTICLES'));
+
+    panel.appendChild(el('div', { style: headerStyle }, 'PERF'));
+    panel.appendChild(row('FPS meter', makeToggle('fps')));
+    panel.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
+
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.4;margin-top:7px;' }, '· reserved'));
+  };
+  rebuild();
+  // Append inside the HUD container so it inherits font + text-shadow
+  const hudEl = document.getElementById('hud');
+  (hudEl || document.body).appendChild(panel);
+
+  // FPS overlay sits below the throttle panel, right side, matching HUD style
+  fpsDiv = el('div', { id: 'fps-overlay', class: 'panel',
+    style: `top:18px;right:210px;padding:4px 10px;font-size:10px;color:${AMBER};display:none;pointer-events:none;`
+  }, 'FPS —');
+  (hudEl || document.body).appendChild(fpsDiv);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyP' || e.ctrlKey || e.metaKey) return;
+    const tgt = e.target;
+    if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    e.preventDefault();
+  });
+
+  applyAll();
+  window.__gfxTick = tickFps;
+})();
+bootLog.step('graphics panel', !!document.getElementById('graphics-panel'),
+  'press P · presets+persistence wired');
+
+bootLog.step('boot complete', true,
+  `total ${((performance.now() - bootLog.t0) / 1000).toFixed(2)}s · press R to reset`);
+
 requestAnimationFrame(animate);
 
 // __popup_focus_recovery__ — detect when browser UI/popups steal focus
@@ -6015,9 +8473,24 @@ window.__ap = {
       tod_phase: timeOfDay.phase,
       tod_label: timeOfDay.label,
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
+      engine_sample_ready: !!audio.propSampleReady,
+      engine_sample_mode: audio.propSampleMode,
+      engine_sample_label: audio.engineSampleLabel,
+      engine_sample_active: !!(audio.enabled && audio.propSampleReady && isPropAirframe()),
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
+      multiplayer_connected: !!multiplayerState.connected,
+      remote_players: multiplayerState.remotePlayers.size,
+      projectile_count: combatState.projectiles.filter(p => p.active).length,
+      shots_fired: combatState.shotsFired,
+      combat_hits: combatState.hits,
+      targets_alive: destructibleTargets.filter(t => t.alive).length,
+      engine_surge_phase: engineSurgeState.phase,
+      engine_surge_power: engineSurgeState.powerMul,
+      turn_smoke_mix: engineSurgeState.greyMix,
+      throat_clear_smoke: engineSurgeState.throatClear,
+      crash_fx_active: !!combatState.crashFxTriggered,
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
@@ -6039,6 +8512,29 @@ window.__ap = {
   setLandingLights(on) {
     plane.landingLights = !!on;
     if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
+  },
+  setMultiplayerUrl(url) {
+    MULTIPLAYER_URL = String(url || '').trim();
+    try {
+      if (MULTIPLAYER_URL) localStorage.setItem('flight_mp_url', MULTIPLAYER_URL);
+      else localStorage.removeItem('flight_mp_url');
+    } catch {}
+    if (multiplayerState.ws) {
+      try { multiplayerState.ws.close(); } catch {}
+      multiplayerState.ws = null;
+    }
+    multiplayerState.connected = false;
+    multiplayerState.connecting = false;
+    multiplayerState.reconnectAt = 0;
+    syncMultiplayerIndicator();
+  },
+  fire() { fireProjectileBurst(); },
+  crash() {
+    plane.crashed = true;
+    plane.vel.set(0, 0, 0);
+    combatState.crashFxTriggered = false;
+    statusMsg.textContent = 'TERRAIN IMPACT — PRESS R';
+    statusMsg.className = 'panel warn';
   },
   // Dispatch a real KeyboardEvent so the sim's keys[e.code] handler picks it up
   keyDown(code) {
