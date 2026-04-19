@@ -2020,6 +2020,28 @@ const airfieldNightFx = {
   beacon: null,
   beaconMaterial: null,
 };
+const airfieldAmbientState = {
+  windsock: null,
+  windsockPole: null,
+  apronFloods: [],
+  taxiSigns: [],
+  clutterCount: 0,
+};
+const LANDING_RECORD_KEY = 'flight-best-landing-v1';
+const bestLandingRecord = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LANDING_RECORD_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      return {
+        medal: saved.medal || '—',
+        grade: saved.grade || '',
+        score: Number.isFinite(saved.score) ? saved.score : 0,
+        detail: saved.detail || '',
+      };
+    }
+  } catch {}
+  return { medal: '—', grade: '', score: 0, detail: '' };
+})();
 const destructibleTargets = [];
 
 function registerDestructible(object, opts = {}) {
@@ -2318,6 +2340,144 @@ function buildAirfield() {
   windsock.rotation.z = -Math.PI / 2;
   windsock.position.set(-20.5, 7.3, 168);
   g.add(windsock);
+  airfieldAmbientState.windsock = windsock;
+  airfieldAmbientState.windsockPole = windsockPole;
+
+  const servicePaint = new THREE.MeshStandardMaterial({ color: 0xd6d1c6, roughness: 0.82, metalness: 0.18 });
+  const serviceDark = new THREE.MeshStandardMaterial({ color: 0x2f3138, roughness: 0.7, metalness: 0.24 });
+  const hazardPaint = new THREE.MeshStandardMaterial({ color: 0xffc247, roughness: 0.7, metalness: 0.08 });
+  function addServiceTruck(x, z, yaw = 0, bodyColor = 0xd6d1c6) {
+    const truck = new THREE.Group();
+    const bodyMat = servicePaint.clone();
+    bodyMat.color.setHex(bodyColor);
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.55, 1.7), serviceDark);
+    chassis.position.y = 0.55;
+    truck.add(chassis);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 1.6), bodyMat);
+    cab.position.set(-1.05, 1.2, 0);
+    truck.add(cab);
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.95, 1.5), bodyMat);
+    bed.position.set(0.95, 1.0, 0);
+    truck.add(bed);
+    const beacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 0.18, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffb133, toneMapped: false, transparent: true, opacity: 0.7 })
+    );
+    beacon.position.set(-1.05, 1.92, 0);
+    truck.add(beacon);
+    for (const wx of [-1.45, 1.15]) {
+      for (const wz of [-0.82, 0.82]) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.28, 12), serviceDark);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.3, wz);
+        truck.add(wheel);
+      }
+    }
+    truck.position.set(x, 0, z);
+    truck.rotation.y = yaw;
+    g.add(truck);
+    airfieldAmbientState.clutterCount += 1;
+    return truck;
+  }
+  function addTowCart(x, z, yaw = 0) {
+    const cart = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.35, 1.25), hazardPaint);
+    frame.position.y = 0.45;
+    cart.add(frame);
+    const towArm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.12, 0.18), serviceDark);
+    towArm.position.set(-1.7, 0.42, 0);
+    cart.add(towArm);
+    for (const wx of [-0.8, 0.8]) {
+      for (const wz of [-0.58, 0.58]) {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 10), serviceDark);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.18, wz);
+        cart.add(wheel);
+      }
+    }
+    cart.position.set(x, 0, z);
+    cart.rotation.y = yaw;
+    g.add(cart);
+    airfieldAmbientState.clutterCount += 1;
+    return cart;
+  }
+  function addCone(x, z) {
+    const cone = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.12, 10), serviceDark);
+    base.position.y = 0.06;
+    cone.add(base);
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.7, 10), hazardPaint);
+    body.position.y = 0.42;
+    cone.add(body);
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 10), new THREE.MeshBasicMaterial({ color: 0xfff3d0, toneMapped: false }));
+    stripe.position.y = 0.45;
+    cone.add(stripe);
+    cone.position.set(x, 0, z);
+    g.add(cone);
+    airfieldAmbientState.clutterCount += 1;
+    return cone;
+  }
+  function addTaxiSign(x, z, yaw = 0, signColor = 0xffc247) {
+    const sign = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 8), serviceDark);
+    post.position.y = 0.5;
+    sign.add(post);
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.55, 0.14),
+      new THREE.MeshStandardMaterial({ color: signColor, roughness: 0.72, metalness: 0.08, emissive: 0x332200, emissiveIntensity: 0.18 })
+    );
+    panel.position.y = 1.05;
+    sign.add(panel);
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.12), new THREE.MeshBasicMaterial({ color: 0x111111, toneMapped: false }));
+    stripe.position.set(0, 1.05, 0.08);
+    stripe.rotation.y = Math.PI;
+    sign.add(stripe);
+    const stripeBack = stripe.clone();
+    stripeBack.position.z = -0.08;
+    stripeBack.rotation.y = 0;
+    sign.add(stripeBack);
+    sign.position.set(x, 0, z);
+    sign.rotation.y = yaw;
+    g.add(sign);
+    airfieldAmbientState.taxiSigns.push(sign);
+    airfieldAmbientState.clutterCount += 1;
+    return sign;
+  }
+  function addApronFlood(x, z, yaw = 0) {
+    const flood = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 8.6, 10), serviceDark);
+    pole.position.y = 4.3;
+    flood.add(pole);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.28, 0.42), towerDark);
+    head.position.set(0, 8.55, 0.12);
+    flood.add(head);
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffefc8, transparent: true, opacity: 0.0, toneMapped: false })
+    );
+    glow.position.set(0, 8.38, -0.02);
+    flood.add(glow);
+    const light = new THREE.PointLight(0xfff0d8, 0, 52, 2.2);
+    light.position.set(0, 8.3, 0);
+    flood.add(light);
+    flood.position.set(x, 0, z);
+    flood.rotation.y = yaw;
+    g.add(flood);
+    airfieldAmbientState.apronFloods.push({ light, glow, head });
+    airfieldAmbientState.clutterCount += 1;
+    return flood;
+  }
+
+  addServiceTruck(18, 154, Math.PI * 0.18, 0xd8d5cd);
+  addServiceTruck(-10, 144, -Math.PI * 0.42, 0xc8d5a8);
+  addTowCart(2, 162, Math.PI * 0.08);
+  addTowCart(-28, 152, -Math.PI * 0.2);
+  addTaxiSign(10, 126, 0.05, 0xffc247);
+  addTaxiSign(-12, 182, Math.PI * 0.92, 0x2d2d2d);
+  addApronFlood(56, 176, -0.18);
+  addApronFlood(-52, 164, 0.12);
+  for (let i = 0; i < 6; i++) addCone(-6 + i * 4.2, 186);
+  for (let i = 0; i < 5; i++) addCone(44 + i * 3.4, 136 + (i % 2) * 3);
 
   // Strafe-range explosive drums along the runway edge so the player can shoot things immediately.
   const drumMat = new THREE.MeshStandardMaterial({
@@ -2451,9 +2611,33 @@ function updateRunwayLights(nightFactor, twilight) {
     const sx = 1 + nightGlow * 0.42 * seqPulse;
     mesh.scale.set(sx, 1, 1 + nightGlow * 0.24 * seqPulse);
   }
+  for (const rig of airfieldAmbientState.apronFloods) {
+    rig.light.intensity = nightGlow * 1.25;
+    rig.glow.material.opacity = 0.02 + nightGlow * 0.28;
+    rig.glow.scale.setScalar(0.85 + nightGlow * 0.9);
+  }
   if (airfieldNightFx.beaconMaterial) {
     const blink = Math.sin(performance.now() * 0.009) > 0.35 ? 1 : 0.25;
     airfieldNightFx.beaconMaterial.opacity = 0.08 + nightGlow * 0.82 * blink;
+  }
+}
+
+function updateAirfieldAmbient(dt) {
+  const windsock = airfieldAmbientState.windsock;
+  if (windsock) {
+    const t = performance.now() * 0.001;
+    const gustBase = 0.52 + Math.sin(t * 0.23 + timeOfDay.phase * Math.PI * 2) * 0.18 + Math.sin(t * 0.61) * 0.08;
+    const localBoost = plane.onGround ? Math.max(0, plane.throttle - 0.18) * 0.42 : 0;
+    const gust = Math.max(0.16, Math.min(1.2, gustBase + localBoost));
+    windsock.rotation.y = 0.52 + Math.sin(t * 0.17) * 0.18;
+    windsock.rotation.x = Math.sin(t * 3.2) * 0.03 * gust;
+    windsock.rotation.z = -Math.PI / 2 + Math.sin(t * 2.3) * 0.08 * gust;
+    windsock.scale.set(0.82 + gust * 0.32, 0.92 + gust * 0.06, 0.92 + gust * 0.08);
+  }
+  for (let i = 0; i < airfieldAmbientState.taxiSigns.length; i++) {
+    const sign = airfieldAmbientState.taxiSigns[i];
+    if (!sign) continue;
+    sign.position.y = Math.sin(performance.now() * 0.0014 + i) * 0.015;
   }
 }
 
@@ -5971,6 +6155,11 @@ const heatPool = new ParticlePool(scene, {
   max: 60, color: 0xffaa66, size: 1.6,
   life: 0.7, growth: 6.0, additive: true, texture: sharedSpriteTex,
 });
+const runwayPropWashPool = new ParticlePool(scene, {
+  max: 120, color: 0xd9b07a, size: 1.8,
+  life: 0.95, growth: 4.8, additive: false, texture: dustTex,
+});
+const propWashState = { timer: 0, mix: 0, active: false };
 let heatTimer = 0;
 function updateHeat(dt) {
   heatTimer += dt;
@@ -5984,6 +6173,43 @@ function updateHeat(dt) {
     if (!plane.suppressJetFX) heatPool.emit(ex, 0.6 + plane.throttle * 0.4, 0.5 + plane.throttle * 0.6);
   }
   heatPool.update(dt);
+}
+function emitRunwayDustBurst(center, intensity = 1.0, lateral = 0) {
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const drift = forward.clone().multiplyScalar(-0.4 - intensity * 1.1);
+  drift.x += lateral * 0.28;
+  drift.y = 0.45 + intensity * 0.35;
+  drift.z += (Math.random() - 0.5) * 0.35;
+  for (let i = 0; i < Math.max(2, Math.round(2 + intensity * 3)); i++) {
+    const pos = center.clone();
+    pos.x += (Math.random() - 0.5) * 0.9;
+    pos.z += (Math.random() - 0.5) * 0.9;
+    runwayPropWashPool.emit(pos, 0.7 + intensity * 0.35, 0.8 + intensity * 0.6, drift.clone().multiplyScalar(0.6 + Math.random() * 0.45));
+  }
+}
+function updateRunwayPropWash(dt) {
+  propWashState.timer += dt;
+  const groundSpeed = Math.hypot(plane.vel.x, plane.vel.z);
+  const targetMix = (!plane.crashed && plane.onGround)
+    ? clamp01(Math.max((plane.throttle - 0.18) / 0.82, groundSpeed / 28, plane.brake * 0.65))
+    : 0;
+  propWashState.mix += (targetMix - propWashState.mix) * Math.min(1, dt * 5.5);
+  propWashState.active = propWashState.mix > 0.08;
+  if (propWashState.active && propWashState.timer > Math.max(0.03, 0.085 - propWashState.mix * 0.04)) {
+    propWashState.timer = 0;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+    for (const side of [-1, 1]) {
+      const pos = plane.pos.clone()
+        .addScaledVector(right, side * 1.7)
+        .addScaledVector(forward, 1.1);
+      pos.y = (pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2)
+        ? AIRFIELD_SURFACE_Y + 0.12
+        : getHeight(pos.x, pos.z) + 0.12;
+      emitRunwayDustBurst(pos, 0.55 + propWashState.mix * 0.95, side);
+    }
+  }
+  runwayPropWashPool.update(dt);
 }
 
 // =============================================================
@@ -6774,6 +7000,7 @@ function resetPlane() {
   plane.gearTarget = 1;
   plane.brake = 0;
   plane.landingLights = true;
+  plane.onGround = true;
   plane.crashed = false;
   resetMissionDebrief();
   healPlane();
@@ -6785,6 +7012,7 @@ function resetPlane() {
   if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
   if (typeof resetGateScoring === 'function') resetGateScoring();
   resetEngineSurgeFx();
+  setFlightPhase('ON STAND');
   helpStripState.autoCollapsed = false;
   setHelpStripCollapsed(false);
   statusMsg.textContent = 'READY FOR DEPARTURE';
@@ -7128,6 +7356,16 @@ function updatePhysics(dt) {
       // Touchdown / rolling
       const vertVel = plane.vel.y;
       const wasAirborne = !plane.onGround;
+      const runwayTouchdown = Math.abs(plane.pos.x) < 24 && Math.abs(plane.pos.z) < 214;
+      const touchdownForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+      let touchdownHeading = Math.atan2(touchdownForward.x, -touchdownForward.z) * 180 / Math.PI;
+      if (touchdownHeading < 0) touchdownHeading += 360;
+      const headingErrorDeg = Math.min(
+        Math.abs(touchdownHeading),
+        Math.abs(touchdownHeading - 180),
+        Math.abs(touchdownHeading - 360)
+      );
+      const centerlineFt = Math.abs(plane.pos.x) * 3.28;
       plane.pos.y = groundH + GEAR_HEIGHT;
 
       if (vertVel < -8) {
@@ -7137,6 +7375,7 @@ function updatePhysics(dt) {
         const dmg = 0.25 + sev * 0.85;
         statusMsg.className = 'panel warn';
         audioThud(0.5 + sev * 0.35);
+        if (wasAirborne) emitRunwayDustBurst(plane.pos.clone().setY(groundH + 0.16), 1.15 + sev * 0.8);
         const fatal = damagePlane(dmg, 'airframe', {
           reason: 'HARD LANDING',
           worldPos: plane.pos.clone(),
@@ -7147,6 +7386,16 @@ function updatePhysics(dt) {
           plane.vel.y = Math.max(0, vertVel * 0.2);
           plane.vel.x *= 0.85; plane.vel.z *= 0.85;
           plane.onGround = true;
+          if (wasAirborne) {
+            recordLandingTouchdown({
+              sinkRateMps: -vertVel,
+              speedKts: speed * 1.94,
+              centerlineFt,
+              headingErrorDeg,
+              onRunway: runwayTouchdown,
+              hard: true,
+            });
+          }
           statusMsg.textContent = `HULL ${Math.round(plane.health)}% — HARD LANDING`;
         }
       } else {
@@ -7154,8 +7403,19 @@ function updatePhysics(dt) {
         if (wasAirborne && vertVel < -2) {
           audioThud(Math.min(0.6, Math.abs(vertVel) * 0.06));
         }
+        if (wasAirborne) emitRunwayDustBurst(plane.pos.clone().setY(groundH + 0.14), 0.55 + Math.max(0, -vertVel) * 0.08);
         plane.vel.y = Math.max(0, plane.vel.y);
         plane.onGround = true;
+        if (wasAirborne) {
+          recordLandingTouchdown({
+            sinkRateMps: -vertVel,
+            speedKts: speed * 1.94,
+            centerlineFt,
+            headingErrorDeg,
+            onRunway: runwayTouchdown,
+            hard: false,
+          });
+        }
 
         // Rolling friction + brake
         const rollFric = 0.015 + plane.brake * 2.0;
@@ -7249,7 +7509,9 @@ function updateJetVisual() {
   const gearGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
     ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   const gearAltAGL = Math.max(0, plane.pos.y - gearGroundH);
+  const groundSpeed = Math.hypot(plane.vel.x, plane.vel.z);
   const groundLoad = clamp01(1 - gearAltAGL / 8) * g;
+  const wheelSpinStep = (plane.onGround ? groundSpeed : plane.vel.length() * 0.55) * 0.028;
   for (const gear of [jet.userData.gearL, jet.userData.gearR]) {
     if (!gear || !gear.userData) continue;
     const side = gear.userData.side || 0;
@@ -7260,13 +7522,18 @@ function updateJetVisual() {
     const strutLean = side * (0.03 + groundLoad * 0.09);
     wheel.position.x = side * wheelSplay;
     wheel.position.y = gear.userData.baseWheelY + groundLoad * 0.02;
+    wheel.rotation.x -= wheelSpinStep;
     strut.position.x = side * wheelSplay * 0.42;
     strut.position.y = gear.userData.baseStrutY + groundLoad * 0.01;
     strut.rotation.z = strutLean;
   }
+  const noseWheel = jet.userData.gearNose && jet.userData.gearNose.userData ? jet.userData.gearNose.userData.wheel : null;
+  if (noseWheel) noseWheel.rotation.x -= wheelSpinStep * 1.04;
 
+  // Aero flex + control-surface motion.
   const flexLocalVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
   const wingLoad = clamp01(Math.abs(plane.angVel.z) * 0.34 + Math.abs(flexLocalVel.x) / 28 + Math.abs(flexLocalVel.y) / 38);
+
   const aileronTarget = Math.max(-0.45, Math.min(0.45, -plane.angVel.z * 0.18 - flexLocalVel.x * 0.012));
   const elevatorTarget = Math.max(-0.32, Math.min(0.32, plane.angVel.x * 0.22 - flexLocalVel.y * 0.006));
   const rudderTarget = Math.max(-0.38, Math.min(0.38, plane.angVel.y * 0.30 + flexLocalVel.x * 0.01));
@@ -7955,10 +8222,26 @@ const missionDebriefState = {
   bridgeRuns: 0,
   portalShots: 0,
   lowRuns: 0,
+  landings: 0,
+  landingScore: 0,
+  landingGrade: '',
+  landingMedal: '',
   lastHighlight: 'FIRST FLIGHT',
   grade: 'C',
   reason: 'TERRAIN IMPACT',
   summary: null,
+};
+const landingMedalState = {
+  lastMedal: '—',
+  lastGrade: '',
+  lastScore: 0,
+  lastDetail: '',
+  lastWasBest: false,
+  bestMedal: bestLandingRecord.medal || '—',
+  bestGrade: bestLandingRecord.grade || '',
+  bestScore: bestLandingRecord.score || 0,
+  bestDetail: bestLandingRecord.detail || '',
+  count: 0,
 };
 function setFlightPhase(label, tone = '') {
   flightPhaseState.label = label;
@@ -7977,10 +8260,85 @@ function resetMissionDebrief() {
   missionDebriefState.bridgeRuns = 0;
   missionDebriefState.portalShots = 0;
   missionDebriefState.lowRuns = 0;
+  missionDebriefState.landings = 0;
+  missionDebriefState.landingScore = 0;
+  missionDebriefState.landingGrade = '';
+  missionDebriefState.landingMedal = '';
   missionDebriefState.lastHighlight = 'READY FOR TAKEOFF';
   missionDebriefState.grade = 'C';
   missionDebriefState.reason = 'TERRAIN IMPACT';
   missionDebriefState.summary = null;
+  landingMedalState.lastMedal = '—';
+  landingMedalState.lastGrade = '';
+  landingMedalState.lastScore = 0;
+  landingMedalState.lastDetail = '';
+  landingMedalState.lastWasBest = false;
+  landingMedalState.count = 0;
+}
+function saveBestLandingRecord() {
+  try {
+    localStorage.setItem(LANDING_RECORD_KEY, JSON.stringify({
+      medal: landingMedalState.bestMedal,
+      grade: landingMedalState.bestGrade,
+      score: landingMedalState.bestScore,
+      detail: landingMedalState.bestDetail,
+    }));
+  } catch {}
+}
+function evaluateLandingTouchdown({ sinkRateMps = 0, speedKts = 0, centerlineFt = 0, headingErrorDeg = 0, onRunway = true, hard = false } = {}) {
+  const sink = Math.abs(sinkRateMps);
+  const speedErr = Math.abs(speedKts - 74);
+  const centerPenalty = Math.min(40, centerlineFt * 1.35);
+  const headingPenalty = Math.min(35, headingErrorDeg * 2.4);
+  const sinkPenalty = Math.max(0, sink - 0.8) * 14;
+  const speedPenalty = Math.max(0, speedErr - 4) * 1.1;
+  const runwayPenalty = onRunway ? 0 : 22;
+  const hardPenalty = hard ? 14 : 0;
+  const score = Math.max(0, Math.round(100 - sinkPenalty - speedPenalty - centerPenalty - headingPenalty - runwayPenalty - hardPenalty));
+  let grade = 'D';
+  let medal = 'HEAVY ARRIVAL';
+  let color = '#ff6f5a';
+  if (score >= 94) { grade = 'S'; medal = 'GREASER'; color = '#7fe7ff'; }
+  else if (score >= 84) { grade = 'A'; medal = 'SILK SETDOWN'; color = '#66ff99'; }
+  else if (score >= 72) { grade = 'B'; medal = 'RUNWAY STABLE'; color = '#c8ff7a'; }
+  else if (score >= 58) { grade = 'C'; medal = onRunway ? 'PATCHED IN' : 'OFF-CENTER'; color = '#ffd36a'; }
+  if (!onRunway) {
+    medal = score >= 58 ? 'RUNWAY EDGE' : 'OFF-RUNWAY';
+    color = score >= 58 ? '#ffb36a' : '#ff7b6a';
+  }
+  const detail = `${sink.toFixed(1)}M/S · ${Math.round(centerlineFt)}FT OFF · ${Math.round(headingErrorDeg)}° OFF`;
+  return { score, grade, medal, detail, color, sinkRateMps: sink, centerlineFt, headingErrorDeg, speedKts, onRunway };
+}
+function recordLandingTouchdown(sample = {}) {
+  const result = evaluateLandingTouchdown(sample);
+  const isNewBest = result.score > landingMedalState.bestScore;
+  landingMedalState.lastMedal = result.medal;
+  landingMedalState.lastGrade = result.grade;
+  landingMedalState.lastScore = result.score;
+  landingMedalState.lastDetail = result.detail;
+  landingMedalState.lastWasBest = isNewBest;
+  landingMedalState.count += 1;
+  missionDebriefState.landings += 1;
+  missionDebriefState.landingScore = Math.max(missionDebriefState.landingScore, result.score);
+  missionDebriefState.landingGrade = result.grade;
+  missionDebriefState.landingMedal = result.medal;
+  missionDebriefState.lastHighlight = result.medal;
+  missionDebriefState.summary = null;
+  if (isNewBest) {
+    landingMedalState.bestScore = result.score;
+    landingMedalState.bestMedal = result.medal;
+    landingMedalState.bestGrade = result.grade;
+    landingMedalState.bestDetail = result.detail;
+    saveBestLandingRecord();
+  }
+  if (typeof window.showComboBanner === 'function') {
+    const suffix = isNewBest ? ' · NEW BEST' : '';
+    window.showComboBanner(result.medal, `${result.grade} LANDING · ${result.detail}${suffix}`, result.color);
+  }
+  if (typeof flashStatus === 'function') {
+    flashStatus(`${result.grade} LANDING · ${result.medal}`, result.score >= 72 ? 'panel ok' : 'panel warn', 1.7);
+  }
+  return result;
 }
 function recordMissionMoment({ kind = '', gateLabel = '', stunts = [], points = 0 } = {}) {
   missionDebriefState.gates += 1;
@@ -8003,9 +8361,12 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
   const secs = Math.floor(seconds % 60);
   const distanceNm = missionDebriefState.distanceMeters / 1852;
   const accuracy = combatState.shotsFired > 0 ? combatState.hits / combatState.shotsFired : 0;
-  const rating = score.points / 520 + score.bestStreak * 0.72 + missionDebriefState.bridgeRuns * 1.25 + missionDebriefState.portalShots * 1.45 + missionDebriefState.lowRuns * 0.38 + combatState.hits * 0.26 + accuracy * 2.4;
+  const landingBonus = missionDebriefState.landingScore / 28 + missionDebriefState.landings * 0.4;
+  const rating = score.points / 520 + score.bestStreak * 0.72 + missionDebriefState.bridgeRuns * 1.25 + missionDebriefState.portalShots * 1.45 + missionDebriefState.lowRuns * 0.38 + combatState.hits * 0.26 + accuracy * 2.4 + landingBonus;
   const grade = rating >= 8.2 ? 'S' : rating >= 5.6 ? 'A' : rating >= 3.6 ? 'B' : rating >= 2.1 ? 'C' : 'D';
   const awards = [];
+  if (missionDebriefState.landingMedal) awards.push(`${missionDebriefState.landingMedal} · ${missionDebriefState.landingGrade}`);
+  if (landingMedalState.lastWasBest) awards.push('NEW BEST LANDING');
   if (missionDebriefState.bridgeRuns > 0) awards.push(`BRIDGE ACE ×${missionDebriefState.bridgeRuns}`);
   if (missionDebriefState.portalShots > 0) awards.push(`PORTAL HUNTER ×${missionDebriefState.portalShots}`);
   if (score.bestStreak >= 5) awards.push(`STREAK MASTER ×${score.bestStreak}`);
@@ -8013,19 +8374,40 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
   if (combatState.hits >= 3) awards.push(`GUNS ON TARGET ×${combatState.hits}`);
   if (accuracy >= 0.35 && combatState.shotsFired >= 6) awards.push(`SHARP SHOOTER ${Math.round(accuracy * 100)}%`);
   if (missionDebriefState.peakSpeedKts >= 165) awards.push(`REDLINE ${Math.round(missionDebriefState.peakSpeedKts)}KT`);
+  if (landingMedalState.bestScore > 0) awards.push(`BEST LANDING · ${landingMedalState.bestMedal}`);
   if (!awards.length) awards.push(missionDebriefState.lastHighlight || 'KEEP PUSHING THE CANYON');
+  const cards = [
+    { label: 'SCORE', value: String(score.points), detail: `${score.bestStreak || 0}× BEST CHAIN` },
+    { label: 'RANGE', value: `${distanceNm.toFixed(1)}NM`, detail: `${Math.round(missionDebriefState.peakSpeedKts)}KT PEAK` },
+    { label: 'TIME', value: `${minutes}:${String(secs).padStart(2, '0')}`, detail: `${Math.round(missionDebriefState.peakAltitudeFt)}FT MAX` },
+  ];
+  if (missionDebriefState.landings > 0) {
+    cards.splice(1, 0, {
+      label: 'LANDING',
+      value: missionDebriefState.landingGrade || landingMedalState.lastGrade || '—',
+      detail: `${missionDebriefState.landingMedal || landingMedalState.lastMedal} · ${missionDebriefState.landingScore}`,
+    });
+  } else {
+    cards.splice(1, 0, {
+      label: 'GUNS',
+      value: combatState.shotsFired ? `${Math.round(accuracy * 100)}%` : '—',
+      detail: `${combatState.hits} HITS / ${combatState.shotsFired} SHOTS`,
+    });
+  }
+  if (landingMedalState.bestScore > 0) {
+    cards.push({
+      label: 'BEST LAND',
+      value: landingMedalState.bestGrade || '—',
+      detail: `${landingMedalState.bestMedal} · ${landingMedalState.bestScore}`,
+    });
+  }
   missionDebriefState.grade = grade;
   missionDebriefState.reason = reason;
   missionDebriefState.summary = {
     grade,
     reason,
-    awards: awards.slice(0, 4),
-    cards: [
-      { label: 'SCORE', value: String(score.points), detail: `${score.bestStreak || 0}× BEST CHAIN` },
-      { label: 'GUNS', value: combatState.shotsFired ? `${Math.round(accuracy * 100)}%` : '—', detail: `${combatState.hits} HITS / ${combatState.shotsFired} SHOTS` },
-      { label: 'RANGE', value: `${distanceNm.toFixed(1)}NM`, detail: `${Math.round(missionDebriefState.peakSpeedKts)}KT PEAK` },
-      { label: 'TIME', value: `${minutes}:${String(secs).padStart(2, '0')}`, detail: `${Math.round(missionDebriefState.peakAltitudeFt)}FT MAX` },
-    ],
+    awards: awards.slice(0, 5),
+    cards,
     highlight: missionDebriefState.lastHighlight || 'CANYON RUN',
   };
   return missionDebriefState.summary;
@@ -8097,9 +8479,9 @@ function updateFlightPhase(speedKts, aglFt, aoaDeg) {
   if (replay.playing) {
     setFlightPhase('REVIEW', 'ok');
   } else if (plane.onGround && speedKts < 8) {
-    setFlightPhase('ON STAND');
+    setFlightPhase(missionDebriefState.landings > 0 ? 'LANDED' : 'ON STAND', missionDebriefState.landings > 0 ? 'ok' : '');
   } else if (plane.onGround && speedKts < 55) {
-    setFlightPhase('TAKEOFF ROLL');
+    setFlightPhase(missionDebriefState.landings > 0 ? 'ROLL OUT' : 'TAKEOFF ROLL', missionDebriefState.landings > 0 ? 'ok' : '');
   } else if (plane.onGround) {
     setFlightPhase('ROTATE', 'ok');
   } else if (aglFt < 90) {
@@ -8145,6 +8527,9 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   } else if (timeOfDay.daylight < 0.22 && !plane.landingLights && (plane.onGround || aglFt < 350)) {
     message = 'LOW LIGHT — PRESS L FOR LANDING LIGHTS';
     className = 'panel warn';
+  } else if (missionDebriefState.landings > 0 && plane.onGround && speedKts < 18) {
+    message = `ROLL OUT COMPLETE — ${missionDebriefState.landingMedal || 'GOOD LANDING'} · PRESS R TO RESET OR TAXI OUT`;
+    className = 'panel ok';
   } else if (landingTrainingArmed) {
     message = 'LANDING TRAINING — FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
     className = 'panel ok';
@@ -8325,11 +8710,13 @@ function animate(now) {
   updateShadow();
   updateSunShadowRig();
   updateHeat(dt);
+  updateRunwayPropWash(dt);
   updateBirds(now);
   updateDustDevils(now, plane.pos.x, plane.pos.z);
   updateTraffic(dt);
   updateFloatingTarget(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
+  updateAirfieldAmbient(dt);
   updateAudio(dt);
   updateMissionDebrief(dt, plane.vel.length() * 1.94);
   updateHUD();
@@ -10045,6 +10432,7 @@ window.__ap = {
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
+      airfield_clutter_count: airfieldAmbientState.clutterCount,
       world_bridge_count: worldOpportunities.bridgeCandidates.length,
       world_portal_count: worldOpportunities.portalCandidates.length,
       engine_sample_ready: !!audio.propSampleReady,
@@ -10067,6 +10455,12 @@ window.__ap = {
       shots_fired: combatState.shotsFired,
       combat_hits: combatState.hits,
       targets_alive: destructibleTargets.filter(t => t.alive).length,
+      landing_medal: landingMedalState.lastMedal,
+      landing_grade: landingMedalState.lastGrade,
+      landing_score: landingMedalState.lastScore,
+      best_landing_grade: landingMedalState.bestGrade,
+      best_landing_medal: landingMedalState.bestMedal,
+      propwash_active: !!propWashState.active,
       engine_surge_phase: engineSurgeState.phase,
       engine_surge_power: engineSurgeState.powerMul,
       turn_smoke_mix: engineSurgeState.greyMix,
@@ -10095,6 +10489,15 @@ window.__ap = {
   setLandingLights(on) {
     plane.landingLights = !!on;
     if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
+  },
+  previewLanding(sample = {}) {
+    return evaluateLandingTouchdown(sample);
+  },
+  recordLandingPreview(sample = {}) {
+    const result = recordLandingTouchdown(sample);
+    captureMissionDebrief('LANDING REVIEW');
+    if (typeof syncReplayUI === 'function') syncReplayUI();
+    return result;
   },
   setMultiplayerUrl(url) {
     MULTIPLAYER_URL = String(url || '').trim();
