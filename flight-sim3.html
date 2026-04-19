@@ -42,78 +42,94 @@
     box-shadow: var(--game-shadow);
   }
   #instruments {
-    top: 18px; left: 18px; width: 248px;
-    border-radius: 24px; padding: 14px 16px 12px;
+    left: 16px;
+    bottom: 14px;
+    top: auto;
+    width: min(258px, calc(100vw - 32px));
+    border-radius: 18px;
+    padding: 10px 12px 10px;
     font-family: var(--game-font-ui);
+    background: linear-gradient(180deg, rgba(14,18,26,0.48), rgba(8,10,16,0.22));
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
   #instruments::before {
     content: 'FLIGHT CORE';
     display: block;
-    margin-bottom: 8px;
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: rgba(255, 226, 170, 0.68);
+    margin-bottom: 5px;
+    font-size: 8px;
+    letter-spacing: 0.24em;
+    color: rgba(255, 226, 170, 0.64);
   }
   #instruments > div {
-    font-size: 11px;
-    line-height: 1.42;
-    letter-spacing: 0.10em;
-    color: rgba(255, 240, 214, 0.86);
+    font-size: 9px;
+    line-height: 1.24;
+    letter-spacing: 0.08em;
+    color: rgba(255, 240, 214, 0.82);
   }
   #instruments > div:nth-child(2),
   #instruments > div:nth-child(3) {
     display: inline-block;
-    width: calc(50% - 4px);
+    width: calc(50% - 3px);
     vertical-align: top;
   }
-  #instruments > div:nth-child(3) { padding-left: 8px; }
-  #instruments .big { font-size: 24px; color: #fff1ce; font-weight: 700; letter-spacing: -0.04em; }
+  #instruments > div:nth-child(3) { padding-left: 6px; }
+  #instruments .big { font-size: 18px; color: #fff1ce; font-weight: 700; letter-spacing: -0.03em; }
   #throttle-wrap {
-    top: 18px; right: 18px; min-width: 0; width: 284px;
-    border-radius: 24px; padding: 14px 16px 12px;
+    right: 16px;
+    bottom: 14px;
+    top: auto;
+    min-width: 0;
+    width: min(270px, calc(100vw - 32px));
+    border-radius: 18px;
+    padding: 10px 12px 10px;
     font-family: var(--game-font-ui);
+    background: linear-gradient(180deg, rgba(14,18,26,0.48), rgba(8,10,16,0.22));
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
   #throttle-wrap::before {
-    content: 'TELEMETRY DECK';
+    content: 'FLIGHT DECK';
     display: block;
-    margin-bottom: 8px;
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: rgba(255, 226, 170, 0.68);
+    margin-bottom: 5px;
+    font-size: 8px;
+    letter-spacing: 0.24em;
+    color: rgba(255, 226, 170, 0.64);
   }
   #throttle-wrap > div:first-child {
-    font-size: 17px;
-    line-height: 1.05;
-    letter-spacing: -0.02em;
+    font-size: 13px;
+    line-height: 1.0;
+    letter-spacing: -0.01em;
     color: #fff3d4;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
   #throttle-wrap .bar {
-    margin: 8px 0 10px;
-    height: 8px;
+    margin: 6px 0 8px;
+    height: 6px;
     border-radius: 999px;
     overflow: hidden;
   }
   #throttle-wrap > div:nth-child(3) {
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    color: rgba(255, 226, 170, 0.58);
-    min-height: 14px;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    color: rgba(255, 226, 170, 0.56);
+    min-height: 12px;
   }
   #throttle-wrap > div:nth-child(4) {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255,204,102,0.14);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,204,102,0.12);
     display: grid;
-    gap: 6px;
+    gap: 4px;
     pointer-events: auto;
   }
   #throttle-wrap .hud-action {
-    padding: 7px 10px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,215,150,0.12);
+    padding: 5px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,215,150,0.1);
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    font-size: 9px;
   }
   #throttle-wrap .hud-action:hover {
     background: rgba(255,204,102,0.10);
@@ -143,54 +159,61 @@
     text-transform: uppercase;
   }
   #controls-help {
-    left: 50%; transform: translateX(-50%); bottom: 18px;
-    width: min(980px, calc(100vw - 36px));
-    display: flex; flex-wrap: wrap; gap: 8px;
-    border-radius: 24px; padding: 12px 14px 14px;
-    font-size: 10px; opacity: 0.92; font-family: var(--game-font-ui);
+    left: 50%; transform: translateX(-50%); bottom: 10px;
+    width: clamp(220px, calc(100vw - 340px), 560px);
+    display: flex; flex-wrap: wrap; gap: 6px;
+    border-radius: 16px; padding: 8px 10px 10px;
+    font-size: 8px; opacity: 0.86; font-family: var(--game-font-ui);
+    background: linear-gradient(180deg, rgba(14,18,26,0.42), rgba(8,10,16,0.18));
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
   #controls-help::before {
     content: 'PILOT INPUTS';
     flex-basis: 100%;
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: rgba(255, 226, 170, 0.68);
-    margin-bottom: 2px;
+    font-size: 8px;
+    letter-spacing: 0.22em;
+    color: rgba(255, 226, 170, 0.64);
+    margin-bottom: 1px;
   }
   #controls-help > div {
-    flex: 1 1 260px;
-    min-height: 52px;
-    padding: 10px 12px;
-    border-radius: 16px;
-    border: 1px solid rgba(255, 215, 150, 0.12);
-    background: rgba(255,255,255,0.04);
-    font-size: 11px;
-    line-height: 1.45;
+    flex: 1 1 160px;
+    min-height: 34px;
+    padding: 7px 9px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 215, 150, 0.09);
+    background: rgba(255,255,255,0.03);
+    font-size: 8px;
+    line-height: 1.32;
     letter-spacing: 0.08em;
-    color: rgba(255, 240, 214, 0.86);
+    color: rgba(255, 240, 214, 0.78);
   }
   #controls-help.collapsed {
     left: 50%; transform: translateX(-50%);
-    width: auto; min-width: 248px;
-    padding: 10px 14px;
+    width: auto; min-width: 160px;
+    padding: 7px 10px;
     gap: 0;
   }
   #controls-help.collapsed::before {
-    content: 'PILOT INPUTS [H]';
+    content: 'INPUTS [H]';
     margin-bottom: 0;
   }
   #controls-help.collapsed > div {
     display: none;
   }
   #status-msg {
-    bottom: 18px; right: 18px; text-align: left;
-    min-width: 320px; max-width: min(420px, calc(100vw - 36px));
-    border-radius: 18px;
-    padding: 12px 14px;
+    top: 14px; left: 50%; right: auto; bottom: auto;
+    transform: translateX(-50%);
+    text-align: center;
+    min-width: 0;
+    width: min(420px, calc(100vw - 32px));
+    border-radius: 999px;
+    padding: 8px 14px;
     font-family: var(--game-font-ui);
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    line-height: 1.45;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    line-height: 1.28;
+    background: linear-gradient(180deg, rgba(14,18,26,0.5), rgba(8,10,16,0.22));
   }
   .bar { height: 6px; background: rgba(255,204,102,0.15); margin: 4px 0; position: relative; }
   .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
@@ -283,6 +306,85 @@
     line-height: 1.45;
     letter-spacing: 0.08em;
     color: rgba(255, 240, 214, 0.88);
+  }
+  #title .multiplayer-setup-card {
+    position: relative;
+    margin-top: 14px;
+    padding: 14px 14px 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: linear-gradient(180deg, rgba(14,18,26,0.4), rgba(8,10,16,0.14));
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+  }
+  #title .multiplayer-setup-card::before {
+    content: 'NETWORK FLIGHT';
+    display: block;
+    margin-bottom: 10px;
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: rgba(255, 231, 176, 0.7);
+  }
+  #title .multiplayer-setup-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1.7fr 0.9fr;
+    gap: 10px;
+    align-items: end;
+  }
+  #title .mp-field {
+    display: grid;
+    gap: 5px;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: rgba(255, 231, 176, 0.72);
+    text-transform: uppercase;
+  }
+  #title .mp-field input {
+    width: 100%;
+    border: 1px solid rgba(255,215,150,0.16);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    color: #fff3d4;
+    padding: 9px 10px;
+    font: 600 12px/1.2 var(--game-font-ui);
+    letter-spacing: 0.08em;
+    outline: none;
+  }
+  #title .mp-field input::placeholder {
+    color: rgba(255, 231, 176, 0.4);
+  }
+  #title .mp-field input:focus {
+    border-color: rgba(255,215,150,0.34);
+    box-shadow: 0 0 0 3px rgba(255,204,102,0.08);
+  }
+  #title .mp-spawn-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  #title .mp-spawn-btn {
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,215,150,0.16);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255, 231, 176, 0.76);
+    font: 600 10px/1 var(--game-font-ui);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  #title .mp-spawn-btn.active {
+    background: rgba(255,204,102,0.14);
+    color: #fff2cf;
+    border-color: rgba(255,225,170,0.38);
+  }
+  #title .mp-setup-note {
+    margin-top: 10px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(255, 231, 176, 0.62);
+    line-height: 1.4;
   }
   #title .meta {
     position: relative;
@@ -434,7 +536,8 @@
   }
   @media (max-width: 720px) {
     #title.flight-briefing-card { padding: 22px 20px 20px; }
-    #title .start-steps { grid-template-columns: 1fr; }
+    #title .start-steps,
+    #title .multiplayer-setup-grid { grid-template-columns: 1fr; }
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
@@ -611,6 +714,21 @@
       <div>7 · PRESS R ANY TIME TO RESET</div>
       <div>8 · PRESS P FOR OPTIONS · H FOR HELP · ; FOR MODEL TUNE</div>
     </div>
+    <div class="multiplayer-setup-card">
+      <div class="multiplayer-setup-grid">
+        <label class="mp-field">CALLSIGN
+          <input id="mp-callsign" type="text" maxlength="16" placeholder="PILOT">
+        </label>
+        <label class="mp-field">SERVER
+          <input id="mp-url" type="text" placeholder="ws://127.0.0.1:8787">
+        </label>
+        <label class="mp-field">ROOM
+          <input id="mp-room" type="text" maxlength="20" placeholder="default">
+        </label>
+      </div>
+      <div class="mp-spawn-row" id="mp-spawn-row"></div>
+      <div class="mp-setup-note" id="mp-setup-note">Leave server blank for SOLO. When network flight is enabled, random traffic clears out and everyone uses their chosen callsign + spawn profile.</div>
+    </div>
     <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
     <div class="cta">CLICK OR PRESS ANY KEY TO FLY</div>
   </div>
@@ -646,7 +764,59 @@ let MULTIPLAYER_URL = (() => {
     return bootParams.get('mp') || '';
   }
 })();
-const MULTIPLAYER_ROOM = bootParams.get('room') || 'default';
+const MULTIPLAYER_CALLSIGN_KEY = 'flight_mp_callsign';
+const MULTIPLAYER_ROOM_KEY = 'flight_mp_room';
+const PLAYER_SPAWN_KEY = 'flight_spawn_mode';
+let MULTIPLAYER_ROOM = (() => {
+  try {
+    return bootParams.get('room') || localStorage.getItem(MULTIPLAYER_ROOM_KEY) || 'default';
+  } catch {
+    return bootParams.get('room') || 'default';
+  }
+})();
+function sanitizeCallsign(value) {
+  const cleaned = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 -]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 16);
+  return cleaned || 'PILOT';
+}
+const playerProfileState = {
+  callsign: (() => {
+    try {
+      return sanitizeCallsign(bootParams.get('name') || localStorage.getItem(MULTIPLAYER_CALLSIGN_KEY) || 'PILOT');
+    } catch {
+      return sanitizeCallsign(bootParams.get('name') || 'PILOT');
+    }
+  })(),
+  spawnMode: (() => {
+    try {
+      return bootParams.get('spawn') || localStorage.getItem(PLAYER_SPAWN_KEY) || (MULTIPLAYER_URL ? 'sky' : 'runway36');
+    } catch {
+      return bootParams.get('spawn') || (MULTIPLAYER_URL ? 'sky' : 'runway36');
+    }
+  })(),
+};
+const SPAWN_OPTIONS = [
+  { key: 'sky', label: 'SKY' },
+  { key: 'runway36', label: 'RWY 36' },
+  { key: 'runway18', label: 'RWY 18' },
+  { key: 'apron', label: 'APRON' },
+];
+function normalizeSpawnMode(mode) {
+  const found = SPAWN_OPTIONS.find(opt => opt.key === mode);
+  return found ? found.key : (MULTIPLAYER_URL ? 'sky' : 'runway36');
+}
+playerProfileState.spawnMode = normalizeSpawnMode(playerProfileState.spawnMode);
+function persistPlayerProfile() {
+  try {
+    localStorage.setItem(MULTIPLAYER_CALLSIGN_KEY, playerProfileState.callsign);
+    localStorage.setItem(MULTIPLAYER_ROOM_KEY, MULTIPLAYER_ROOM || 'default');
+    localStorage.setItem(PLAYER_SPAWN_KEY, playerProfileState.spawnMode || 'runway36');
+  } catch {}
+}
 const PROP_MODEL_PRESETS = [
   { key: 'dusty', label: 'DUSTY TURBO', file: 'models/disney_planes_-_dusty_turbo.glb' },
   { key: 'lowprop', label: 'LOW-POLY PROP', file: 'models/low_poly_plane.glb' },
@@ -3506,6 +3676,131 @@ const multiplayerState = {
   reconnectAt: 0,
 };
 
+function makeCallsignTexture(text, colorHex = 0xffe6b0) {
+  const c = document.createElement('canvas');
+  c.width = 320;
+  c.height = 80;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  g.fillStyle = 'rgba(8,10,16,0.72)';
+  g.strokeStyle = 'rgba(255,230,176,0.28)';
+  g.lineWidth = 3;
+  const r = 18;
+  g.beginPath();
+  g.moveTo(r, 8);
+  g.lineTo(c.width - r, 8);
+  g.quadraticCurveTo(c.width - 8, 8, c.width - 8, r);
+  g.lineTo(c.width - 8, c.height - r);
+  g.quadraticCurveTo(c.width - 8, c.height - 8, c.width - r, c.height - 8);
+  g.lineTo(r, c.height - 8);
+  g.quadraticCurveTo(8, c.height - 8, 8, c.height - r);
+  g.lineTo(8, r);
+  g.quadraticCurveTo(8, 8, r, 8);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  const color = new THREE.Color(colorHex);
+  g.fillStyle = `rgba(${Math.round(color.r*255)}, ${Math.round(color.g*255)}, ${Math.round(color.b*255)}, 0.98)`;
+  g.font = '700 34px system-ui';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(String(text || 'PILOT').slice(0, 16), c.width / 2, c.height / 2 + 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  tex.colorSpace = THREE.SRGBColorSpace || tex.colorSpace;
+  return tex;
+}
+
+function setRemotePlayerCallsign(rec, text) {
+  if (!rec || !rec.group || !rec.labelSprite) return;
+  rec.callsign = sanitizeCallsign(text || rec.id || 'PILOT');
+  rec.labelSprite.material.map = makeCallsignTexture(rec.callsign, rec.colorHex || 0xffe6b0);
+  rec.labelSprite.material.needsUpdate = true;
+}
+
+function applyMultiplayerUrl(url, reconnect = true) {
+  MULTIPLAYER_URL = String(url || '').trim();
+  try {
+    if (MULTIPLAYER_URL) localStorage.setItem('flight_mp_url', MULTIPLAYER_URL);
+    else localStorage.removeItem('flight_mp_url');
+  } catch {}
+  if (multiplayerState.ws) {
+    try { multiplayerState.ws.close(); } catch {}
+    multiplayerState.ws = null;
+  }
+  multiplayerState.connected = false;
+  multiplayerState.connecting = false;
+  multiplayerState.enabled = !!MULTIPLAYER_URL;
+  multiplayerState.reconnectAt = reconnect && MULTIPLAYER_URL ? 0 : Date.now() + 2000;
+  for (const t of traffic || []) {
+    if (!t.group) continue;
+    t.group.visible = trafficEnabled() && (!t.destructible || t.destructible.alive);
+  }
+  syncMultiplayerIndicator();
+}
+
+function setMultiplayerRoom(room, reconnect = true) {
+  MULTIPLAYER_ROOM = String(room || '').trim() || 'default';
+  persistPlayerProfile();
+  if (multiplayerState.connected || multiplayerState.connecting) {
+    applyMultiplayerUrl(MULTIPLAYER_URL, reconnect);
+  }
+  syncMultiplayerIndicator();
+}
+
+function setPlayerCallsign(value) {
+  playerProfileState.callsign = sanitizeCallsign(value);
+  persistPlayerProfile();
+  syncMultiplayerIndicator();
+  if (multiplayerState.connected) sendMultiplayerState();
+}
+
+function setPlayerSpawnMode(mode) {
+  playerProfileState.spawnMode = normalizeSpawnMode(mode);
+  persistPlayerProfile();
+  if (!running) resetPlane();
+  syncMultiplayerSetupUI();
+}
+
+function syncMultiplayerSetupUI() {
+  try {
+    if (mpCallsignInput) mpCallsignInput.value = playerProfileState.callsign;
+    if (mpUrlInput) mpUrlInput.value = MULTIPLAYER_URL;
+    if (mpRoomInput) mpRoomInput.value = MULTIPLAYER_ROOM;
+    if (mpSpawnRow) {
+      while (mpSpawnRow.firstChild) mpSpawnRow.removeChild(mpSpawnRow.firstChild);
+      SPAWN_OPTIONS.forEach(opt => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mp-spawn-btn' + (playerProfileState.spawnMode === opt.key ? ' active' : '');
+        b.textContent = opt.label;
+        b.addEventListener('click', () => setPlayerSpawnMode(opt.key));
+        mpSpawnRow.appendChild(b);
+      });
+    }
+    if (mpSetupNote) {
+      const trafficLine = MULTIPLAYER_URL ? 'Random traffic is disabled while network flight is configured.' : 'Leave server blank for SOLO.';
+      mpSetupNote.textContent = `${trafficLine} Spawn: ${SPAWN_OPTIONS.find(opt => opt.key === playerProfileState.spawnMode)?.label || 'RWY 36'} · Callsign: ${playerProfileState.callsign}.`;
+    }
+  } catch (err) {
+    console.warn('[mp-ui] setup failed', err && err.message || err);
+  }
+}
+
+function buildLocalMultiplayerState() {
+  return {
+    pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
+    quat: { x: plane.quat.x, y: plane.quat.y, z: plane.quat.z, w: plane.quat.w },
+    throttle: plane.throttle,
+    gear: plane.gear,
+    lights: plane.landingLights,
+    callsign: playerProfileState.callsign,
+    spawnMode: playerProfileState.spawnMode,
+    planeKey: getActivePropPreset().key,
+    t: Date.now(),
+  };
+}
+
 function makeRemotePlayerMesh(colorHex) {
   const group = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -3542,6 +3837,16 @@ function makeRemotePlayerMesh(colorHex) {
   );
   beacon.position.set(0, 1.8, 0.2);
   group.add(beacon);
+  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: makeCallsignTexture('PILOT', colorHex),
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  }));
+  labelSprite.position.set(0, 4.2, 0);
+  labelSprite.scale.set(8.8, 2.2, 1);
+  group.add(labelSprite);
+  group.userData.labelSprite = labelSprite;
   group.scale.setScalar(1.35);
   applyShadowFlags(group, { cast: false, receive: false });
   return group;
@@ -3555,11 +3860,15 @@ function colorFromId(id) {
 
 function ensureRemotePlayer(id) {
   if (!multiplayerState.remotePlayers.has(id)) {
-    const group = makeRemotePlayerMesh(colorFromId(id));
+    const colorHex = colorFromId(id);
+    const group = makeRemotePlayerMesh(colorHex);
     scene.add(group);
     multiplayerState.remotePlayers.set(id, {
       id,
+      colorHex,
       group,
+      labelSprite: group.userData.labelSprite,
+      callsign: sanitizeCallsign(id),
       targetPos: new THREE.Vector3(),
       targetQuat: new THREE.Quaternion(),
       lastSeen: Date.now(),
@@ -3596,6 +3905,7 @@ function handleMultiplayerMessage(raw) {
     const rec = ensureRemotePlayer(msg.id);
     rec.targetPos.set(msg.state.pos.x, msg.state.pos.y, msg.state.pos.z);
     rec.targetQuat.set(msg.state.quat.x, msg.state.quat.y, msg.state.quat.z, msg.state.quat.w);
+    if (msg.state.callsign) setRemotePlayerCallsign(rec, msg.state.callsign);
     rec.lastSeen = Date.now();
     syncMultiplayerIndicator();
   }
@@ -3616,7 +3926,12 @@ function connectMultiplayer() {
       multiplayerState.connected = true;
       multiplayerState.enabled = true;
       multiplayerState.sendTimer = 0;
-      ws.send(JSON.stringify({ type: 'join', room: MULTIPLAYER_ROOM, id: multiplayerState.playerId }));
+      ws.send(JSON.stringify({
+        type: 'join',
+        room: MULTIPLAYER_ROOM,
+        id: multiplayerState.playerId,
+        state: buildLocalMultiplayerState(),
+      }));
       syncMultiplayerIndicator();
     });
     ws.addEventListener('message', ev => handleMultiplayerMessage(ev.data));
@@ -3641,19 +3956,20 @@ function connectMultiplayer() {
 
 function syncMultiplayerIndicator() {
   if (typeof $mpInd === 'undefined' || !$mpInd) return;
+  const tag = playerProfileState.callsign;
   if (!MULTIPLAYER_URL) {
-    $mpInd.textContent = 'SOLO';
+    $mpInd.textContent = `${tag} · SOLO`;
     $mpInd.className = 'hud-chip';
     return;
   }
   if (multiplayerState.connected) {
-    $mpInd.textContent = `ONLINE ${multiplayerState.remotePlayers.size + 1}`;
+    $mpInd.textContent = `${tag} · ${multiplayerState.remotePlayers.size + 1}UP`;
     $mpInd.className = 'hud-chip ok';
   } else if (multiplayerState.connecting) {
-    $mpInd.textContent = 'CONNECTING';
+    $mpInd.textContent = `${tag} · LINK`;
     $mpInd.className = 'hud-chip warn';
   } else {
-    $mpInd.textContent = 'OFFLINE';
+    $mpInd.textContent = `${tag} · OFF`; 
     $mpInd.className = 'hud-chip warn';
   }
 }
@@ -3664,14 +3980,7 @@ function sendMultiplayerState() {
     type: 'state',
     room: MULTIPLAYER_ROOM,
     id: multiplayerState.playerId,
-    state: {
-      pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
-      quat: { x: plane.quat.x, y: plane.quat.y, z: plane.quat.z, w: plane.quat.w },
-      throttle: plane.throttle,
-      gear: plane.gear,
-      lights: plane.landingLights,
-      t: Date.now(),
-    },
+    state: buildLocalMultiplayerState(),
   }));
 }
 
@@ -6910,17 +7219,66 @@ function maybeTriggerEngineStart() {
 // =============================================================
 //  PLANE STATE + PHYSICS
 // =============================================================
+function getSpawnProfileState(mode = playerProfileState.spawnMode) {
+  const key = normalizeSpawnMode(mode);
+  if (key === 'sky') {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.04, 0, 0, 'YXZ'));
+    return {
+      mode: key,
+      pos: new THREE.Vector3(0, 132, -720),
+      vel: new THREE.Vector3(0, -0.6, -62),
+      quat: q,
+      throttle: 0.56,
+      onGround: false,
+      status: 'AIR START READY',
+    };
+  }
+  if (key === 'runway18') {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0, 'YXZ'));
+    return {
+      mode: key,
+      pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, -126),
+      vel: new THREE.Vector3(),
+      quat: q,
+      throttle: 0,
+      onGround: true,
+      status: 'HOLD SHORT · RWY 18',
+    };
+  }
+  if (key === 'apron') {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI * 0.12, 0, 'YXZ'));
+    return {
+      mode: key,
+      pos: new THREE.Vector3(34, AIRFIELD_SURFACE_Y + 2.3, 154),
+      vel: new THREE.Vector3(),
+      quat: q,
+      throttle: 0,
+      onGround: true,
+      status: 'APRON START READY',
+    };
+  }
+  return {
+    mode: 'runway36',
+    pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 120),
+    vel: new THREE.Vector3(),
+    quat: new THREE.Quaternion(),
+    throttle: 0,
+    onGround: true,
+    status: 'READY FOR DEPARTURE',
+  };
+}
+const initialSpawnProfile = getSpawnProfileState(playerProfileState.spawnMode);
 const plane = {
-  pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 120),  // on runway
-  vel: new THREE.Vector3(0, 0, 0),
-  quat: new THREE.Quaternion(),
+  pos: initialSpawnProfile.pos.clone(),
+  vel: initialSpawnProfile.vel.clone(),
+  quat: initialSpawnProfile.quat.clone(),
   angVel: new THREE.Vector3(),       // local pitch/yaw/roll rates
-  throttle: 0,
+  throttle: initialSpawnProfile.throttle,
   throttleTarget: 0,
   gear: 1, gearTarget: 1,
   brake: 0,
   landingLights: true,
-  onGround: true,
+  onGround: initialSpawnProfile.onGround,
   crashed: false,
   // Graduated damage model. health is 0..100; crashed = (health <= 0).
   // Damage buckets feed smoke state + flight-model instability.
@@ -7036,21 +7394,29 @@ let biomePressed = false;
 let helpPressed = false;
 
 function resetPlane() {
-  plane.pos.set(0, AIRFIELD_SURFACE_Y + 2.3, 120);
-  plane.vel.set(0, 0, 0);
-  plane.quat.identity();
+  const spawn = getSpawnProfileState(playerProfileState.spawnMode);
+  plane.pos.copy(spawn.pos);
+  plane.vel.copy(spawn.vel);
+  plane.quat.copy(spawn.quat);
   plane.angVel.set(0, 0, 0);
-  plane.throttle = 0;
-  plane.throttleTarget = 0;
+  plane.throttle = spawn.throttle;
+  plane.throttleTarget = spawn.throttle;
   plane.gear = 1;
   plane.gearTarget = 1;
   plane.brake = 0;
   plane.landingLights = true;
-  plane.onGround = true;
+  plane.onGround = spawn.onGround;
   plane.crashed = false;
   resetMissionDebrief();
   healPlane();
   resetCombatState();
+  if (!trafficEnabled()) {
+    for (const t of traffic) {
+      if (!t.group) continue;
+      t.group.visible = false;
+      if (t.destructible && t.destructible.object) t.destructible.object.visible = false;
+    }
+  }
   // Fresh slate for flight-review.
   if (typeof replayStop === 'function') replayStop();
   if (typeof replayClear === 'function') replayClear();
@@ -7058,10 +7424,10 @@ function resetPlane() {
   if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
   if (typeof resetGateScoring === 'function') resetGateScoring();
   resetEngineSurgeFx();
-  setFlightPhase('ON STAND');
+  setFlightPhase(spawn.onGround ? 'ON STAND' : 'AIR START', spawn.onGround ? '' : 'ok');
   helpStripState.autoCollapsed = false;
   setHelpStripCollapsed(false);
-  statusMsg.textContent = 'READY FOR DEPARTURE';
+  statusMsg.textContent = spawn.status;
   statusMsg.className = 'panel';
   if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
 }
@@ -8255,6 +8621,11 @@ const $landingInd = document.getElementById('landing-ind');
 const statusMsg = document.getElementById('status-msg');
 const $devOverlay = document.getElementById('dev-overlay');
 const controlsHelpEl = document.getElementById('controls-help');
+const mpCallsignInput = document.getElementById('mp-callsign');
+const mpUrlInput = document.getElementById('mp-url');
+const mpRoomInput = document.getElementById('mp-room');
+const mpSpawnRow = document.getElementById('mp-spawn-row');
+const mpSetupNote = document.getElementById('mp-setup-note');
 const helpStripState = {
   collapsed: false,
   autoCollapsed: false,
@@ -8533,6 +8904,24 @@ function syncPropModelIndicator() {
   $propModelInd.textContent = preset.label;
   $propModelInd.className = 'ok';
 }
+if (mpCallsignInput) {
+  mpCallsignInput.value = playerProfileState.callsign;
+  mpCallsignInput.addEventListener('input', () => setPlayerCallsign(mpCallsignInput.value));
+}
+if (mpUrlInput) {
+  mpUrlInput.value = MULTIPLAYER_URL;
+  mpUrlInput.addEventListener('change', () => {
+    applyMultiplayerUrl(mpUrlInput.value);
+    syncMultiplayerSetupUI();
+  });
+}
+if (mpRoomInput) {
+  mpRoomInput.value = MULTIPLAYER_ROOM;
+  mpRoomInput.addEventListener('change', () => {
+    setMultiplayerRoom(mpRoomInput.value);
+    syncMultiplayerSetupUI();
+  });
+}
 
 document.getElementById('landing-btn').addEventListener('click', () => {
   plane.landingLights = !plane.landingLights;
@@ -8556,6 +8945,7 @@ document.getElementById('audio-btn').addEventListener('click', () => {
 syncAudioIndicator();
 syncLandingIndicator();
 syncMultiplayerIndicator();
+syncMultiplayerSetupUI();
 syncPropModelIndicator();
 
 const transientStatus = { text: '', className: 'panel', timer: 0 };
@@ -9724,7 +10114,7 @@ function spawnTraffic(file, pathFn, opts) {
     rec.destructible.rewardHealth = opts.rewardHealth || 4;
     rec.child = model;
     rec.loaded = true;
-    group.visible = true;
+    group.visible = trafficEnabled() && rec.destructible.alive;
     console.log('[traffic] loaded', file.split('/').pop(), '×' + s.toFixed(3));
   }, undefined, (err) => {
     console.warn('[traffic] failed to load', file, err && err.message);
@@ -9788,10 +10178,23 @@ function pathTransit(p1, p2, halfPeriod) {
   };
 }
 
+function trafficEnabled() {
+  return !MULTIPLAYER_URL;
+}
+
 function updateTraffic(dt) {
+  if (!trafficEnabled()) {
+    for (const t of traffic) {
+      if (!t.group) continue;
+      t.group.visible = false;
+      if (t.destructible && t.destructible.object) t.destructible.object.visible = false;
+    }
+    return;
+  }
   for (const t of traffic) {
     if (!t.loaded) continue;
     if (!t.group) continue; // __traffic_safety__ skip entries missing group (async load race)
+    t.group.visible = !!(t.destructible ? t.destructible.alive : true);
     t.phase += dt * t.speed;
     const { pos, yaw, bank } = t.pathFn(t.phase);
     t.group.position.copy(pos);
@@ -10634,13 +11037,13 @@ window.__ap = {
       aero_flex: { wing: aeroFlexState.wingBend, aileron: aeroFlexState.aileron, elevator: aeroFlexState.elevator, rudder: aeroFlexState.rudder },
       multiplayer_connected: !!multiplayerState.connected,
       remote_players: multiplayerState.remotePlayers.size,
-      traffic_planes: traffic.length,
-      traffic_loaded: traffic.filter(t => t.loaded).length,
-      traffic_alive: destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length,
+      traffic_planes: trafficEnabled() ? traffic.length : 0,
+      traffic_loaded: trafficEnabled() ? traffic.filter(t => t.loaded).length : 0,
+      traffic_alive: trafficEnabled() ? destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length : 0,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
       shots_fired: combatState.shotsFired,
       combat_hits: combatState.hits,
-      targets_alive: destructibleTargets.filter(t => t.alive).length,
+      targets_alive: destructibleTargets.filter(t => t.alive && t.object && t.object.visible !== false).length,
       landing_medal: landingMedalState.lastMedal,
       landing_grade: landingMedalState.lastGrade,
       landing_score: landingMedalState.lastScore,
@@ -10656,6 +11059,8 @@ window.__ap = {
       crash_fx_active: !!combatState.crashFxTriggered,
       flight_phase: flightPhaseState.label,
       mission_grade: missionDebriefState.grade,
+      player_callsign: playerProfileState.callsign,
+      spawn_mode: playerProfileState.spawnMode,
       crashed: !!plane.crashed,
       pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
       on_ground: (plane.pos.y - terrH) < 2.5,
@@ -10698,19 +11103,17 @@ window.__ap = {
     return result;
   },
   setMultiplayerUrl(url) {
-    MULTIPLAYER_URL = String(url || '').trim();
-    try {
-      if (MULTIPLAYER_URL) localStorage.setItem('flight_mp_url', MULTIPLAYER_URL);
-      else localStorage.removeItem('flight_mp_url');
-    } catch {}
-    if (multiplayerState.ws) {
-      try { multiplayerState.ws.close(); } catch {}
-      multiplayerState.ws = null;
-    }
-    multiplayerState.connected = false;
-    multiplayerState.connecting = false;
-    multiplayerState.reconnectAt = 0;
-    syncMultiplayerIndicator();
+    applyMultiplayerUrl(url);
+    syncMultiplayerSetupUI();
+  },
+  setCallsign(name) {
+    setPlayerCallsign(name);
+    syncMultiplayerSetupUI();
+    return playerProfileState.callsign;
+  },
+  setSpawnMode(mode) {
+    setPlayerSpawnMode(mode);
+    return playerProfileState.spawnMode;
   },
   fire() { fireProjectileBurst(); },
   previewCombatHit(kind = 'traffic', kill = false) {

@@ -74,11 +74,14 @@ Bun.serve({
         removeSocket(ws);
         const roomName = String(msg.room || 'default');
         const id = String(msg.id || crypto.randomUUID());
+        const state = msg.state || {};
         ws.data = { id, room: roomName };
         const room = getRoom(roomName);
         room.sockets.add(ws);
+        room.players.set(id, { state, lastSeen: Date.now() });
         const players = [...room.players.entries()].map(([pid, player]) => ({ id: pid, state: player.state }));
         ws.send(JSON.stringify({ type: 'welcome', id, players }));
+        broadcast(roomName, { type: 'state', id, state }, ws);
         return;
       }
 
