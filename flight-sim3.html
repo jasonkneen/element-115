@@ -41,157 +41,240 @@
     -webkit-backdrop-filter: blur(18px) saturate(135%);
     box-shadow: var(--game-shadow);
   }
-  #instruments {
-    left: 16px;
-    bottom: 14px;
-    top: auto;
-    width: min(258px, calc(100vw - 32px));
-    border-radius: 18px;
-    padding: 10px 12px 10px;
+  .thin-surface-hud-shell {
     font-family: var(--game-font-ui);
-    background: linear-gradient(180deg, rgba(14,18,26,0.48), rgba(8,10,16,0.22));
+    background: linear-gradient(180deg, rgba(14,18,26,0.34), rgba(8,10,16,0.12));
     backdrop-filter: blur(18px) saturate(145%);
     -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
-  #instruments::before {
-    content: 'FLIGHT CORE';
-    display: block;
-    margin-bottom: 5px;
-    font-size: 8px;
-    letter-spacing: 0.24em;
-    color: rgba(255, 226, 170, 0.64);
+  #instruments,
+  #throttle-wrap {
+    left: 50%;
+    right: auto;
+    min-width: 0;
+    width: min(1220px, calc(100vw - 24px));
+    transform: translateX(-50%);
+    border-radius: 22px;
+    padding: 6px 10px;
   }
-  #instruments > div {
-    font-size: 9px;
-    line-height: 1.24;
-    letter-spacing: 0.08em;
+  #instruments {
+    top: 10px;
+    bottom: auto;
+  }
+  #throttle-wrap {
+    top: auto;
+    bottom: 12px;
+  }
+  #instruments::before,
+  #throttle-wrap::before {
+    position: absolute;
+    top: 4px;
+    left: 12px;
+    font-size: 7px;
+    letter-spacing: 0.22em;
+    color: rgba(255, 226, 170, 0.46);
+  }
+  #instruments::before { content: 'FLIGHT SURFACE'; }
+  #throttle-wrap::before { content: 'CONTROL SURFACE'; }
+  .top-surface-strip,
+  .bottom-surface-strip {
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
+  }
+  .hud-compact-grid {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+    align-items: stretch;
+    margin-top: 8px;
+  }
+  .hud-stat-chip,
+  .hud-engine-chip,
+  #throttle-wrap .deck-meta-row,
+  #controls-help > div,
+  #controls-help.collapsed,
+  #throttle-wrap .hud-action {
+    border: 1px solid rgba(255, 215, 150, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .hud-stat-chip {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 9px 6px;
+    border-radius: 14px;
     color: rgba(255, 240, 214, 0.82);
   }
-  #instruments > div:nth-child(2),
-  #instruments > div:nth-child(3) {
-    display: inline-block;
-    width: calc(50% - 3px);
-    vertical-align: top;
-  }
-  #instruments > div:nth-child(3) { padding-left: 6px; }
-  #instruments .big { font-size: 18px; color: #fff1ce; font-weight: 700; letter-spacing: -0.03em; }
-  #throttle-wrap {
-    right: 16px;
-    bottom: 14px;
-    top: auto;
+  .hud-stat-line,
+  .hud-track-head,
+  .hud-inline-readout,
+  .hud-stack-line {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
     min-width: 0;
-    width: min(270px, calc(100vw - 32px));
-    border-radius: 18px;
-    padding: 10px 12px 10px;
-    font-family: var(--game-font-ui);
-    background: linear-gradient(180deg, rgba(14,18,26,0.48), rgba(8,10,16,0.22));
-    backdrop-filter: blur(18px) saturate(145%);
-    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    white-space: nowrap;
   }
-  #throttle-wrap::before {
-    content: 'FLIGHT DECK';
-    display: block;
-    margin-bottom: 5px;
+  .hud-stack-line {
+    gap: 9px;
+  }
+  .hud-label,
+  .hud-inline-state,
+  #throttle-wrap .deck-meta-row,
+  #controls-help,
+  #controls-help > div,
+  #throttle-wrap .hud-action,
+  #status-msg {
     font-size: 8px;
-    letter-spacing: 0.24em;
-    color: rgba(255, 226, 170, 0.64);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
   }
-  #throttle-wrap > div:first-child {
-    font-size: 13px;
-    line-height: 1.0;
-    letter-spacing: -0.01em;
-    color: #fff3d4;
-    margin-bottom: 3px;
+  .hud-label {
+    color: rgba(255, 226, 170, 0.6);
+    flex: 0 0 auto;
   }
-  #throttle-wrap .bar {
-    margin: 6px 0 8px;
-    height: 6px;
+  #instruments .big,
+  #throttle-wrap .big,
+  .hud-value {
+    font-size: 16px;
+    line-height: 0.95;
+    color: #fff1ce;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  .hud-unit,
+  .hud-subtle {
+    color: rgba(255, 240, 214, 0.72);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+  .hud-stack-line .hud-subtle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .hud-mini-track {
+    margin: 2px 0 0;
+    height: 3px;
     border-radius: 999px;
     overflow: hidden;
+    background: rgba(255,204,102,0.1);
   }
-  #throttle-wrap > div:nth-child(3) {
-    font-size: 8px;
-    letter-spacing: 0.18em;
-    color: rgba(255, 226, 170, 0.56);
-    min-height: 12px;
+  .hud-mini-track > div {
+    border-radius: inherit;
   }
-  #throttle-wrap > div:nth-child(4) {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255,204,102,0.12);
+  .hud-bottom-surface {
     display: grid;
-    gap: 4px;
+    grid-template-columns: minmax(230px, 280px) minmax(260px, auto) minmax(360px, 1fr);
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .hud-engine-strip,
+  .hud-meta-strip,
+  .hud-control-grid {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .hud-engine-chip {
+    min-width: 0;
+    padding: 7px 9px 6px;
+    border-radius: 14px;
+  }
+  .hud-inline-state {
+    min-width: 0;
+    color: rgba(255, 226, 170, 0.58);
+    white-space: nowrap;
+  }
+  #throttle-wrap .deck-meta-row {
+    display: inline-flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 999px;
+    color: rgba(255, 226, 170, 0.76);
+    white-space: nowrap;
+  }
+  #throttle-wrap .hud-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: rgba(255,255,255,0.04);
+    color: #fff2cf;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .hud-control-grid {
+    justify-content: flex-end;
+    flex-wrap: wrap;
     pointer-events: auto;
   }
   #throttle-wrap .hud-action {
-    padding: 5px 8px;
-    border-radius: 10px;
-    background: rgba(255,255,255,0.035);
-    border: 1px solid rgba(255,215,150,0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-    font-size: 9px;
+    color: rgba(255, 240, 214, 0.82);
+    white-space: nowrap;
   }
   #throttle-wrap .hud-action:hover {
     background: rgba(255,204,102,0.10);
     border-color: rgba(255,215,150,0.22);
     color: #fff3d4;
   }
-  #throttle-wrap .deck-meta-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    color: rgba(255, 226, 170, 0.76);
-  }
-  #throttle-wrap .hud-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 215, 150, 0.18);
-    background: rgba(255,255,255,0.05);
-    color: #fff2cf;
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-  }
   #controls-help {
-    left: 50%; transform: translateX(-50%); bottom: 10px;
-    width: clamp(220px, calc(100vw - 340px), 560px);
-    display: flex; flex-wrap: wrap; gap: 6px;
-    border-radius: 16px; padding: 8px 10px 10px;
-    font-size: 8px; opacity: 0.86; font-family: var(--game-font-ui);
-    background: linear-gradient(180deg, rgba(14,18,26,0.42), rgba(8,10,16,0.18));
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 74px;
+    width: min(920px, calc(100vw - 220px));
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 5px 8px;
+    opacity: 0.84;
+    font-family: var(--game-font-ui);
+    background: linear-gradient(180deg, rgba(14,18,26,0.34), rgba(8,10,16,0.1));
     backdrop-filter: blur(18px) saturate(145%);
     -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
   #controls-help::before {
-    content: 'PILOT INPUTS';
-    flex-basis: 100%;
-    font-size: 8px;
-    letter-spacing: 0.22em;
-    color: rgba(255, 226, 170, 0.64);
-    margin-bottom: 1px;
+    content: 'INPUTS';
+    align-self: center;
+    padding: 0 4px 0 2px;
+    color: rgba(255, 226, 170, 0.58);
   }
   #controls-help > div {
-    flex: 1 1 160px;
-    min-height: 34px;
-    padding: 7px 9px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 215, 150, 0.09);
-    background: rgba(255,255,255,0.03);
-    font-size: 8px;
-    line-height: 1.32;
-    letter-spacing: 0.08em;
-    color: rgba(255, 240, 214, 0.78);
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 5px 8px;
+    border-radius: 999px;
+    line-height: 1.2;
+    color: rgba(255, 240, 214, 0.72);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   #controls-help.collapsed {
-    left: 50%; transform: translateX(-50%);
-    width: auto; min-width: 160px;
-    padding: 7px 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    min-width: 0;
+    padding: 6px 10px;
     gap: 0;
   }
   #controls-help.collapsed::before {
@@ -202,18 +285,24 @@
     display: none;
   }
   #status-msg {
-    top: 14px; left: 50%; right: auto; bottom: auto;
+    top: 66px;
+    left: 50%;
+    right: auto;
+    bottom: auto;
     transform: translateX(-50%);
     text-align: center;
     min-width: 0;
-    width: min(420px, calc(100vw - 32px));
+    max-width: min(780px, calc(100vw - 32px));
+    width: auto;
     border-radius: 999px;
-    padding: 8px 14px;
+    padding: 6px 12px;
     font-family: var(--game-font-ui);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    line-height: 1.28;
-    background: linear-gradient(180deg, rgba(14,18,26,0.5), rgba(8,10,16,0.22));
+    line-height: 1.15;
+    background: linear-gradient(180deg, rgba(14,18,26,0.46), rgba(8,10,16,0.16));
+  }
+  #status-msg::before {
+    display: none;
+    content: none;
   }
   .bar { height: 6px; background: rgba(255,204,102,0.15); margin: 4px 0; position: relative; }
   .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
@@ -534,6 +623,12 @@
     letter-spacing: 0.18em;
     color: rgba(255, 226, 170, 0.64);
   }
+  @media (max-width: 1040px) {
+    .hud-compact-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .hud-bottom-surface { grid-template-columns: 1fr; }
+    .hud-control-grid { justify-content: flex-start; }
+    #controls-help { width: min(calc(100vw - 24px), 980px); bottom: 82px; }
+  }
   @media (max-width: 720px) {
     #title.flight-briefing-card { padding: 22px 20px 20px; }
     #title .start-steps,
@@ -541,9 +636,13 @@
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
-    #controls-help { width: calc(100vw - 28px); bottom: 14px; }
+    #instruments,
+    #throttle-wrap { width: calc(100vw - 16px); padding: 6px 8px; }
+    .hud-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #status-msg { top: 108px; max-width: calc(100vw - 16px); }
+    #controls-help { width: calc(100vw - 16px); bottom: 94px; border-radius: 16px; flex-wrap: wrap; }
     #controls-help.collapsed { min-width: 0; width: auto; }
-    #throttle-wrap { width: min(284px, calc(100vw - 28px)); }
+    #controls-help > div { flex: 1 1 calc(50% - 4px); white-space: normal; }
   }
   .hide { opacity: 0; pointer-events: none; }
   body.preflight #crosshair,
@@ -658,32 +757,58 @@
 <body class="preflight">
 <div id="hud">
   <div id="crosshair"></div>
-  <div class="panel game-dialog-chrome flight-core-shell" id="instruments">
-    <div>SPD <span class="big" id="speed">0</span> kts</div>
-    <div>ALT <span class="big" id="altitude">0</span> ft</div>
-    <div>HDG <span id="heading">000</span>° &nbsp; V/S <span id="vspeed">0</span></div>
-    <div>AOA <span id="aoa">0</span>° &nbsp; G <span id="gforce">1.0</span></div>
-    <div style="margin-top:6px;">GEAR <span id="gear" class="ok">DOWN</span></div>
-    <div style="margin-top:4px;">HULL <span class="big" id="hull-pct">100</span>%</div>
-    <div class="bar" style="margin-top:2px;"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
-    <div style="margin-top:4px;">AMMO <span id="ammo-val">300</span>/<span id="ammo-max">300</span></div>
-    <div class="bar" style="margin-top:2px;"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
-    <div style="margin-top:4px;">SCORE <span class="big" id="score-val">0</span> <span style="opacity:0.5;font-size:10px;">· <span id="score-streak">0</span>×</span></div>
-    <div style="margin-top:4px; font-size:10px; opacity:0.6;">SEED <span id="seed-disp">—</span></div>
+  <div class="panel game-dialog-chrome flight-core-shell thin-surface-hud-shell top-surface-strip" id="instruments">
+    <div class="hud-compact-grid">
+      <div class="hud-stat-chip">
+        <div class="hud-stat-line"><span class="hud-label">SPD</span><span class="hud-value big" id="speed">0</span><span class="hud-unit">KTS</span></div>
+      </div>
+      <div class="hud-stat-chip">
+        <div class="hud-stat-line"><span class="hud-label">ALT</span><span class="hud-value big" id="altitude">0</span><span class="hud-unit">FT</span></div>
+      </div>
+      <div class="hud-stat-chip">
+        <div class="hud-stack-line"><span class="hud-subtle">HDG <span id="heading">000</span>°</span><span class="hud-subtle">V/S <span id="vspeed">0</span></span></div>
+      </div>
+      <div class="hud-stat-chip">
+        <div class="hud-stack-line"><span class="hud-subtle">AOA <span id="aoa">0</span>°</span><span class="hud-subtle">G <span id="gforce">1.0</span></span></div>
+      </div>
+      <div class="hud-stat-chip">
+        <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span><span class="hud-subtle">SEED <span id="seed-disp">—</span></span></div>
+      </div>
+      <div class="hud-stat-chip hud-track-chip">
+        <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span></div>
+        <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
+      </div>
+      <div class="hud-stat-chip hud-track-chip">
+        <div class="hud-track-head"><span class="hud-label">AMMO</span><span class="hud-subtle"><span id="ammo-val">300</span>/<span id="ammo-max">300</span></span></div>
+        <div class="bar hud-mini-track"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
+      </div>
+      <div class="hud-stat-chip">
+        <div class="hud-track-head"><span class="hud-label">SCORE</span><span class="hud-value big" id="score-val">0</span></div>
+        <div class="hud-subtle">STREAK <span id="score-streak">0</span>×</div>
+      </div>
+    </div>
   </div>
-  <div class="panel game-dialog-chrome telemetry-deck-shell" id="throttle-wrap">
-    <div>THROTTLE <span id="throttle-val">0</span>%</div>
-    <div class="bar"><div id="throttle-bar" style="width:0%"></div></div>
-    <div id="ab-status" style="font-size:10px; opacity:0.6;">&nbsp;</div>
-    <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,204,102,0.2); pointer-events:auto;">
-      <div class="deck-meta-row">TIME <span id="tod-ind" class="ok hud-chip">MORNING</span></div>
-      <div class="deck-meta-row">PHASE <span id="phase-ind" class="hud-chip">PREFLIGHT</span></div>
-      <div class="deck-meta-row">NET <span id="mp-ind" class="hud-chip">SOLO</span></div>
-      <button type="button" class="hud-action" id="prop-model-btn" style="margin-top:6px;">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
-      <button type="button" class="hud-action" id="landing-btn" style="margin-top:3px;">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
-      <button type="button" class="hud-action" id="style-btn" style="margin-top:3px;">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
-      <button type="button" class="hud-action" id="biome-btn" style="margin-top:3px;">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
-      <button type="button" class="hud-action" id="audio-btn" style="margin-top:3px;">SOUND <span id="audio-ind" class="warn">OFF</span></button>
+  <div class="panel game-dialog-chrome telemetry-deck-shell thin-surface-hud-shell bottom-surface-strip" id="throttle-wrap">
+    <div class="hud-bottom-surface">
+      <div class="hud-engine-strip">
+        <div class="hud-engine-chip">
+          <div class="hud-inline-readout"><span class="hud-label">THR</span><span class="hud-value big" id="throttle-val">0</span><span class="hud-unit">%</span></div>
+          <div class="bar hud-mini-track"><div id="throttle-bar" style="width:0%"></div></div>
+        </div>
+        <div id="ab-status" class="hud-inline-state">&nbsp;</div>
+      </div>
+      <div class="hud-meta-strip">
+        <div class="deck-meta-row">TIME <span id="tod-ind" class="ok hud-chip">MORNING</span></div>
+        <div class="deck-meta-row">PHASE <span id="phase-ind" class="hud-chip">PREFLIGHT</span></div>
+        <div class="deck-meta-row">NET <span id="mp-ind" class="hud-chip">SOLO</span></div>
+      </div>
+      <div class="hud-control-grid">
+        <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
+        <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
+        <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
+        <button type="button" class="hud-action" id="biome-btn">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
+        <button type="button" class="hud-action" id="audio-btn">SOUND <span id="audio-ind" class="warn">OFF</span></button>
+      </div>
     </div>
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
@@ -694,10 +819,10 @@
   <div class="panel game-dialog-chrome game-status-shell" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
        screenshot. Updated each frame by updateHUD(). -->
-  <div id="dev-overlay" style="position:fixed;top:4px;right:50%;transform:translateX(50%);
-        background:rgba(0,0,0,0.55);color:#9ff09a;border:1px solid #2a4060;
-        font:10px/1.3 ui-monospace,Menlo,monospace;padding:3px 8px;border-radius:4px;
-        letter-spacing:0.06em;z-index:50;pointer-events:none;">
+  <div id="dev-overlay" style="position:fixed;top:76px;right:16px;transform:none;
+       background:rgba(4,8,12,0.4);color:#9ff09a;border:1px solid rgba(74,110,148,0.4);
+       font:10px/1.3 ui-monospace,Menlo,monospace;padding:3px 8px;border-radius:999px;
+       letter-spacing:0.06em;z-index:50;pointer-events:none;">
     <span id="dev-planeinfo">—</span>
   </div>
   <div id="title" class="game-dialog-chrome flight-briefing-card">
@@ -4150,13 +4275,16 @@ function updateMultiplayer(dt) {
       plane.gear = 1;
       plane.gearTarget = 1;
 
-      // Hide G GEAR from the on-screen legend AND from the gear indicator
-      // so the AI doesn't waste actions trying to retract fixed gear.
+      // Keep the HUD gear chip visible for fixed-gear aircraft so the thin
+      // top strip still has a complete systems readout, but label it as
+      // fixed rather than implying retractable gear is available.
       const ch3 = document.getElementById('ch-line3');
       if (ch3) ch3.textContent = 'SPACE FIRE · L LIGHTS · M MODEL · B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
       const gearRow = document.getElementById('gear');
-      if (gearRow && gearRow.parentElement) {
-        gearRow.parentElement.style.display = 'none';
+      if (gearRow) {
+        gearRow.textContent = 'FIXED';
+        gearRow.className = 'ok';
+        if (gearRow.parentElement) gearRow.parentElement.style.display = '';
       }
 
       // ——— Kill jet-specific FX on swapped-in planes ———
@@ -9105,7 +9233,10 @@ function updateHUD() {
   lastVel.copy(plane.vel);
 
   // Gear status
-  if (plane.gear > 0.95) {
+  if (plane.fixedGear) {
+    $gear.textContent = 'FIXED';
+    $gear.className = 'ok';
+  } else if (plane.gear > 0.95) {
     $gear.textContent = 'DOWN'; $gear.className = 'ok';
   } else if (plane.gear < 0.05) {
     $gear.textContent = 'UP'; $gear.className = '';
