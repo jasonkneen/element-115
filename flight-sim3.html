@@ -41,8 +41,33 @@
     -webkit-backdrop-filter: blur(18px) saturate(135%);
     box-shadow: var(--game-shadow);
   }
-  #instruments { top: 18px; left: 18px; min-width: 170px; }
-  #instruments .big { font-size: 22px; color: #ffe0a0; font-weight: bold; }
+  #instruments {
+    top: 18px; left: 18px; width: 248px;
+    border-radius: 24px; padding: 14px 16px 12px;
+    font-family: var(--game-font-ui);
+  }
+  #instruments::before {
+    content: 'FLIGHT CORE';
+    display: block;
+    margin-bottom: 8px;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(255, 226, 170, 0.68);
+  }
+  #instruments > div {
+    font-size: 11px;
+    line-height: 1.42;
+    letter-spacing: 0.10em;
+    color: rgba(255, 240, 214, 0.86);
+  }
+  #instruments > div:nth-child(2),
+  #instruments > div:nth-child(3) {
+    display: inline-block;
+    width: calc(50% - 4px);
+    vertical-align: top;
+  }
+  #instruments > div:nth-child(3) { padding-left: 8px; }
+  #instruments .big { font-size: 24px; color: #fff1ce; font-weight: 700; letter-spacing: -0.04em; }
   #throttle-wrap {
     top: 18px; right: 18px; min-width: 0; width: 284px;
     border-radius: 24px; padding: 14px 16px 12px;
@@ -392,12 +417,31 @@
     color: rgba(255, 226, 170, 0.55);
     margin-top: 3px;
   }
+  #graphics-overlay.fullscreen-options-shell {
+    position: fixed;
+    inset: 0;
+    display: none;
+    pointer-events: auto;
+    z-index: 9997;
+    background: radial-gradient(circle at top, rgba(44,55,76,0.18), rgba(6,8,12,0.88) 62%);
+    backdrop-filter: blur(20px) saturate(132%);
+    -webkit-backdrop-filter: blur(20px) saturate(132%);
+  }
+  #graphics-panel.game-options-panel.fullscreen-options-shell-card {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(980px, calc(100vw - 40px));
+    max-height: min(86vh, 980px);
+    overflow: auto;
+  }
 </style>
 </head>
 <body class="preflight">
 <div id="hud">
   <div id="crosshair"></div>
-  <div class="panel" id="instruments">
+  <div class="panel game-dialog-chrome flight-core-shell" id="instruments">
     <div>SPD <span class="big" id="speed">0</span> kts</div>
     <div>ALT <span class="big" id="altitude">0</span> ft</div>
     <div>HDG <span id="heading">000</span>° &nbsp; V/S <span id="vspeed">0</span></div>
@@ -7403,7 +7447,7 @@ window.addEventListener('pointerdown', (e) => {
   if (e.button === 0) {
     // Skip if the click is on a UI control (panel buttons, inputs)
     const t = e.target;
-    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.closest('#graphics-panel') || t.closest('#replay-panel') || t.closest('#tweak-hud'))) return;
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.closest('#graphics-panel') || t.closest('#graphics-overlay') || t.closest('#replay-panel') || t.closest('#tweak-hud'))) return;
     combatState.fireHeld = true;
     return;
   }
@@ -9215,11 +9259,16 @@ function updateFloatingTarget(dt) {
   const rowStyle = 'display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:12px;font-size:11px;';
   const headerStyle = 'border-top:1px solid rgba(255,204,102,0.12);padding-top:8px;margin-top:10px;opacity:0.66;font-size:10px;letter-spacing:0.16em;';
 
+  const graphicsOverlay = el('div', {
+    id: 'graphics-overlay',
+    class: 'fullscreen-options-shell',
+  });
   const panel = el('div', {
     id: 'graphics-panel',
-    class: 'panel game-dialog-chrome game-options-panel',
-    style: 'top:96px;right:18px;overflow:auto;font-size:11px;display:none;pointer-events:auto;'
+    class: 'panel game-dialog-chrome game-options-panel fullscreen-options-shell-card',
+    style: 'font-size:11px;display:block;pointer-events:auto;'
   });
+  graphicsOverlay.appendChild(panel);
 
   const makeToggle = (id) => {
     const b = el('button', { type: 'button', style: btnStyle(gfx[id]) }, gfx[id] ? 'ON' : 'OFF');
@@ -9327,31 +9376,35 @@ function updateFloatingTarget(dt) {
     panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'FXAA is now real. Shadow range and ground detail are the safest live levers for performance.'));
   };
   rebuild();
-  // Append inside the HUD container so it inherits font + text-shadow
   const hudEl = document.getElementById('hud');
-  (hudEl || document.body).appendChild(panel);
+  (hudEl || document.body).appendChild(graphicsOverlay);
 
-  // FPS overlay sits below the throttle panel, right side, matching HUD style
   fpsDiv = el('div', { id: 'fps-overlay', class: 'panel',
     style: `top:18px;right:210px;padding:4px 10px;font-size:10px;color:${AMBER};display:none;pointer-events:none;`
   }, 'FPS —');
   (hudEl || document.body).appendChild(fpsDiv);
 
+  const openOptions = () => { graphicsOverlay.style.display = 'block'; };
+  const closeOptions = () => { graphicsOverlay.style.display = 'none'; };
+  const toggleOptions = () => {
+    if (graphicsOverlay.style.display === 'block') closeOptions();
+    else openOptions();
+  };
+
+  graphicsOverlay.addEventListener('pointerdown', (e) => {
+    if (e.target === graphicsOverlay) closeOptions();
+  });
+
   window.addEventListener('keydown', (e) => {
     const tgt = e.target;
     if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
     if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey) {
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      toggleOptions();
       e.preventDefault();
-    } else if (e.code === 'Escape' && panel.style.display !== 'none') {
-      panel.style.display = 'none';
+    } else if (e.code === 'Escape' && graphicsOverlay.style.display === 'block') {
+      closeOptions();
     }
   });
-  document.addEventListener('pointerdown', (e) => {
-    if (panel.style.display === 'none') return;
-    if (panel.contains(e.target)) return;
-    panel.style.display = 'none';
-  }, true);
 
   applyAll();
   window.__gfxTick = tickFps;
