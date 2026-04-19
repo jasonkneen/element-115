@@ -7,6 +7,15 @@
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='24' font-size='24'>✈</text></svg>">
 <style>
   * { box-sizing: border-box; }
+  :root {
+    --game-gold: #ffcc66;
+    --game-gold-hi: #ffe7b0;
+    --game-ink: rgba(7, 10, 16, 0.9);
+    --game-card: linear-gradient(180deg, rgba(17, 13, 12, 0.88), rgba(8, 9, 14, 0.84));
+    --game-border: rgba(255, 215, 150, 0.22);
+    --game-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+    --game-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
   body {
     margin: 0; overflow: hidden; background: #1a0f0a;
     font-family: 'SF Mono', 'Courier New', monospace; color: #ffcc66;
@@ -25,11 +34,27 @@
     -webkit-backdrop-filter: blur(6px);
     line-height: 1.6;
   }
+  .game-dialog-chrome {
+    border: 1px solid var(--game-border);
+    background: var(--game-card);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow: var(--game-shadow);
+  }
   #instruments { top: 18px; left: 18px; min-width: 170px; }
   #instruments .big { font-size: 22px; color: #ffe0a0; font-weight: bold; }
   #throttle-wrap { top: 18px; right: 18px; min-width: 180px; }
   #controls-help { bottom: 18px; left: 18px; font-size: 10px; opacity: 0.75; }
-  #status-msg { bottom: 18px; right: 18px; font-size: 11px; text-align: right; }
+  #status-msg {
+    bottom: 18px; right: 18px; text-align: left;
+    min-width: 320px; max-width: min(420px, calc(100vw - 36px));
+    border-radius: 18px;
+    padding: 12px 14px;
+    font-family: var(--game-font-ui);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    line-height: 1.45;
+  }
   .bar { height: 6px; background: rgba(255,204,102,0.15); margin: 4px 0; position: relative; }
   .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
   .warn { color: #ff5533; }
@@ -64,29 +89,145 @@
   }
   #crosshair::before { top: 50%; left: -12px; right: -12px; height: 1px; }
   #crosshair::after { left: 50%; top: -12px; bottom: -12px; width: 1px; }
-  #title {
+  #title.flight-briefing-card {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    text-align: center; padding: 28px 44px;
-    border: 1px solid rgba(255, 204, 102, 0.5);
-    background: rgba(20, 10, 5, 0.7);
-    backdrop-filter: blur(10px);
+    width: min(780px, calc(100vw - 44px));
+    text-align: left; padding: 28px 30px 24px;
+    border-radius: 28px;
     pointer-events: auto; cursor: pointer;
-    transition: opacity 0.4s;
+    transition: opacity 0.4s, transform 0.22s ease;
+    font-family: var(--game-font-ui);
+    overflow: hidden;
   }
-  #title h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0.2em; }
-  #title p { margin: 4px 0; font-size: 12px; opacity: 0.85; letter-spacing: 0.1em; }
+  #title.flight-briefing-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at top right, rgba(108, 170, 255, 0.14), transparent 34%), radial-gradient(circle at bottom left, rgba(255, 170, 90, 0.12), transparent 38%);
+    pointer-events: none;
+  }
+  #title .briefing-kicker {
+    position: relative;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: rgba(255, 231, 176, 0.75); margin-bottom: 10px;
+  }
+  #title h1 {
+    position: relative;
+    margin: 0;
+    font-size: clamp(34px, 5vw, 58px);
+    line-height: 0.96;
+    letter-spacing: -0.03em;
+    color: #fff4d6;
+    text-shadow: 0 10px 34px rgba(0,0,0,0.48);
+  }
+  #title .briefing-subtitle {
+    position: relative;
+    margin: 14px 0 0;
+    font-size: 13px;
+    opacity: 0.82;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 226, 170, 0.82);
+  }
   #title .start-steps {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255, 204, 102, 0.18);
-    text-align: left;
-    font-size: 11px;
-    line-height: 1.8;
-    letter-spacing: 0.08em;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 18px;
   }
-  #title .meta { margin-top: 12px; font-size: 10px; opacity: 0.6; }
-  #title .cta { margin-top: 16px; font-size: 14px; color: #ffe0a0; }
+  #title .start-steps > div {
+    min-height: 56px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: rgba(255,255,255,0.04);
+    font-size: 11px;
+    line-height: 1.45;
+    letter-spacing: 0.08em;
+    color: rgba(255, 240, 214, 0.88);
+  }
+  #title .meta {
+    position: relative;
+    margin-top: 14px; font-size: 10px; opacity: 0.62; letter-spacing: 0.12em;
+    color: rgba(255, 231, 176, 0.72);
+  }
+  #title .cta {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-top: 18px; padding: 11px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.26);
+    background: rgba(255, 204, 102, 0.08);
+    font-size: 13px; color: #fff0c6; letter-spacing: 0.16em;
+  }
+  #title .cta::after {
+    content: 'DEPLOY';
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 5px 9px; border-radius: 999px;
+    background: rgba(255, 204, 102, 0.16);
+    color: #ffcc66; font-size: 10px; letter-spacing: 0.18em;
+  }
+  .review-panel-shell {
+    border-radius: 24px;
+    padding: 14px 16px 12px;
+    min-width: 420px;
+    max-width: min(560px, calc(100vw - 28px));
+    font-family: var(--game-font-ui);
+    text-align: left;
+  }
+  .review-panel-shell .review-heading {
+    font-size: 18px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: #fff2d2;
+    margin-bottom: 4px;
+  }
+  .review-panel-shell .review-subline {
+    font-size: 11px;
+    color: rgba(255, 226, 170, 0.74);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .review-panel-shell .review-actions,
+  .review-panel-shell .review-modes {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .review-panel-shell button {
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.22);
+    background: rgba(255,255,255,0.04);
+    color: var(--game-gold);
+    font: inherit;
+    letter-spacing: 0.14em;
+    cursor: pointer;
+    padding: 6px 11px;
+  }
+  .mission-banner-shell {
+    font-family: var(--game-font-ui);
+    border-radius: 20px;
+    min-width: 360px;
+    max-width: min(560px, calc(100vw - 36px));
+    text-align: left;
+  }
+  .game-status-shell::before {
+    content: 'MISSION STATUS';
+    display: block;
+    margin-bottom: 6px;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255, 226, 170, 0.64);
+  }
+  @media (max-width: 720px) {
+    #title.flight-briefing-card { padding: 22px 20px 20px; }
+    #title .start-steps { grid-template-columns: 1fr; }
+    #status-msg,
+    .review-panel-shell,
+    .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
+  }
   .hide { opacity: 0; pointer-events: none; }
   body.preflight #crosshair,
   body.preflight #instruments,
@@ -166,7 +307,7 @@
     <div id="ch-line2">SHIFT or ↑ THROTTLE UP &nbsp; CTRL or ↓ THROTTLE DOWN &nbsp; B BRAKE</div>
     <div id="ch-line3">G GEAR &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
   </div>
-  <div class="panel" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
+  <div class="panel game-dialog-chrome game-status-shell" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
        screenshot. Updated each frame by updateHUD(). -->
   <div id="dev-overlay" style="position:fixed;top:4px;right:50%;transform:translateX(50%);
@@ -175,9 +316,10 @@
         letter-spacing:0.06em;z-index:50;pointer-events:none;">
     <span id="dev-planeinfo">—</span>
   </div>
-  <div id="title">
+  <div id="title" class="game-dialog-chrome flight-briefing-card">
+    <div class="briefing-kicker">TRAINING SECTOR // CANYON RUN</div>
     <h1>CANYON AIRSTRIP</h1>
-    <p>FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
+    <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>1 · CLICK OR PRESS ANY KEY TO START</div>
       <div>2 · PRESS M TO CYCLE PROP MODELS</div>
@@ -186,9 +328,10 @@
       <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
       <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
       <div>7 · PRESS R ANY TIME TO RESET</div>
+      <div>8 · PRESS P FOR GRAPHICS · ; FOR MODEL TUNE</div>
     </div>
     <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
-    <div class="cta">&gt; CLICK OR PRESS ANY KEY TO FLY &lt;</div>
+    <div class="cta">CLICK OR PRESS ANY KEY TO FLY</div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -7008,35 +7151,48 @@ function syncReplayUI() {
   replay.ui.panel.style.display = plane.crashed ? 'block' : 'none';
   replay.ui.modeButtons.forEach(b => {
     const isActive = b.dataset.mode === replay.mode;
-    b.style.background = isActive ? 'rgba(255,204,102,0.25)' : 'rgba(255,204,102,0.04)';
-    b.style.color = isActive ? '#ffe0a0' : '#ffcc66';
+    b.style.background = isActive ? 'rgba(255,204,102,0.18)' : 'rgba(255,255,255,0.04)';
+    b.style.color = isActive ? '#fff0c8' : '#ffcc66';
+    b.style.borderColor = isActive ? 'rgba(255,225,170,0.42)' : 'rgba(255,215,150,0.22)';
   });
-  replay.ui.playBtn.textContent = replay.playing ? '■ STOP' : '▶ REPLAY';
+  replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : '▶ REVIEW RUN';
+  if (replay.ui.subline) replay.ui.subline.textContent = replay.playing
+    ? `Camera: ${replay.mode.toUpperCase()} · tap a mode to switch`
+    : 'Crash cam / replay loop / cinematic angles';
 }
 function replayBuildUI() {
   const hud = document.getElementById('hud');
   const panel = document.createElement('div');
-  panel.className = 'panel';
+  panel.className = 'panel game-dialog-chrome review-panel-shell';
   panel.id = 'replay-panel';
-  panel.style.cssText = 'bottom:18px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none;pointer-events:auto;min-width:300px;text-align:center;';
+  panel.style.cssText = 'bottom:20px;left:50%;transform:translateX(-50%);display:none;pointer-events:auto;';
+
   const title = document.createElement('div');
-  title.style.cssText = 'letter-spacing:0.14em;margin-bottom:6px;color:#ffe0a0;';
+  title.className = 'review-heading';
   title.textContent = 'FLIGHT REVIEW';
   panel.appendChild(title);
 
+  const subline = document.createElement('div');
+  subline.className = 'review-subline';
+  subline.textContent = 'Crash cam / replay loop / cinematic angles';
+  panel.appendChild(subline);
+
+  const playRow = document.createElement('div');
+  playRow.className = 'review-actions';
+  panel.appendChild(playRow);
+
   const playBtn = document.createElement('button');
   playBtn.type = 'button';
-  playBtn.style.cssText = 'padding:3px 14px;background:rgba(255,204,102,0.25);color:#ffe0a0;border:1px solid rgba(255,204,102,0.35);font:inherit;letter-spacing:0.1em;cursor:pointer;margin-bottom:6px;';
   playBtn.textContent = '▶ REPLAY';
   playBtn.addEventListener('click', () => {
     if (replay.playing) replayStop();
     else replayStart();
   });
-  panel.appendChild(playBtn);
-  panel.appendChild(document.createElement('br'));
+  playRow.appendChild(playBtn);
 
-  const modeWrap = document.createElement('span');
-  modeWrap.style.cssText = 'display:inline-flex;gap:3px;';
+  const modeWrap = document.createElement('div');
+  modeWrap.className = 'review-modes';
+  modeWrap.style.marginTop = '10px';
   const modes = [
     { k: 'chase',    label: 'CHASE' },
     { k: 'cockpit',  label: 'COCKPIT' },
@@ -7050,14 +7206,13 @@ function replayBuildUI() {
     b.type = 'button';
     b.dataset.mode = m.k;
     b.textContent = m.label;
-    b.style.cssText = 'padding:2px 8px;background:rgba(255,204,102,0.04);color:#ffcc66;border:1px solid rgba(255,204,102,0.35);font:inherit;letter-spacing:0.1em;cursor:pointer;';
     b.addEventListener('click', () => { replay.mode = m.k; syncReplayUI(); });
     modeWrap.appendChild(b);
     modeButtons.push(b);
   });
   panel.appendChild(modeWrap);
   hud.appendChild(panel);
-  replay.ui = { panel, playBtn, modeButtons };
+  replay.ui = { panel, playBtn, modeButtons, subline };
 }
 replayBuildUI();
 bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
@@ -7677,14 +7832,11 @@ window.__gameScore = {
   if (!hud) return;
   const banner = document.createElement('div');
   banner.id = 'combo-banner';
+  banner.className = 'mission-banner-shell game-dialog-chrome';
   banner.style.cssText = [
-    'position:absolute','top:58px','left:50%','transform:translateX(-50%) translateY(-10px)',
-    'padding:14px 32px','border:1px solid rgba(255,204,102,0.55)','border-radius:14px',
-    'background:linear-gradient(180deg, rgba(26,14,8,0.82), rgba(12,8,6,0.68))','backdrop-filter:blur(12px)',
-    'color:#ffe0a0','font:18px/1.15 "SF Mono","Courier New",monospace',
-    'letter-spacing:0.22em','text-align:center','min-width:320px',
-    'pointer-events:none','opacity:0','transition:opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease',
-    'text-shadow:0 0 10px rgba(0,0,0,0.9)','box-shadow:0 12px 34px rgba(0,0,0,0.35)','z-index:32',
+    'position:absolute','top:56px','left:50%','transform:translateX(-50%) translateY(-10px)',
+    'padding:16px 22px 14px','pointer-events:none','opacity:0',
+    'transition:opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease','z-index:32'
   ].join(';');
   const pulse = document.createElement('div');
   pulse.style.cssText = [
@@ -7705,12 +7857,12 @@ window.__gameScore = {
     while (banner.firstChild) banner.removeChild(banner.firstChild);
     const big = document.createElement('div');
     big.textContent = text;
-    big.style.cssText = 'font-size:26px;font-weight:700;';
+    big.style.cssText = 'font:700 28px/0.98 var(--game-font-ui);letter-spacing:-0.03em;color:#fff3d4;';
     banner.appendChild(big);
     if (sub) {
       const s = document.createElement('div');
       s.textContent = sub;
-      s.style.cssText = 'font-size:12px;opacity:0.82;margin-top:5px;letter-spacing:0.16em;';
+      s.style.cssText = 'font:500 11px/1.35 var(--game-font-ui);opacity:0.84;margin-top:6px;letter-spacing:0.16em;text-transform:uppercase;color:rgba(255,235,196,0.82);';
       banner.appendChild(s);
     }
     banner.style.opacity = '1';
