@@ -731,15 +731,31 @@
   body.preflight #instruments,
   body.preflight #controls-help,
   body.preflight #throttle-wrap,
-  body.preflight #status-msg {
+  body.preflight #status-msg,
+  body.review-open #crosshair,
+  body.review-open #instruments,
+  body.review-open #controls-help,
+  body.review-open #throttle-wrap,
+  body.review-open #status-msg,
+  body.review-open #dev-overlay,
+  body.review-open #combo-banner,
+  body.review-open #tweak-hud {
     opacity: 0;
+    pointer-events: none;
+  }
+  body.review-open #replay-panel {
+    bottom: 50%;
+    left: 50%;
+    transform: translate(-50%, 50%);
   }
   #crosshair,
   #instruments,
   #controls-help,
   #throttle-wrap,
-  #status-msg {
-    transition: opacity 0.25s ease;
+  #status-msg,
+  #dev-overlay,
+  #replay-panel {
+    transition: opacity 0.25s ease, transform 0.25s ease;
   }
   /* Graphics panel range sliders — match HUD amber theme */
   #graphics-panel input[type="range"] {
@@ -5377,7 +5393,8 @@ const combatState = {
   projectiles: [],
   fireCooldown: 0,
   shotsFired: 0,
-  hits: 0,
+  shotHits: 0,
+  kills: 0,
   crashFxTriggered: false,
   crashBlastTimer: 0,
   // E16 — ammo is a belt of 300 rounds. Two rounds per burst (one per
@@ -5489,8 +5506,9 @@ function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
 // Apply damage to a destructible. Falls through to destroyTarget() on kill.
 // For single-shot targets (health == 1 default) this behaves identically
 // to the old instant-kill path. Traffic planes now take 3 hits.
-function damageDestructible(target, pos, damage = 1.0, intensity = 1.0) {
+function damageDestructible(target, pos, damage = 1.0, intensity = 1.0, source = 'shot') {
   if (!target || !target.alive) return false;
+  if (source === 'shot') combatState.shotHits += 1;
   target.health = Math.max(0, target.health - damage);
   const isAirframeTarget = target.kind === 'traffic' || target.kind === 'drone' || target.kind === 'floatingTarget';
   impactBlastPool.emitCluster(pos,
@@ -5512,7 +5530,7 @@ function damageDestructible(target, pos, damage = 1.0, intensity = 1.0) {
     playSfx('mg-hit', { volume: 0.5 + intensity * 0.2, throttleMs: 60 });
   }
   if (target.health <= 0) {
-    destroyTarget(target, pos, intensity);
+    destroyTarget(target, pos, intensity, source);
     return true;
   }
   // Light smoke from damaged but alive targets (visible tell)
@@ -5522,14 +5540,14 @@ function damageDestructible(target, pos, damage = 1.0, intensity = 1.0) {
   return false;
 }
 
-function destroyTarget(target, pos, intensity = 1.0) {
+function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
   if (!target || !target.alive) return;
   target.alive = false;
   target.object.visible = false;
-  combatState.hits += 1;
+  combatState.kills += 1;
   spawnExplosion(pos, intensity * 1.25, intensity * 1.35);
-  if (target.kind === 'traffic' && typeof window.showComboBanner === 'function') {
-    window.showComboBanner('AIR KILL', `HOSTILE DOWN · ${combatState.hits} TOTAL`, '#ffb36a');
+  if (target.kind === 'traffic' && source === 'shot' && typeof window.showComboBanner === 'function') {
+    window.showComboBanner('AIR KILL', `HOSTILE DOWN · ${combatState.kills} TOTAL`, '#ffb36a');
   }
   // Reward destruction — mountain targets + big kills top up score,
   // hull and ammo so the player has a reason to chase them down.
@@ -5554,7 +5572,8 @@ function resetCombatState() {
   combatState.crashFxTriggered = false;
   combatState.crashBlastTimer = 0;
   combatState.shotsFired = 0;
-  combatState.hits = 0;
+  combatState.shotHits = 0;
+  combatState.kills = 0;
   combatState.ammo = combatState.ammoMax;
   combatState.lastFiredAt = 0;
   combatState.dryClickUntil = 0;
@@ -5590,7 +5609,7 @@ function attemptInstantHit(origin, dir) {
   }
   if (best) {
     const intensity = best.target.kind === 'fuel' ? 1.65 : best.target.kind === 'traffic' ? 1.25 : best.target.kind === 'floatingTarget' ? 1.6 : best.target.kind === 'drone' ? 1.25 : best.target.kind === 'barrel' ? 1.1 : 0.75;
-    damageDestructible(best.target, best.pos, 1.0, intensity);
+    damageDestructible(best.target, best.pos, 1.0, intensity, 'shot');
   }
 }
 
@@ -5688,7 +5707,8 @@ function updateCombat(dt) {
         target.kind === 'traffic' ? 1.4 :
         target.kind === 'floatingTarget' ? 1.6 :
         target.kind === 'drone' ? 1.1 :
-        target.kind === 'barrel' ? 1.0 : 0.8
+        target.kind === 'barrel' ? 1.0 : 0.8,
+        'collision'
       );
       // Big kinetic transfer: rebound the player away from the target.
       if (!fatal) {
@@ -5749,7 +5769,7 @@ function updateCombat(dt) {
       const targetPos = getTargetWorldPosition(target, _combatTmpC);
       if (p.pos.distanceTo(targetPos) < target.radius) {
         const intensity = target.kind === 'fuel' ? 1.65 : target.kind === 'traffic' ? 1.25 : target.kind === 'floatingTarget' ? 1.6 : target.kind === 'drone' ? 1.25 : target.kind === 'barrel' ? 1.1 : 0.75;
-        damageDestructible(target, targetPos.clone(), 1.0, intensity);
+        damageDestructible(target, targetPos.clone(), 1.0, intensity, 'shot');
         deactivateProjectile(p);
         break;
       }
@@ -8581,6 +8601,7 @@ function replayPostStep() {
 function syncReplayUI() {
   if (!replay.ui) return;
   const reviewVisible = plane.crashed || landingCompleteState.active;
+  document.body.classList.toggle('review-open', !!reviewVisible);
   replay.ui.panel.style.display = reviewVisible ? 'block' : 'none';
   const reviewReason = plane.crashed
     ? (missionDebriefState.reason || 'TERRAIN IMPACT')
@@ -8930,7 +8951,7 @@ function resetMissionDebrief() {
   missionDebriefState.landingScore = 0;
   missionDebriefState.landingGrade = '';
   missionDebriefState.landingMedal = '';
-  missionDebriefState.lastHighlight = 'READY FOR TAKEOFF';
+  missionDebriefState.lastHighlight = 'FIRST FLIGHT';
   missionDebriefState.grade = 'C';
   missionDebriefState.reason = 'TERRAIN IMPACT';
   missionDebriefState.summary = null;
@@ -9069,9 +9090,11 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
   const minutes = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   const distanceNm = missionDebriefState.distanceMeters / 1852;
-  const accuracy = combatState.shotsFired > 0 ? combatState.hits / combatState.shotsFired : 0;
+  const gunneryHits = combatState.shotHits || 0;
+  const targetKills = combatState.kills || 0;
+  const accuracy = combatState.shotsFired > 0 ? gunneryHits / combatState.shotsFired : 0;
   const landingBonus = missionDebriefState.landingScore / 28 + missionDebriefState.landings * 0.4;
-  const rating = score.points / 520 + score.bestStreak * 0.72 + missionDebriefState.bridgeRuns * 1.25 + missionDebriefState.portalShots * 1.45 + missionDebriefState.lowRuns * 0.38 + combatState.hits * 0.26 + accuracy * 2.4 + landingBonus;
+  const rating = score.points / 520 + score.bestStreak * 0.72 + missionDebriefState.bridgeRuns * 1.25 + missionDebriefState.portalShots * 1.45 + missionDebriefState.lowRuns * 0.38 + gunneryHits * 0.22 + targetKills * 0.28 + accuracy * 2.4 + landingBonus;
   const grade = rating >= 8.2 ? 'S' : rating >= 5.6 ? 'A' : rating >= 3.6 ? 'B' : rating >= 2.1 ? 'C' : 'D';
   const awards = [];
   if (missionDebriefState.landingMedal) awards.push(`${missionDebriefState.landingMedal} · ${missionDebriefState.landingGrade}`);
@@ -9080,16 +9103,28 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
   if (missionDebriefState.portalShots > 0) awards.push(`PORTAL HUNTER ×${missionDebriefState.portalShots}`);
   if (score.bestStreak >= 5) awards.push(`STREAK MASTER ×${score.bestStreak}`);
   if (missionDebriefState.lowRuns >= 2) awards.push(`LOW-LEVEL RUNNER ×${missionDebriefState.lowRuns}`);
-  if (combatState.hits >= 3) awards.push(`GUNS ON TARGET ×${combatState.hits}`);
+  if (gunneryHits >= 3) awards.push(`GUNS ON TARGET ×${gunneryHits}`);
   if (accuracy >= 0.35 && combatState.shotsFired >= 6) awards.push(`SHARP SHOOTER ${Math.round(accuracy * 100)}%`);
+  if (targetKills >= 2) awards.push(`TARGETS DOWN ×${targetKills}`);
   if (missionDebriefState.peakSpeedKts >= 165) awards.push(`REDLINE ${Math.round(missionDebriefState.peakSpeedKts)}KT`);
-  if (landingMedalState.bestScore > 0) awards.push(`BEST LANDING · ${landingMedalState.bestMedal}`);
-  if (!awards.length) awards.push(missionDebriefState.lastHighlight || 'KEEP PUSHING THE CANYON');
+  if (landingMedalState.bestScore > 0) awards.push(`CAREER BEST · ${landingMedalState.bestMedal}`);
+  const neutralHighlight = (missionDebriefState.lastHighlight === 'READY FOR TAKEOFF' || missionDebriefState.lastHighlight === 'FIRST FLIGHT')
+    ? (reason === 'LANDING COMPLETE' ? 'SORTIE COMPLETE' : 'REVIEW AVAILABLE')
+    : missionDebriefState.lastHighlight;
+  if (!awards.length) awards.push(neutralHighlight || 'KEEP PUSHING THE CANYON');
   const cards = [
     { label: 'SCORE', value: String(score.points), detail: `${score.bestStreak || 0}× BEST CHAIN` },
-    { label: 'RANGE', value: `${distanceNm.toFixed(1)}NM`, detail: `${Math.round(missionDebriefState.peakSpeedKts)}KT PEAK` },
-    { label: 'TIME', value: `${minutes}:${String(secs).padStart(2, '0')}`, detail: `${Math.round(missionDebriefState.peakAltitudeFt)}FT MAX` },
+    { label: 'DISTANCE', value: `${distanceNm.toFixed(1)}NM`, detail: 'THROUGH THE CANYON' },
+    { label: 'TIME', value: `${minutes}:${String(secs).padStart(2, '0')}`, detail: 'ELAPSED' },
+    { label: 'TOP SPEED', value: `${Math.round(missionDebriefState.peakSpeedKts)}KT`, detail: 'RUN PEAK' },
   ];
+  if (missionDebriefState.peakAltitudeFt >= 50) {
+    cards.push({
+      label: 'ALTITUDE',
+      value: `${Math.round(missionDebriefState.peakAltitudeFt)}FT`,
+      detail: 'MAX ALT',
+    });
+  }
   if (missionDebriefState.landings > 0) {
     cards.splice(1, 0, {
       label: 'LANDING',
@@ -9100,12 +9135,12 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
     cards.splice(1, 0, {
       label: 'GUNS',
       value: combatState.shotsFired ? `${Math.round(accuracy * 100)}%` : '—',
-      detail: `${combatState.hits} HITS / ${combatState.shotsFired} SHOTS`,
+      detail: `${gunneryHits} HITS / ${combatState.shotsFired} SHOTS`,
     });
   }
   if (landingMedalState.bestScore > 0) {
     cards.push({
-      label: 'BEST LAND',
+      label: 'CAREER BEST',
       value: landingMedalState.bestGrade || '—',
       detail: `${landingMedalState.bestMedal} · ${landingMedalState.bestScore}`,
     });
@@ -9117,7 +9152,7 @@ function captureMissionDebrief(reason = 'TERRAIN IMPACT') {
     reason,
     awards: awards.slice(0, 5),
     cards,
-    highlight: missionDebriefState.lastHighlight || 'CANYON RUN',
+    highlight: neutralHighlight || 'CANYON RUN',
   };
   return missionDebriefState.summary;
 }
@@ -9414,7 +9449,8 @@ function updateHUD() {
   const tp = Math.round(plane.throttle * 100);
   $throttleVal.textContent = tp;
   $throttleBar.style.width = tp + '%';
-  $abStatus.textContent = tp > 55 ? '◈ AFTERBURNER' : ' ';
+  const highPowerLabel = isPropAirframe() ? '◈ HIGH POWER' : '◈ AFTERBURNER';
+  $abStatus.textContent = tp > 55 ? highPowerLabel : ' ';
   $abStatus.className = tp > 55 ? 'warn' : '';
 
   if (!helpStripState.autoCollapsed && running && (sp > 42 || !plane.onGround)) {
@@ -11309,7 +11345,8 @@ window.__ap = {
       traffic_alive: trafficEnabled() ? destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length : 0,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
       shots_fired: combatState.shotsFired,
-      combat_hits: combatState.hits,
+      combat_hits: combatState.shotHits,
+      combat_kills: combatState.kills,
       targets_alive: destructibleTargets.filter(t => t.alive && t.object && t.object.visible !== false).length,
       landing_medal: landingMedalState.lastMedal,
       landing_grade: landingMedalState.lastGrade,
@@ -11394,8 +11431,8 @@ window.__ap = {
     const target = destructibleTargets.find(t => t.alive && (!kind || t.kind === kind));
     if (!target) return null;
     const pos = getTargetWorldPosition(target, new THREE.Vector3()).clone();
-    if (kill) destroyTarget(target, pos.clone(), target.kind === 'traffic' ? 1.45 : 1.1);
-    else damageDestructible(target, pos.clone(), 1.0, target.kind === 'traffic' ? 1.45 : 1.0);
+    if (kill) destroyTarget(target, pos.clone(), target.kind === 'traffic' ? 1.45 : 1.1, 'debug');
+    else damageDestructible(target, pos.clone(), 1.0, target.kind === 'traffic' ? 1.45 : 1.0, 'debug');
     return {
       kind: target.kind,
       alive: target.alive,
