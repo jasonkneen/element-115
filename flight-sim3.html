@@ -20,7 +20,7 @@
     margin: 0; overflow: hidden; background: #1a0f0a;
     font-family: 'SF Mono', 'Courier New', monospace; color: #ffcc66;
   }
-  canvas { display: block; cursor: none; }
+  canvas { display: block; cursor: default; }
   #hud {
     position: fixed; inset: 0; pointer-events: none;
     font-size: 12px; text-shadow: 0 0 4px #000, 0 0 2px #000;
@@ -8229,14 +8229,14 @@ function resetPlane() {
 // bails physics out. Called unconditionally from animate().
 function updateInputLatches(dt) {
   // R — reset. Must work during crash (that's the whole point).
-  if (keys['KeyR']) {
+  if (keys['KeyR'] || (INPUT_FLAGS.gamepad && gamepadState.reset)) {
     if (!resetPressed) { resetPlane(); resetPressed = true; }
   } else resetPressed = false;
 
   // The rest of the latches only make sense when alive.
   if (plane.crashed) return;
 
-  if (keys['KeyG']) {
+  if (keys['KeyG'] || (INPUT_FLAGS.gamepad && gamepadState.gear)) {
     if (!gearPressed) {
       // Fixed-gear aircraft (e.g. the swapped-in Disney Dusty prop) ignore
       // the retract toggle — their gear is always down.
@@ -8245,7 +8245,7 @@ function updateInputLatches(dt) {
     }
   } else gearPressed = false;
 
-  if (keys['KeyL']) {
+  if (keys['KeyL'] || (INPUT_FLAGS.gamepad && gamepadState.lights)) {
     if (!lightsPressed) {
       plane.landingLights = !plane.landingLights;
       if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
@@ -8276,23 +8276,28 @@ function updateInputLatches(dt) {
 function updatePhysics(dt) {
   if (plane.crashed) return;
 
-  updateMouseFlightSteer(dt);
+  if (INPUT_FLAGS.mouseFlight) updateMouseFlightSteer(dt);
 
   // ----- Input -----
   const keyPitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
   const keyRollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
   const keyYawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
                   - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
-  const pitchIn = keyPitchIn;
-  const rollIn  = Math.max(-1, Math.min(1, keyRollIn));
-  const yawIn   = keyYawIn;
+  const gamepadPitchIn = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.pitch : 0;
+  const gamepadRollIn  = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.roll : 0;
+  const gamepadYawIn   = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.yaw : 0;
+  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + gamepadPitchIn));
+  const rollIn  = Math.max(-1, Math.min(1, keyRollIn + gamepadRollIn));
+  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + gamepadYawIn));
 
-  if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
-  if (keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
+  const throttleUpIn = Math.max((keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleUp : 0);
+  const throttleDownIn = Math.max((keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleDown : 0);
+  if (throttleUpIn > 0.01) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4 * throttleUpIn);
+  if (throttleDownIn > 0.01) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4 * throttleDownIn);
   plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
   maybeTriggerEngineStart();
 
-  plane.brake = keys['KeyB'] ? 1 : 0;
+  plane.brake = (keys['KeyB'] || (INPUT_FLAGS.gamepad && gamepadState.brake)) ? 1 : 0;
 
   // Animate gear
   if (plane.fixedGear) { plane.gear = 1; plane.gearTarget = 1; }
@@ -8365,8 +8370,8 @@ function updatePhysics(dt) {
   plane.angVel.z += -rollIn * 5.6 * authRoll * rollAuthorityTune * dt;
   plane.angVel.y += -yawIn * 3.2 * authYaw * rudderAuthorityTune * dt;
 
-  const mousePitchSteer = plane.onGround ? 0 : mouseFlightState.steerY;
-  const mouseYawSteer = plane.onGround ? 0 : mouseFlightState.steerX;
+  const mousePitchSteer = (INPUT_FLAGS.mouseFlight && !plane.onGround) ? mouseFlightState.steerY : 0;
+  const mouseYawSteer = (INPUT_FLAGS.mouseFlight && !plane.onGround) ? mouseFlightState.steerX : 0;
   if (Math.abs(mousePitchSteer) > 0.008) {
     const mousePitchRateTarget = mousePitchSteer * 3.8 * Math.max(0.72, authPitch) * pitchAuthorityTune;
     plane.angVel.x += (mousePitchRateTarget - plane.angVel.x) * Math.min(1, dt * 5.2);
@@ -9326,11 +9331,116 @@ bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECON
 // mouse movement drives a virtual pipper on screen and the aircraft follows it.
 // Right-click orbit is deliberately removed.
 const camOrbit = { yaw: 0, pitch: 0 };
+const INPUT_FLAGS = Object.freeze({
+  mouseFlight: false,
+  gamepad: true,
+});
+const gamepadState = {
+  connected: false,
+  index: -1,
+  id: '',
+  pitch: 0,
+  roll: 0,
+  yaw: 0,
+  throttleUp: 0,
+  throttleDown: 0,
+  fire: false,
+  brake: false,
+  gear: false,
+  lights: false,
+  reset: false,
+};
+
+function gamepadAxisValue(value, deadzone = 0.16) {
+  const v = Number(value) || 0;
+  if (Math.abs(v) <= deadzone) return 0;
+  const scaled = (Math.abs(v) - deadzone) / Math.max(0.001, 1 - deadzone);
+  return Math.sign(v) * Math.max(0, Math.min(1, scaled));
+}
+
+function resetGamepadState() {
+  gamepadState.connected = false;
+  gamepadState.index = -1;
+  gamepadState.id = '';
+  gamepadState.pitch = 0;
+  gamepadState.roll = 0;
+  gamepadState.yaw = 0;
+  gamepadState.throttleUp = 0;
+  gamepadState.throttleDown = 0;
+  gamepadState.fire = false;
+  gamepadState.brake = false;
+  gamepadState.gear = false;
+  gamepadState.lights = false;
+  gamepadState.reset = false;
+}
+
+function pollGamepadInput() {
+  if (!INPUT_FLAGS.gamepad || typeof navigator.getGamepads !== 'function') {
+    resetGamepadState();
+    combatState.fireHeld = false;
+    return gamepadState;
+  }
+  const pads = Array.from(navigator.getGamepads() || []).filter(Boolean);
+  let pad = null;
+  if (gamepadState.index >= 0) {
+    pad = pads.find(p => p && p.index === gamepadState.index) || null;
+  }
+  if (!pad) pad = pads.find(p => p && p.mapping === 'standard') || pads[0] || null;
+  if (!pad) {
+    resetGamepadState();
+    combatState.fireHeld = false;
+    return gamepadState;
+  }
+
+  gamepadState.connected = true;
+  gamepadState.index = pad.index;
+  gamepadState.id = pad.id || `Gamepad ${pad.index}`;
+
+  const lx = gamepadAxisValue(pad.axes[0] || 0);
+  const ly = gamepadAxisValue(pad.axes[1] || 0);
+  const rx = gamepadAxisValue(pad.axes[2] || 0);
+  const lt = Math.max(0, pad.buttons?.[6]?.value ?? 0);
+  const rt = Math.max(0, pad.buttons?.[7]?.value ?? 0);
+  const lb = !!(pad.buttons?.[4]?.pressed);
+  const rb = !!(pad.buttons?.[5]?.pressed);
+
+  gamepadState.pitch = ly;
+  gamepadState.roll = lx;
+  gamepadState.yaw = gamepadAxisValue(rx + ((rb ? 1 : 0) - (lb ? 1 : 0)) * 0.65, 0.18);
+  gamepadState.throttleUp = rt;
+  gamepadState.throttleDown = lt;
+  gamepadState.fire = !!(pad.buttons?.[0]?.pressed);
+  gamepadState.brake = !!(pad.buttons?.[1]?.pressed || lt > 0.72);
+  gamepadState.gear = !!(pad.buttons?.[2]?.pressed);
+  gamepadState.lights = !!(pad.buttons?.[3]?.pressed);
+  gamepadState.reset = !!(pad.buttons?.[9]?.pressed);
+  combatState.fireHeld = gamepadState.fire;
+  return gamepadState;
+}
+
+window.addEventListener('gamepadconnected', (e) => {
+  if (!INPUT_FLAGS.gamepad) return;
+  gamepadState.index = e.gamepad.index;
+  gamepadState.connected = true;
+  gamepadState.id = e.gamepad.id || `Gamepad ${e.gamepad.index}`;
+  if (typeof statusMsg !== 'undefined' && statusMsg && !plane.crashed) {
+    statusMsg.textContent = `CONTROLLER READY · ${gamepadState.id.split('(')[0].trim() || 'GAMEPAD'}`;
+    statusMsg.className = 'panel ok';
+  }
+});
+
+window.addEventListener('gamepaddisconnected', (e) => {
+  if (e.gamepad && e.gamepad.index === gamepadState.index) {
+    resetGamepadState();
+    combatState.fireHeld = false;
+  }
+});
 
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('contextmenu', (e) => e.preventDefault(), true);
 
 window.addEventListener('pointerdown', (e) => {
+  if (!INPUT_FLAGS.mouseFlight) return;
   const t = e.target;
   if (e.button === 0) {
     if (mouseFlightUiTarget(t)) return;
@@ -9355,6 +9465,7 @@ window.addEventListener('pointerdown', (e) => {
 }, true);
 
 window.addEventListener('pointermove', (e) => {
+  if (!INPUT_FLAGS.mouseFlight) return;
   if (!running || mouseFlightUiTarget(e.target)) return;
   let dx = 0;
   let dy = 0;
@@ -9381,9 +9492,13 @@ window.addEventListener('pointermove', (e) => {
 }, true);
 
 window.addEventListener('pointerup', (e) => {
+  if (!INPUT_FLAGS.mouseFlight) return;
   if (e.button === 0) { combatState.fireHeld = false; return; }
 }, true);
-window.addEventListener('pointercancel', () => { combatState.fireHeld = false; }, true);
+window.addEventListener('pointercancel', () => {
+  if (!INPUT_FLAGS.mouseFlight) return;
+  combatState.fireHeld = false;
+}, true);
 
 // Safety: if focus leaves the window, release fire and clear keys so no input
 // stays latched after alt-tab / modal focus changes.
@@ -9395,6 +9510,7 @@ window.addEventListener('blur', () => {
 });
 
 document.addEventListener('pointerlockchange', () => {
+  if (!INPUT_FLAGS.mouseFlight) return;
   if (document.pointerLockElement !== renderer.domElement) {
     mouseFlightState.lastClientX = null;
     mouseFlightState.lastClientY = null;
@@ -9808,6 +9924,11 @@ function getMouseFlightReticleScreenPoint() {
   };
 }
 function updateReticleHud(dt = 1 / 60) {
+  if (!INPUT_FLAGS.mouseFlight) {
+    if ($crosshair) $crosshair.style.opacity = '0';
+    reticleState.visible = false;
+    return;
+  }
   if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
     if ($crosshair) $crosshair.style.opacity = '0';
     reticleState.visible = false;
@@ -10520,6 +10641,7 @@ function animate(now) {
   lastTime = now;
   updateTimeOfDay(dt);
   updateMultiplayer(dt);
+  pollGamepadInput();
   if (!running) {
     updateSunShadowRig();
     sky.position.copy(camera.position);
@@ -12681,10 +12803,20 @@ window.__ap = {
       camera_fov: camera.fov,
       camera_height_offset: camera.userData.cameraHeightOffset || 0,
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
+      mouse_flight_enabled: !!INPUT_FLAGS.mouseFlight,
       reticle_x: reticleState.x,
       reticle_y: reticleState.y,
       mouse_flight_steer_x: mouseFlightState.steerX,
       mouse_flight_steer_y: mouseFlightState.steerY,
+      gamepad_connected: !!gamepadState.connected,
+      gamepad_id: gamepadState.id || '',
+      gamepad_pitch: gamepadState.pitch,
+      gamepad_roll: gamepadState.roll,
+      gamepad_yaw: gamepadState.yaw,
+      gamepad_throttle_up: gamepadState.throttleUp,
+      gamepad_throttle_down: gamepadState.throttleDown,
+      gamepad_fire: !!gamepadState.fire,
+      gamepad_brake: !!gamepadState.brake,
       target_boxes: targetHudState.visibleCount || 0,
       target_lock: targetHudState.activeId || '',
       target_lock_label: targetHudState.activeLabel || '',
