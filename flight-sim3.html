@@ -20,7 +20,7 @@
     margin: 0; overflow: hidden; background: #1a0f0a;
     font-family: 'SF Mono', 'Courier New', monospace; color: #ffcc66;
   }
-  canvas { display: block; }
+  canvas { display: block; cursor: none; }
   #hud {
     position: fixed; inset: 0; pointer-events: none;
     font-size: 12px; text-shadow: 0 0 4px #000, 0 0 2px #000;
@@ -8229,10 +8229,24 @@ function updatePhysics(dt) {
   if (plane.crashed) return;
 
   // ----- Input -----
-  const pitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
-  const rollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
-  const yawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
-                - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
+  const keyPitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
+  const keyRollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+  const keyYawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
+                  - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
+  const reticleCenterX = window.innerWidth * 0.5;
+  const reticleCenterY = window.innerHeight * 0.43;
+  const rawMouseSteerX = reticleState.visible ? (reticleState.x - reticleCenterX) / Math.max(120, window.innerWidth * 0.23) : 0;
+  const rawMouseSteerY = reticleState.visible ? (reticleCenterY - reticleState.y) / Math.max(90, window.innerHeight * 0.19) : 0;
+  const mouseDeadzone = 0.035;
+  const mouseSteerX = Math.abs(rawMouseSteerX) < mouseDeadzone ? 0 : Math.max(-1, Math.min(1, rawMouseSteerX));
+  const mouseSteerY = Math.abs(rawMouseSteerY) < mouseDeadzone ? 0 : Math.max(-1, Math.min(1, rawMouseSteerY));
+  const mouseBlend = plane.onGround ? 0 : 1;
+  mouseFlightState.steerX += (mouseSteerX * mouseBlend - mouseFlightState.steerX) * Math.min(1, dt * 7.8);
+  mouseFlightState.steerY += (mouseSteerY * mouseBlend - mouseFlightState.steerY) * Math.min(1, dt * 7.8);
+  const mouseRollAssist = Math.abs(keyRollIn) < 0.01 ? mouseFlightState.steerX * 0.34 : 0;
+  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + mouseFlightState.steerY * 1.08));
+  const rollIn  = Math.max(-1, Math.min(1, keyRollIn + mouseRollAssist));
+  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + mouseFlightState.steerX * 0.92));
 
   if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
   if (keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
@@ -9258,90 +9272,50 @@ function replayBuildUI() {
 replayBuildUI();
 bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
 
-// Right-mouse orbit state. `yaw` + `pitch` (radians) accumulate from
-// drag input and rotate the chase camera offset around the plane. A
-// right-click without drag (total movement < CLICK_THRESHOLD px and
-// duration < CLICK_TIME_MS) resets the orbit back to defaults.
-const camOrbit = {
-  yaw: 0, pitch: 0,
-  dragging: false, startX: 0, startY: 0,
-  totalDist: 0, pressedAt: 0,
-};
-const CLICK_THRESHOLD = 6;
-const CLICK_TIME_MS = 250;
+// Mouse-flight reticle state. The chase camera stays fixed behind the plane;
+// mouse movement drives a virtual pipper on screen and the aircraft follows it.
+// Right-click orbit is deliberately removed.
+const camOrbit = { yaw: 0, pitch: 0 };
 
-// Kill the native context menu and bind right-mouse orbit at the
-// window level. HUD overlay panels don't eat our pointer events this
-// way, and setPointerCapture isn't needed because we track state
-// ourselves against drag/click thresholds.
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('contextmenu', (e) => e.preventDefault(), true);
 
 window.addEventListener('pointerdown', (e) => {
-  // Left mouse = fire; right mouse = camera orbit start.
+  const t = e.target;
   if (e.button === 0) {
-    // Skip if the click is on a UI control (panel buttons, inputs)
-    const t = e.target;
-    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.closest('#graphics-panel') || t.closest('#graphics-overlay') || t.closest('#replay-panel') || t.closest('#tweak-hud'))) return;
+    if (mouseFlightUiTarget(t)) return;
     combatState.fireHeld = true;
     return;
   }
-  if (e.button !== 2) return;
-  camOrbit.dragging = true;
-  camOrbit.startX = e.clientX;
-  camOrbit.startY = e.clientY;
-  camOrbit.totalDist = 0;
-  camOrbit.pressedAt = performance.now();
-  e.preventDefault();
+  if (e.button === 2) {
+    if (mouseFlightUiTarget(t)) return;
+    recenterMouseFlightReticle();
+    e.preventDefault();
+  }
 }, true);
 
 window.addEventListener('pointermove', (e) => {
-  if (!camOrbit.dragging) return;
-  // Some browsers don't populate movementX/Y reliably for right-button
-  // drags; fall back to delta from startX/Y.
-  const dx = e.movementX || (e.clientX - (camOrbit.lastX || camOrbit.startX));
-  const dy = e.movementY || (e.clientY - (camOrbit.lastY || camOrbit.startY));
-  camOrbit.lastX = e.clientX;
-  camOrbit.lastY = e.clientY;
-  camOrbit.totalDist += Math.abs(dx) + Math.abs(dy);
-  // 0.0035 rad/px ≈ gentle orbit. Pitch clamped to avoid gimbal flip.
-  camOrbit.yaw   -= dx * 0.0035;
-  camOrbit.pitch -= dy * 0.0035;
-  camOrbit.pitch = Math.max(-1.1, Math.min(1.1, camOrbit.pitch));
+  if (mouseFlightUiTarget(e.target)) return;
+  mouseFlightState.targetX = Math.max(24, Math.min(window.innerWidth - 24, e.clientX));
+  mouseFlightState.targetY = Math.max(24, Math.min(window.innerHeight - 24, e.clientY));
 }, true);
 
 window.addEventListener('pointerup', (e) => {
   if (e.button === 0) { combatState.fireHeld = false; return; }
-  if (e.button !== 2 || !camOrbit.dragging) return;
-  camOrbit.dragging = false;
-  camOrbit.lastX = null;
-  camOrbit.lastY = null;
-  const heldMs = performance.now() - camOrbit.pressedAt;
-  const wasClick = camOrbit.totalDist < CLICK_THRESHOLD && heldMs < CLICK_TIME_MS;
-  if (wasClick) {
-    camOrbit.yaw = 0;
-    camOrbit.pitch = 0;
-  }
 }, true);
 window.addEventListener('pointercancel', () => { combatState.fireHeld = false; }, true);
 
-// Safety: if focus leaves the window, clear drag + all keys so Space
-// can't stay "stuck down" if keyup was lost to a modal/alt-tab. Fire
-// trigger also releases on blur for the same reason.
+// Safety: if focus leaves the window, release fire and clear keys so no input
+// stays latched after alt-tab / modal focus changes.
 window.addEventListener('blur', () => {
-  camOrbit.dragging = false;
   combatState.fireHeld = false;
   for (const k of Object.keys(keys)) keys[k] = false;
 });
 
 function updateCamera(dt) {
-  // Stable chase camera: keep the camera mostly behind and above the plane,
-  // then add only a small smoothed turn bias. This avoids the old fight
-  // between a tail-cam target and a separate hero side-cam target.
-  const orbitQ = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(camOrbit.pitch, camOrbit.yaw, 0, 'YXZ')
-  );
-  const offsetRotated = camLocalOffset.clone().applyQuaternion(orbitQ);
+  // Stable chase camera: keep the camera locked behind and above the plane.
+  // Mouse now flies the aircraft via the reticle instead of orbiting the camera.
+  const offsetRotated = camLocalOffset.clone();
   const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
   const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
   const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
@@ -9538,6 +9512,12 @@ const reticleState = {
   baseYOffset: -18,
   visible: false,
 };
+const mouseFlightState = {
+  targetX: window.innerWidth * 0.5,
+  targetY: window.innerHeight * 0.43,
+  steerX: 0,
+  steerY: 0,
+};
 const targetHudState = {
   boxes: [],
   visibleCount: 0,
@@ -9600,6 +9580,10 @@ function resetReticleHud() {
   reticleState.vx = 0;
   reticleState.vy = 0;
   reticleState.visible = false;
+  mouseFlightState.targetX = reticleState.x;
+  mouseFlightState.targetY = reticleState.y;
+  mouseFlightState.steerX = 0;
+  mouseFlightState.steerY = 0;
   targetHudState.visibleCount = 0;
   targetHudState.activeId = '';
   targetHudState.activeLabel = '';
@@ -9623,6 +9607,27 @@ function resetReticleHud() {
     box.el.style.display = 'none';
     box.el.classList.remove('active');
   }
+}
+function mouseFlightUiTarget(target) {
+  if (!target || typeof target !== 'object') return false;
+  const hasClosest = typeof target.closest === 'function';
+  return !!(
+    target.tagName === 'BUTTON' ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    (hasClosest && (
+      target.closest('#graphics-panel') ||
+      target.closest('#graphics-overlay') ||
+      target.closest('#replay-panel') ||
+      target.closest('#tweak-hud')
+    ))
+  );
+}
+function recenterMouseFlightReticle() {
+  mouseFlightState.targetX = window.innerWidth * 0.5;
+  mouseFlightState.targetY = window.innerHeight * 0.43;
+  mouseFlightState.steerX = 0;
+  mouseFlightState.steerY = 0;
 }
 function estimateTrafficVelocity(rec) {
   if (!rec || !rec.pathFn) return _hudWorldH.set(0, 0, 0);
@@ -9684,32 +9689,19 @@ function updateReticleHud(dt = 1 / 60) {
     return;
   }
 
-  const muzzleL = _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
-  const muzzleR = _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
-  const muzzleOrigin = _hudWorldC.copy(muzzleL).add(muzzleR).multiplyScalar(0.5);
-  const gunForward = _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
-  const lookAhead = Math.max(190, Math.min(560, 220 + plane.vel.length() * 4.6));
-  const aimPoint = _hudWorldD.copy(gunForward).multiplyScalar(lookAhead).add(muzzleOrigin);
-  _hudNdcA.copy(aimPoint).project(camera);
-  if (!Number.isFinite(_hudNdcA.x) || !Number.isFinite(_hudNdcA.y) || _hudNdcA.z < -1 || _hudNdcA.z > 1.25) {
-    $crosshair.style.opacity = '0';
-    reticleState.visible = false;
-    return;
-  }
-
   const localVelHud = _hudWorldE.copy(plane.vel).applyQuaternion(_hudQuatA.copy(plane.quat).invert());
-  const wobbleBase = 1.35 + Math.min(6.4, plane.angVel.length() * 4.8 + Math.abs(localVelHud.x) * 0.18 + Math.abs(localVelHud.y) * 0.08);
+  const wobbleBase = 0.35 + Math.min(1.65, plane.angVel.length() * 0.9 + Math.abs(localVelHud.x) * 0.02 + Math.abs(localVelHud.y) * 0.012);
   const wobblePhase = performance.now() * 0.0045;
-  const driftX = plane.angVel.y * 12 + localVelHud.x * 0.12 + Math.sin(wobblePhase + plane.pos.z * 0.0012) * wobbleBase;
-  const driftY = -plane.angVel.x * 15 - localVelHud.y * 0.08 + Math.cos(wobblePhase * 1.12 + plane.pos.x * 0.0014) * wobbleBase * 0.72;
+  const driftX = plane.angVel.y * 2.1 + localVelHud.x * 0.028 + Math.sin(wobblePhase + plane.pos.z * 0.0012) * wobbleBase;
+  const driftY = -plane.angVel.x * 2.8 - localVelHud.y * 0.018 + Math.cos(wobblePhase * 1.12 + plane.pos.x * 0.0014) * wobbleBase * 0.62;
   const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
-  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 6.2 : 0;
+  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 3.4 : 0;
 
-  const targetX = Math.max(24, Math.min(window.innerWidth - 24, (_hudNdcA.x * 0.5 + 0.5) * window.innerWidth + driftX));
-  const targetY = Math.max(24, Math.min(window.innerHeight - 24, (-_hudNdcA.y * 0.5 + 0.5) * window.innerHeight + reticleState.baseYOffset + driftY - recoilKick));
+  const targetX = Math.max(24, Math.min(window.innerWidth - 24, mouseFlightState.targetX + driftX));
+  const targetY = Math.max(24, Math.min(window.innerHeight - 24, mouseFlightState.targetY + driftY - recoilKick));
 
-  const springK = 74;
-  const damping = Math.exp(-dt * 10.2);
+  const springK = 86;
+  const damping = Math.exp(-dt * 11.0);
   if (!reticleState.visible) {
     reticleState.x = targetX;
     reticleState.y = targetY;
@@ -10581,6 +10573,10 @@ window.addEventListener('resize', () => {
     reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, reticleState.visible ? reticleState.y : window.innerHeight * 0.43));
     reticleState.vx = 0;
     reticleState.vy = 0;
+    if (typeof mouseFlightState !== 'undefined') {
+      mouseFlightState.targetX = Math.max(24, Math.min(window.innerWidth - 24, mouseFlightState.targetX || window.innerWidth * 0.5));
+      mouseFlightState.targetY = Math.max(24, Math.min(window.innerHeight - 24, mouseFlightState.targetY || window.innerHeight * 0.43));
+    }
     if ($crosshair) {
       $crosshair.style.left = `${reticleState.x}px`;
       $crosshair.style.top = `${reticleState.y}px`;
@@ -12542,6 +12538,8 @@ window.__ap = {
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
       reticle_x: reticleState.x,
       reticle_y: reticleState.y,
+      mouse_flight_steer_x: mouseFlightState.steerX,
+      mouse_flight_steer_y: mouseFlightState.steerY,
       target_boxes: targetHudState.visibleCount || 0,
       target_lock: targetHudState.activeId || '',
       target_lock_label: targetHudState.activeLabel || '',
