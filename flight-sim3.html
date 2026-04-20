@@ -5617,7 +5617,7 @@ function spawnGroundImpactExplosion(pos, intensity = 1.0) {
     groundScorchFX.spawn(flankB, 0.45 + intensity * 0.24);
   }
   if (typeof playSfx === 'function') {
-    playSfx('explosion', { volume: 0.78 + intensity * 0.16, rate: 0.76 + Math.random() * 0.05, throttleMs: 45 });
+    playSfx('explosion', { volume: 0.46 + intensity * 0.10, rate: 0.98 + Math.random() * 0.06, throttleMs: 45 });
   }
 }
 
