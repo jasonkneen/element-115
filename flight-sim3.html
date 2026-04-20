@@ -987,7 +987,10 @@ const PROP_MODEL_PRESETS = [
   { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird Prop', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
   { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Prop', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
   { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird Prop', badge: 'HEAVY', file: 'models/yak-9.glb' },
-  { key: 'stunt', label: 'STUNT PLANE', name: 'Stunt Plane', hudLabel: 'STUNT', type: 'Stunt Prop', badge: 'NEW', file: 'models/stunt_plane.glb' },
+  { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/stunt_plane.glb', variant: '1' },
+  { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
+  { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/stunt_plane.glb', variant: '3' },
+  { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
   { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback Prop', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
 const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
@@ -1001,8 +1004,20 @@ function findPropPresetByPlaneFile(file) {
   return PROP_MODEL_PRESETS.find(p => p.file === file) || null;
 }
 
+function findPropPresetByParams(params) {
+  const plane = params.get('plane');
+  const variant = params.get('variant');
+  if (plane && variant) {
+    const exact = PROP_MODEL_PRESETS.find(p => p.file === plane && String(p.variant || '') === String(variant));
+    if (exact) return exact;
+  }
+  if (plane) return findPropPresetByPlaneFile(plane);
+  return null;
+}
+
 function applyPropPresetToParams(params, preset) {
   params.set('plane', preset.file);
+  if (preset.variant != null) params.set('variant', String(preset.variant)); else params.delete('variant');
   if (preset.s != null) params.set('s', String(preset.s)); else params.delete('s');
   if (preset.rx != null) params.set('rx', String(preset.rx)); else params.delete('rx');
   if (preset.ry != null) params.set('ry', String(preset.ry)); else params.delete('ry');
@@ -1011,8 +1026,8 @@ function applyPropPresetToParams(params, preset) {
 }
 
 function getActivePropPreset() {
-  const explicitPlane = bootParams.get('plane');
-  if (explicitPlane) return findPropPresetByPlaneFile(explicitPlane) || PROP_MODEL_BY_KEY.get(getStoredPropModelKey()) || PROP_MODEL_PRESETS[0];
+  const explicitPreset = findPropPresetByParams(bootParams);
+  if (explicitPreset) return explicitPreset;
   return PROP_MODEL_BY_KEY.get(getStoredPropModelKey()) || PROP_MODEL_PRESETS[0];
 }
 
@@ -4305,8 +4320,10 @@ function updateMultiplayer(dt) {
       // otherwise fall back to a procedural stunt livery.
       if (/stunt_plane\.glb$/i.test(planeFile)) {
         let stuntTex = null;
+        const variant = String(params.get('variant') || getActivePropPreset().variant || '1');
+        const safeVariant = /^[1-4]$/.test(variant) ? variant : '1';
         try {
-          stuntTex = new THREE.TextureLoader().load('models/Polygon_Plane_Texture_01.png');
+          stuntTex = new THREE.TextureLoader().load(`models/Polygon_Plane_Texture_0${safeVariant}.png`);
           stuntTex.colorSpace = THREE.SRGBColorSpace || stuntTex.colorSpace;
           stuntTex.flipY = false;
           stuntTex.anisotropy = 4;
