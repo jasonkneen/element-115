@@ -8111,26 +8111,38 @@ function updatePhysics(dt) {
   const q = Math.max(0, forwardSpeed);
   const loSpeedFade = Math.max(0.25, Math.min(1, (q - 14) / 28)); // 0.25..1
   const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012);    // 1..0.5
+  // Slowing down into the manoeuvring-speed band should tighten the turn and
+  // make control inputs feel more authoritative — up to a point. Real planes
+  // can carve a tighter radius at lower speed/bank, but once you're too slow
+  // the controls should still soften again. Peak assist lives in the mid-band,
+  // not at the stall edge.
+  const maneuverBand = smoothstepRange(20, 38, q) * (1 - smoothstepRange(56, 90, q));
+  const maneuverRollBoost = 1 + maneuverBand * 0.42;
+  const maneuverPitchBoost = 1 + maneuverBand * 0.24;
+  const maneuverYawBoost = 1 + maneuverBand * 0.55;
   // Roll + pitch get the lighter low-speed fade (sqrt) and a weaker
   // hi-speed damp — these are the primary manoeuvring inputs and need
   // to stay crisp. Pitch in particular should snap the nose up when S
   // is held. Stall protection is still active at very low speed +
   // high AoA (see below) so crisp pitch won't spiral the AI.
-  const rollScale  = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp);
-  const pitchScale = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp);
-  const yawScale   = loSpeedFade * hiSpeedDamp;
+  const rollScale  = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp) * maneuverRollBoost;
+  const pitchScale = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp) * maneuverPitchBoost;
+  const yawScale   = loSpeedFade * hiSpeedDamp * maneuverYawBoost;
   const authPitch = Math.min(1.2, q / 28) * pitchScale;
   const authRoll  = Math.min(1.5, q / 22) * rollScale;
   const authYaw   = Math.min(1.0, q / 50) * yawScale;
+  const pitchAuthorityTune = scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0;
+  const rollAuthorityTune = scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0;
+  const rudderAuthorityTune = scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0;
 
   // Apply torque (pitch=X, yaw=Y, roll=Z in local frame).
   //   pitch  1.8 → 3.4 — S/W now flicks the nose around ≈55°/s at cruise
   //   roll   3.2 → 5.0 — banks snap in ≈45° per key-press
   //   yaw    0.9 → 3.2 — rudder is a first-class input; arrow keys
   //          swing the nose at ≈50°/s at cruise.
-  plane.angVel.x += pitchIn * 3.4 * authPitch * dt;
-  plane.angVel.z += -rollIn * 5.6 * authRoll * dt;
-  plane.angVel.y += -yawIn * 3.2 * authYaw * dt;
+  plane.angVel.x += pitchIn * 3.4 * authPitch * pitchAuthorityTune * dt;
+  plane.angVel.z += -rollIn * 5.6 * authRoll * rollAuthorityTune * dt;
+  plane.angVel.y += -yawIn * 3.2 * authYaw * rudderAuthorityTune * dt;
 
   // D13 — Airframe integrity: damaged wings introduce a roll bias and
   // general instability. Effect is subtle at full health, meaningful
@@ -11291,7 +11303,7 @@ function updateFloatingTarget(dt) {
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
     dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
-    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0,
+    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0,
     fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
@@ -11393,6 +11405,9 @@ function updateFloatingTarget(dt) {
     scene.userData.__flightAccel = Math.max(0.5, Math.min(1.6, gfx.flightAccel || 1.0));
     scene.userData.__flightTopSpeedKts = Math.max(220, Math.min(620, gfx.topSpeedKts || 580));
     scene.userData.__flightLift = Math.max(0.7, Math.min(1.4, gfx.liftAssist || 1.0));
+    scene.userData.__flightPitchAuth = Math.max(0.6, Math.min(2.0, gfx.pitchAuthority || 1.0));
+    scene.userData.__flightRollAuth = Math.max(0.6, Math.min(2.0, gfx.rollAuthority || 1.0));
+    scene.userData.__flightRudderAuth = Math.max(0.6, Math.min(2.0, gfx.rudderAuthority || 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -11557,10 +11572,13 @@ function updateFloatingTarget(dt) {
     panel.appendChild(planeGrid);
 
     panel.appendChild(el('div', { style: headerStyle }, 'FLIGHT'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune how fast the plane accelerates, how much lift it has, and its soft top-speed limit.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune how fast the plane accelerates, how much lift it has, and how snappy pitch / roll / rudder feel.'));
     panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
+    panel.appendChild(makeSliderRow('pitchAuthority', 0.6, 2.0, 0.05, 'PITCH AUTHORITY', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('rollAuthority', 0.6, 2.0, 0.05, 'ROLL / TURN', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('rudderAuthority', 0.6, 2.0, 0.05, 'RUDDER', (v) => `${Math.round(v * 100)}%`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
@@ -11724,6 +11742,9 @@ window.__ap = {
       flight_accel: scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0,
       flight_top_speed_kts: scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580,
       flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
+      flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
+      flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
+      flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
