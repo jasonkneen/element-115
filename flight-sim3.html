@@ -4795,7 +4795,7 @@ function updateMultiplayer(dt) {
         titleText.textContent = 'MODEL TUNE [;]';
         titleText.style.cssText = 'font-size:11px;color:#ffe0a0;';
         const titleMeta = document.createElement('span');
-        titleMeta.textContent = 'hidden until needed';
+        titleMeta.textContent = 'position · rotation · scale';
         titleMeta.style.cssText = 'font-size:9px;letter-spacing:0.08em;opacity:0.58;';
         titleWrap.appendChild(titleText);
         titleWrap.appendChild(titleMeta);
@@ -4928,9 +4928,9 @@ function updateMultiplayer(dt) {
         let collapsed = true;
         const setCollapsed = (next) => {
           collapsed = !!next;
-          panel.style.display = collapsed ? 'none' : '';
+          panel.style.display = '';
           body.style.display = collapsed ? 'none' : '';
-          titleMeta.textContent = collapsed ? 'hidden until needed' : 'tap outside to hide';
+          titleMeta.textContent = collapsed ? 'position · rotation · scale' : 'tap outside to hide';
           collapseBtn.textContent = collapsed ? 'EDIT' : 'HIDE';
           panel.style.width = collapsed ? 'auto' : '228px';
         };
