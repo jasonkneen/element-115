@@ -4300,16 +4300,26 @@ function updateMultiplayer(dt) {
       model.updateMatrixWorld(true);
       const modelBoxLocal = new THREE.Box3().setFromObject(model);
 
-      // `stunt_plane.glb` ships with UVs but no embedded texture images, so
-      // give it a procedural stunt-livery map in-game.
+      // `stunt_plane.glb` ships with UVs but no embedded texture images. If
+      // the original source texture has been copied into the project, use it;
+      // otherwise fall back to a procedural stunt livery.
       if (/stunt_plane\.glb$/i.test(planeFile)) {
-        const stuntTex = makeStuntPlanePaintTexture(1024);
+        let stuntTex = null;
+        try {
+          stuntTex = new THREE.TextureLoader().load('models/Polygon_Plane_Texture_01.png');
+          stuntTex.colorSpace = THREE.SRGBColorSpace || stuntTex.colorSpace;
+          stuntTex.flipY = false;
+          stuntTex.anisotropy = 4;
+          stuntTex.needsUpdate = true;
+        } catch (_) {
+          stuntTex = makeStuntPlanePaintTexture(1024);
+        }
         model.traverse(o => {
           if (!o || !o.isMesh || !o.material) return;
           const applyTo = (m) => {
             if (!m || !('map' in m)) return m;
             const next = m.clone();
-            if (!next.map) next.map = stuntTex;
+            if (!next.map) next.map = stuntTex || makeStuntPlanePaintTexture(1024);
             if (next.color) next.color.set(0xffffff);
             if ('metalness' in next) next.metalness = Math.min(0.16, next.metalness ?? 0.16);
             if ('roughness' in next) next.roughness = 0.54;
