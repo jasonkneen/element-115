@@ -4300,6 +4300,27 @@ function updateMultiplayer(dt) {
       model.updateMatrixWorld(true);
       const modelBoxLocal = new THREE.Box3().setFromObject(model);
 
+      // `stunt_plane.glb` ships with UVs but no embedded texture images, so
+      // give it a procedural stunt-livery map in-game.
+      if (/stunt_plane\.glb$/i.test(planeFile)) {
+        const stuntTex = makeStuntPlanePaintTexture(1024);
+        model.traverse(o => {
+          if (!o || !o.isMesh || !o.material) return;
+          const applyTo = (m) => {
+            if (!m || !('map' in m)) return m;
+            const next = m.clone();
+            if (!next.map) next.map = stuntTex;
+            if (next.color) next.color.set(0xffffff);
+            if ('metalness' in next) next.metalness = Math.min(0.16, next.metalness ?? 0.16);
+            if ('roughness' in next) next.roughness = 0.54;
+            next.userData = Object.assign({}, next.userData, { __preserveTextureShading: true });
+            next.needsUpdate = true;
+            return next;
+          };
+          o.material = Array.isArray(o.material) ? o.material.map(applyTo) : applyTo(o.material);
+        });
+      }
+
       applyShadowFlags(model);
       jet.add(model);
 
@@ -5025,8 +5046,10 @@ function applyStyle() {
     const m = obj.material;
     if (!m || Array.isArray(m)) return;
     if (m.type === 'MeshStandardMaterial' || m.type === 'MeshPhongMaterial') {
-      if (m.flatShading !== lowPoly) {
-        m.flatShading = lowPoly;
+      const keepTexturedShading = !!(m.map && m.userData && m.userData.__preserveTextureShading);
+      const targetFlat = keepTexturedShading ? false : lowPoly;
+      if (m.flatShading !== targetFlat) {
+        m.flatShading = targetFlat;
         m.needsUpdate = true;
       }
     }
@@ -5210,6 +5233,74 @@ function makePuffTexture(size = 96, seed = 1) {
   g.fillStyle = core;
   g.fillRect(0, 0, size, size);
   const t = new THREE.CanvasTexture(c);
+  t.needsUpdate = true;
+  return t;
+}
+
+function makeStuntPlanePaintTexture(size = 1024) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+
+  const bg = g.createLinearGradient(0, 0, size, size);
+  bg.addColorStop(0, '#fff7ef');
+  bg.addColorStop(0.52, '#f3eadb');
+  bg.addColorStop(1, '#e4d6c2');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, size, size);
+
+  // Broad stunt-racing color blocks so the UV layout gets readable paint even
+  // without a shipped texture atlas in the GLB.
+  g.fillStyle = '#d62828';
+  g.fillRect(0, 0, size * 0.34, size);
+  g.fillRect(size * 0.72, 0, size * 0.28, size * 0.42);
+
+  g.fillStyle = '#1d4ed8';
+  g.fillRect(size * 0.38, 0, size * 0.1, size);
+  g.fillRect(size * 0.84, size * 0.42, size * 0.16, size * 0.58);
+
+  g.fillStyle = '#111827';
+  g.fillRect(0, size * 0.44, size, size * 0.035);
+  g.fillRect(size * 0.46, 0, size * 0.02, size);
+
+  // Wing/tail checker hints.
+  const checker = size * 0.055;
+  for (let y = 0; y < size; y += checker) {
+    for (let x = 0; x < size; x += checker) {
+      if (((x / checker) | 0) % 2 === ((y / checker) | 0) % 2) continue;
+      if (x < size * 0.22 || x > size * 0.78 || y < size * 0.18 || y > size * 0.82) {
+        g.fillStyle = 'rgba(255,255,255,0.22)';
+        g.fillRect(x, y, checker, checker);
+      }
+    }
+  }
+
+  // Subtle panel lines / wear so it reads as a texture not flat color.
+  g.strokeStyle = 'rgba(20,16,12,0.14)';
+  g.lineWidth = Math.max(1, size * 0.0022);
+  for (let i = 1; i < 10; i++) {
+    const x = (size / 10) * i;
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, size);
+    g.stroke();
+  }
+  for (let i = 1; i < 7; i++) {
+    const y = (size / 7) * i;
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(size, y);
+    g.stroke();
+  }
+
+  g.fillStyle = 'rgba(255,255,255,0.09)';
+  g.fillRect(0, 0, size, size * 0.16);
+  g.fillStyle = 'rgba(0,0,0,0.06)';
+  g.fillRect(0, size * 0.84, size, size * 0.16);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace || t.colorSpace;
+  t.anisotropy = 4;
   t.needsUpdate = true;
   return t;
 }
