@@ -4323,7 +4323,26 @@ function updateMultiplayer(dt) {
         const variant = String(params.get('variant') || getActivePropPreset().variant || '1');
         const safeVariant = /^[1-4]$/.test(variant) ? variant : '1';
         try {
-          stuntTex = new THREE.TextureLoader().load(`models/Polygon_Plane_Texture_0${safeVariant}.png`);
+          stuntTex = new THREE.TextureLoader().load(
+            `models/Polygon_Plane_Texture_0${safeVariant}.png`,
+            (loaded) => {
+              const styled = loaded && loaded.image
+                ? makeStyledStuntPlaneTextureFromImage(loaded.image, safeVariant)
+                : (stuntTex || makeStuntPlanePaintTexture(1024));
+              model.traverse(o => {
+                if (!o || !o.isMesh || !o.material) return;
+                const applyStyled = (m) => {
+                  if (!m || !('map' in m)) return m;
+                  m.map = styled;
+                  if (m.color) m.color.set(0xffffff);
+                  m.userData = Object.assign({}, m.userData, { __preserveTextureShading: true });
+                  m.needsUpdate = true;
+                  return m;
+                };
+                o.material = Array.isArray(o.material) ? o.material.map(applyStyled) : applyStyled(o.material);
+              });
+            }
+          );
           stuntTex.colorSpace = THREE.SRGBColorSpace || stuntTex.colorSpace;
           stuntTex.flipY = false;
           stuntTex.anisotropy = 4;
@@ -5327,6 +5346,111 @@ function makeStuntPlanePaintTexture(size = 1024) {
 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace || t.colorSpace;
+  t.anisotropy = 4;
+  t.needsUpdate = true;
+  return t;
+}
+
+function makeStyledStuntPlaneTextureFromImage(image, variant = '1') {
+  const w = image.width || 1024;
+  const h = image.height || 1024;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.drawImage(image, 0, 0, w, h);
+
+  const drawCheckerBand = (x, y, bw, bh, cell, a = 0.34) => {
+    for (let yy = y; yy < y + bh; yy += cell) {
+      for (let xx = x; xx < x + bw; xx += cell) {
+        if ((((xx - x) / cell) | 0) % 2 === (((yy - y) / cell) | 0) % 2) continue;
+        g.fillStyle = `rgba(255,255,255,${a})`;
+        g.fillRect(xx, yy, cell, cell);
+      }
+    }
+  };
+  const drawWear = (count, alpha) => {
+    for (let i = 0; i < count; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      const len = 10 + Math.random() * 38;
+      const ang = Math.random() * Math.PI * 2;
+      g.strokeStyle = `rgba(18,16,14,${alpha * (0.5 + Math.random() * 0.8)})`;
+      g.lineWidth = 1 + Math.random() * 1.8;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+      g.stroke();
+    }
+  };
+  const overlayGradient = (c1, c2, alpha, mode = 'multiply') => {
+    g.save();
+    g.globalCompositeOperation = mode;
+    const grad = g.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, c1);
+    grad.addColorStop(1, c2);
+    g.globalAlpha = alpha;
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+    g.restore();
+  };
+
+  if (variant === '1') {
+    overlayGradient('#fff8f0', '#d7ddea', 0.22, 'screen');
+    g.fillStyle = 'rgba(255,255,255,0.24)';
+    g.fillRect(w * 0.18, h * 0.12, w * 0.10, h * 0.76);
+    g.fillRect(w * 0.54, h * 0.10, w * 0.06, h * 0.80);
+    g.fillStyle = 'rgba(214,40,40,0.18)';
+    g.fillRect(w * 0.15, h * 0.12, w * 0.012, h * 0.76);
+    g.fillRect(w * 0.60, h * 0.10, w * 0.012, h * 0.80);
+  } else if (variant === '2') {
+    drawCheckerBand(0, 0, w * 0.28, h * 0.22, Math.max(12, w * 0.028), 0.38);
+    drawCheckerBand(w * 0.72, h * 0.72, w * 0.28, h * 0.28, Math.max(12, w * 0.028), 0.38);
+    overlayGradient('#f7fafc', '#c9d5e5', 0.16, 'screen');
+  } else if (variant === '3') {
+    overlayGradient('#0b1220', '#020407', 0.72, 'multiply');
+    g.save();
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = 'rgba(8,12,18,0.34)';
+    g.fillRect(0, 0, w, h);
+    g.restore();
+    g.fillStyle = 'rgba(214,180,88,0.28)';
+    g.fillRect(w * 0.30, h * 0.08, w * 0.016, h * 0.84);
+    g.fillRect(w * 0.68, h * 0.08, w * 0.016, h * 0.84);
+    g.fillStyle = 'rgba(255,255,255,0.08)';
+    g.fillRect(0, 0, w, h * 0.10);
+    g.fillStyle = 'rgba(0,0,0,0.14)';
+    g.fillRect(0, h * 0.82, w, h * 0.18);
+  } else if (variant === '4') {
+    overlayGradient('#dccdb8', '#5b544b', 0.22, 'overlay');
+    overlayGradient('#7a7367', '#2a2521', 0.16, 'multiply');
+    g.fillStyle = 'rgba(60,46,36,0.15)';
+    for (let i = 0; i < 24; i++) {
+      g.fillRect(Math.random() * w, Math.random() * h, 18 + Math.random() * 46, 3 + Math.random() * 8);
+    }
+    drawWear(52, 0.13);
+    g.fillStyle = 'rgba(255,255,255,0.04)';
+    g.fillRect(0, 0, w, h * 0.12);
+    g.fillStyle = 'rgba(0,0,0,0.08)';
+    g.fillRect(0, h * 0.86, w, h * 0.14);
+  }
+
+  // Shared subtle paneling / wear pass so all variants feel more premium.
+  g.strokeStyle = 'rgba(18,16,14,0.09)';
+  g.lineWidth = Math.max(1, w * 0.0014);
+  for (let i = 1; i < 8; i++) {
+    const x = (w / 8) * i;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+  }
+  for (let i = 1; i < 6; i++) {
+    const y = (h / 6) * i;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+  }
+  drawWear(12, 0.05);
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace || t.colorSpace;
+  t.flipY = false;
   t.anisotropy = 4;
   t.needsUpdate = true;
   return t;
