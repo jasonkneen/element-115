@@ -8111,15 +8111,16 @@ function updatePhysics(dt) {
   const q = Math.max(0, forwardSpeed);
   const loSpeedFade = Math.max(0.25, Math.min(1, (q - 14) / 28)); // 0.25..1
   const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012);    // 1..0.5
+  const maneuverAssistTune = scene.userData.__flightManeuverAssist != null ? scene.userData.__flightManeuverAssist : 1.0;
   // Slowing down into the manoeuvring-speed band should tighten the turn and
   // make control inputs feel more authoritative — up to a point. Real planes
   // can carve a tighter radius at lower speed/bank, but once you're too slow
   // the controls should still soften again. Peak assist lives in the mid-band,
   // not at the stall edge.
   const maneuverBand = smoothstepRange(20, 38, q) * (1 - smoothstepRange(56, 90, q));
-  const maneuverRollBoost = 1 + maneuverBand * 0.42;
-  const maneuverPitchBoost = 1 + maneuverBand * 0.24;
-  const maneuverYawBoost = 1 + maneuverBand * 0.55;
+  const maneuverRollBoost = 1 + maneuverBand * 0.42 * maneuverAssistTune;
+  const maneuverPitchBoost = 1 + maneuverBand * 0.24 * maneuverAssistTune;
+  const maneuverYawBoost = 1 + maneuverBand * 0.55 * maneuverAssistTune;
   // Roll + pitch get the lighter low-speed fade (sqrt) and a weaker
   // hi-speed damp — these are the primary manoeuvring inputs and need
   // to stay crisp. Pitch in particular should snap the nose up when S
@@ -8185,9 +8186,14 @@ function updatePhysics(dt) {
   // Weathervane: yaw toward velocity
   plane.angVel.y += -localVel.x * 0.002 * authYaw * dt;
 
-  // Damping
-  const damp = Math.pow(0.05, dt);
-  plane.angVel.multiplyScalar(damp);
+  // Axis damping — user-tunable in the flight options panel so the plane can
+  // be made either more planted or more snappy.
+  const pitchDampTune = scene.userData.__flightPitchDamp != null ? scene.userData.__flightPitchDamp : 1.0;
+  const rollDampTune = scene.userData.__flightRollDamp != null ? scene.userData.__flightRollDamp : 1.0;
+  const rudderDampTune = scene.userData.__flightRudderDamp != null ? scene.userData.__flightRudderDamp : 1.0;
+  plane.angVel.x *= Math.pow(0.22, dt * pitchDampTune);
+  plane.angVel.z *= Math.pow(0.05, dt * rollDampTune);
+  plane.angVel.y *= Math.pow(0.08, dt * rudderDampTune);
 
   // Hard clamp on rotation rate
   if (plane.angVel.length() > MAX_ANG_VEL) {
@@ -8218,15 +8224,19 @@ function updatePhysics(dt) {
   // student pilot is actually taught to recover.
   let cl;
   const aoaAbs = Math.abs(aoa);
+  const stallSoftTune = scene.userData.__flightStallSoft != null ? scene.userData.__flightStallSoft : 1.0;
   if (aoaAbs <= STALL_AOA) {
     cl = CL0 + CL_ALPHA * aoa;
   } else {
     const peak = CL_ALPHA * STALL_AOA;
     const excess = aoaAbs - STALL_AOA;
-    // Fade from peak down to 0.55×peak over 0.26 rad (≈15°), then hold.
-    const fade = Math.min(1, excess / 0.26);
-    const degraded = peak * (1 - fade * 0.45);
-    cl = CL0 + Math.sign(aoa) * Math.max(peak * 0.55, degraded);
+    // Fade from peak down to a tunable post-stall floor over a tunable range.
+    const fadeSpan = 0.20 + (1.5 - stallSoftTune) * 0.10;
+    const fade = Math.min(1, excess / Math.max(0.12, fadeSpan));
+    const fadeLoss = 0.30 + (1 - stallSoftTune) * 0.15;
+    const floorMul = 0.45 + stallSoftTune * 0.15;
+    const degraded = peak * (1 - fade * fadeLoss);
+    cl = CL0 + Math.sign(aoa) * Math.max(peak * floorMul, degraded);
   }
   // Lift only when moving forward through the air
   const v = Math.max(0, forwardSpeed);
@@ -8431,7 +8441,8 @@ function updatePhysics(dt) {
         }
 
         // Rolling friction + brake
-        const rollFric = 0.015 + plane.brake * 2.0;
+        const brakeTune = scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0;
+        const rollFric = 0.015 + plane.brake * 2.0 * brakeTune;
         const horiz = new THREE.Vector3(plane.vel.x, 0, plane.vel.z);
         horiz.multiplyScalar(Math.max(0, 1 - rollFric * dt));
         plane.vel.x = horiz.x;
@@ -11304,6 +11315,7 @@ function updateFloatingTarget(dt) {
     fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
     dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0,
+    brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0,
     fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
@@ -11408,6 +11420,12 @@ function updateFloatingTarget(dt) {
     scene.userData.__flightPitchAuth = Math.max(0.6, Math.min(2.0, gfx.pitchAuthority || 1.0));
     scene.userData.__flightRollAuth = Math.max(0.6, Math.min(2.0, gfx.rollAuthority || 1.0));
     scene.userData.__flightRudderAuth = Math.max(0.6, Math.min(2.0, gfx.rudderAuthority || 1.0));
+    scene.userData.__flightBrake = Math.max(0.5, Math.min(2.0, gfx.brakeStrength || 1.0));
+    scene.userData.__flightPitchDamp = Math.max(0.6, Math.min(1.8, gfx.pitchDamping || 1.0));
+    scene.userData.__flightRollDamp = Math.max(0.6, Math.min(1.8, gfx.rollDamping || 1.0));
+    scene.userData.__flightRudderDamp = Math.max(0.6, Math.min(1.8, gfx.rudderDamping || 1.0));
+    scene.userData.__flightStallSoft = Math.max(0.7, Math.min(1.5, gfx.stallSoftness || 1.0));
+    scene.userData.__flightManeuverAssist = Math.max(0.5, Math.min(1.8, gfx.maneuverAssist || 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -11579,6 +11597,12 @@ function updateFloatingTarget(dt) {
     panel.appendChild(makeSliderRow('pitchAuthority', 0.6, 2.0, 0.05, 'PITCH AUTHORITY', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rollAuthority', 0.6, 2.0, 0.05, 'ROLL / TURN', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rudderAuthority', 0.6, 2.0, 0.05, 'RUDDER', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('maneuverAssist', 0.5, 1.8, 0.05, 'MANEUVER ASSIST', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('stallSoftness', 0.7, 1.5, 0.05, 'STALL SOFTNESS', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('brakeStrength', 0.5, 2.0, 0.05, 'BRAKE STRENGTH', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('pitchDamping', 0.6, 1.8, 0.05, 'PITCH DAMPING', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('rollDamping', 0.6, 1.8, 0.05, 'ROLL DAMPING', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
@@ -11745,6 +11769,12 @@ window.__ap = {
       flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
       flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
       flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
+      flight_brake_strength: scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0,
+      flight_pitch_damping: scene.userData.__flightPitchDamp != null ? scene.userData.__flightPitchDamp : 1.0,
+      flight_roll_damping: scene.userData.__flightRollDamp != null ? scene.userData.__flightRollDamp : 1.0,
+      flight_rudder_damping: scene.userData.__flightRudderDamp != null ? scene.userData.__flightRudderDamp : 1.0,
+      flight_stall_softness: scene.userData.__flightStallSoft != null ? scene.userData.__flightStallSoft : 1.0,
+      flight_maneuver_assist: scene.userData.__flightManeuverAssist != null ? scene.userData.__flightManeuverAssist : 1.0,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
