@@ -7637,6 +7637,8 @@ function resetPlane() {
   if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
   if (camera) {
     camera.userData.maneuverReveal = 0;
+    camera.userData.revealBlend = 0;
+    camera.userData.heroSide = 1;
     camera.fov = 72;
     camera.updateProjectionMatrix();
   }
@@ -8787,9 +8789,21 @@ function updateCamera(dt) {
   const bankReveal = clamp01(Math.abs(planeRight.y) * 1.15);
   const pitchReveal = clamp01(Math.abs(plane.vel.y) / 24);
   const rateReveal = clamp01((Math.abs(plane.angVel.z) + Math.abs(plane.angVel.x) * 0.85 - 0.32) / 1.25);
-  const maneuverReveal = Math.max(bankReveal, pitchReveal, rateReveal);
+  const rawReveal = Math.max(bankReveal, pitchReveal, rateReveal);
+  const revealState = camera.userData.revealBlend || 0;
+  const revealLerp = rawReveal > revealState ? Math.min(1, dt * 4.8) : Math.min(1, dt * 1.9);
+  const maneuverReveal = revealState + (rawReveal - revealState) * revealLerp;
+  camera.userData.revealBlend = maneuverReveal;
   camera.userData.maneuverReveal = maneuverReveal;
-  const sideSign = Math.sign(planeRight.y || plane.angVel.z || 1);
+
+  const signedTurn = (planeRight.y * 0.9) + (plane.angVel.z * 0.22);
+  const targetSide = Math.abs(signedTurn) > 0.08
+    ? Math.sign(signedTurn)
+    : (camera.userData.heroSide || 1);
+  const sideState = camera.userData.heroSide || targetSide || 1;
+  const sideLerp = Math.min(1, dt * 3.4);
+  const sideSign = sideState + ((targetSide || 1) - sideState) * sideLerp;
+  camera.userData.heroSide = sideSign;
 
   const worldUp = new THREE.Vector3(0, 1, 0);
   const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
