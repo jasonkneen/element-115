@@ -7995,6 +7995,10 @@ function resetPlane() {
     camera.userData.pitchReveal = 0;
     camera.userData.cameraHeightOffset = 0;
     camera.userData.cameraFocusYOffset = 0;
+    camera.userData.verticalHeightState = null;
+    camera.userData.focusYOffsetState = null;
+    camera.userData.climbRevealState = 0;
+    camera.userData.diveRevealState = 0;
     camera.userData.heroSide = 1;
     camera.userData.turnBias = 0;
     camera.fov = 72;
@@ -9207,9 +9211,12 @@ function updateCamera(dt) {
     ? 0
     : signedPitchIntentRaw * clamp01((maneuverReveal - 0.08) / 0.84);
   const pitchRevealState = camera.userData.pitchReveal || 0;
-  const pitchRevealLerp = Math.abs(signedPitchIntent) > Math.abs(pitchRevealState)
-    ? Math.min(1, dt * 4.0)
-    : Math.min(1, dt * 2.2);
+  const pitchSignFlip = signedPitchIntent * pitchRevealState < -0.02;
+  const pitchRevealLerp = pitchSignFlip
+    ? Math.min(1, dt * 1.35)
+    : (Math.abs(signedPitchIntent) > Math.abs(pitchRevealState)
+      ? Math.min(1, dt * 3.0)
+      : Math.min(1, dt * 1.9));
   const signedPitchReveal = pitchRevealState + (signedPitchIntent - pitchRevealState) * pitchRevealLerp;
   camera.userData.pitchReveal = signedPitchReveal;
 
@@ -9218,30 +9225,55 @@ function updateCamera(dt) {
 
   const climbRevealTune = scene.userData.__cameraClimbReveal != null ? scene.userData.__cameraClimbReveal : 1.0;
   const diveRevealTune = scene.userData.__cameraDiveReveal != null ? scene.userData.__cameraDiveReveal : 1.0;
-  const climbReveal = Math.max(0, signedPitchReveal) * maneuverReveal * climbRevealTune;
-  const diveReveal = Math.max(0, -signedPitchReveal) * maneuverReveal * diveRevealTune;
+  const rawClimbReveal = Math.max(0, signedPitchReveal) * maneuverReveal * climbRevealTune;
+  const rawDiveReveal = Math.max(0, -signedPitchReveal) * maneuverReveal * diveRevealTune;
+  const prevClimbReveal = camera.userData.climbRevealState || 0;
+  const prevDiveReveal = camera.userData.diveRevealState || 0;
+  const climbReveal = prevClimbReveal + (rawClimbReveal - prevClimbReveal) * Math.min(1, dt * 1.0);
+  const diveReveal = prevDiveReveal + (rawDiveReveal - prevDiveReveal) * Math.min(1, dt * 1.0);
+  camera.userData.climbRevealState = climbReveal;
+  camera.userData.diveRevealState = diveReveal;
   const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal + 1.55 * (climbReveal + diveReveal);
-  const height = Math.max(-3.2,
+  const rawHeight = Math.max(-2.0,
     offsetRotated.y +
-    3.4 * maneuverReveal -
-    15.0 * climbReveal +
-    3.8 * diveReveal
+    3.2 * maneuverReveal -
+    8.2 * climbReveal +
+    2.8 * diveReveal
   );
+  const prevHeightState = camera.userData.verticalHeightState;
+  const heightBlend = prevHeightState == null
+    ? 1
+    : (rawHeight < prevHeightState ? Math.min(1, dt * 1.2) : Math.min(1, dt * 1.6));
+  const height = prevHeightState == null
+    ? rawHeight
+    : prevHeightState + (rawHeight - prevHeightState) * heightBlend;
+  camera.userData.verticalHeightState = height;
   const desired = plane.pos.clone()
     .addScaledVector(planeForward, -backDist)
     .addScaledVector(worldUp, height);
 
   const followK = 8.8 + maneuverReveal * 2.4;
   const t = 1 - Math.exp(-followK * dt);
-  camera.position.lerp(desired, t);
+  const verticalFollowK = 4.4 + maneuverReveal * 1.0;
+  const verticalT = 1 - Math.exp(-verticalFollowK * dt);
+  camera.position.x += (desired.x - camera.position.x) * t;
+  camera.position.z += (desired.z - camera.position.z) * t;
+  camera.position.y += (desired.y - camera.position.y) * verticalT;
 
   const gH = getHeight(camera.position.x, camera.position.z);
   if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
 
   const lookDist = 6.2 - maneuverReveal * 1.8;
+  const rawFocusYOffset = 1.9 * climbReveal - 1.3 * diveReveal;
+  const prevFocusState = camera.userData.focusYOffsetState;
+  const focusBlend = prevFocusState == null ? 1 : Math.min(1, dt * 1.0);
+  const focusYOffset = prevFocusState == null
+    ? rawFocusYOffset
+    : prevFocusState + (rawFocusYOffset - prevFocusState) * focusBlend;
+  camera.userData.focusYOffsetState = focusYOffset;
   const lookTarget = plane.pos.clone()
     .addScaledVector(planeForward, lookDist)
-    .addScaledVector(worldUp, 4.2 * climbReveal - 2.2 * diveReveal);
+    .addScaledVector(worldUp, focusYOffset);
 
   const blendedUp = worldUp;
   camera.up.copy(blendedUp);
