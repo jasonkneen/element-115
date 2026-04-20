@@ -7639,6 +7639,7 @@ function resetPlane() {
     camera.userData.maneuverReveal = 0;
     camera.userData.revealBlend = 0;
     camera.userData.heroSide = 1;
+    camera.userData.turnBias = 0;
     camera.fov = 72;
     camera.updateProjectionMatrix();
   }
@@ -8777,82 +8778,58 @@ window.addEventListener('blur', () => {
 });
 
 function updateCamera(dt) {
-  // Desired camera position: aft in aircraft space, but during aggressive
-  // manoeuvres we bias upward toward world-up and add a slight side peek so
-  // the player can read the top/bottom of the aircraft more clearly.
+  // Stable chase camera: keep the camera mostly behind and above the plane,
+  // then add only a small smoothed turn bias. This avoids the old fight
+  // between a tail-cam target and a separate hero side-cam target.
   const orbitQ = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(camOrbit.pitch, camOrbit.yaw, 0, 'YXZ')
   );
   const offsetRotated = camLocalOffset.clone().applyQuaternion(orbitQ);
   const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
   const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
-  const bankReveal = clamp01(Math.abs(planeRight.y) * 1.15);
-  const pitchReveal = clamp01(Math.abs(plane.vel.y) / 24);
-  const rateReveal = clamp01((Math.abs(plane.angVel.z) + Math.abs(plane.angVel.x) * 0.85 - 0.32) / 1.25);
+  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const worldUp = new THREE.Vector3(0, 1, 0);
+
+  const bankReveal = clamp01(Math.abs(planeRight.y) * 1.05);
+  const pitchReveal = clamp01(Math.abs(plane.vel.y) / 22);
+  const rateReveal = clamp01((Math.abs(plane.angVel.z) + Math.abs(plane.angVel.x) * 0.7 - 0.28) / 1.05);
   const rawReveal = Math.max(bankReveal, pitchReveal, rateReveal);
   const revealState = camera.userData.revealBlend || 0;
-  const revealLerp = rawReveal > revealState ? Math.min(1, dt * 4.8) : Math.min(1, dt * 1.9);
+  const revealLerp = rawReveal > revealState ? Math.min(1, dt * 4.2) : Math.min(1, dt * 1.6);
   const maneuverReveal = revealState + (rawReveal - revealState) * revealLerp;
   camera.userData.revealBlend = maneuverReveal;
   camera.userData.maneuverReveal = maneuverReveal;
 
-  const signedTurn = (planeRight.y * 0.9) + (plane.angVel.z * 0.22);
-  const targetSide = Math.abs(signedTurn) > 0.08
-    ? Math.sign(signedTurn)
-    : (camera.userData.heroSide || 1);
-  const sideState = camera.userData.heroSide || targetSide || 1;
-  const sideLerp = Math.min(1, dt * 3.4);
-  const sideSign = sideState + ((targetSide || 1) - sideState) * sideLerp;
-  camera.userData.heroSide = sideSign;
+  let targetTurnBias = (planeRight.y * 0.65) + (plane.angVel.z * 0.16);
+  if (Math.abs(targetTurnBias) < 0.06) targetTurnBias = 0;
+  targetTurnBias = Math.max(-1, Math.min(1, targetTurnBias));
+  const turnBiasState = camera.userData.turnBias || 0;
+  const turnBias = turnBiasState + (targetTurnBias - turnBiasState) * Math.min(1, dt * 2.8);
+  camera.userData.turnBias = turnBias;
 
-  const worldUp = new THREE.Vector3(0, 1, 0);
-  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-  const horizForward = planeForward.clone().setY(0);
-  if (horizForward.lengthSq() < 1e-4) horizForward.set(0, 0, -1);
-  else horizForward.normalize();
-  const horizRight = planeRight.clone().setY(0);
-  if (horizRight.lengthSq() < 1e-4) horizRight.set(1, 0, 0);
-  else horizRight.normalize();
+  const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal;
+  const sideDist = turnBias * maneuverReveal * 1.35 + offsetRotated.x * 0.18;
+  const height = Math.max(1.6, offsetRotated.y + 3.8 * maneuverReveal);
+  const desired = plane.pos.clone()
+    .addScaledVector(planeForward, -backDist)
+    .addScaledVector(planeRight, sideDist)
+    .addScaledVector(worldUp, height);
 
-  const rearLocal = new THREE.Vector3(0, 0, offsetRotated.z - 5.0 * maneuverReveal);
-  const sideLocal = new THREE.Vector3(-sideSign * 5.6 * maneuverReveal, 0, 0);
-  const liftDir = planeUp.clone().lerp(worldUp, 0.94 * maneuverReveal).normalize();
-  const liftAmount = offsetRotated.y + 6.2 * maneuverReveal;
-  const localDesired = plane.pos.clone()
-    .add(rearLocal.applyQuaternion(plane.quat))
-    .add(sideLocal.applyQuaternion(plane.quat))
-    .addScaledVector(liftDir, liftAmount);
-
-  const heroDesired = plane.pos.clone()
-    .addScaledVector(horizForward, -(offsetRotated.z + 8.0 * maneuverReveal))
-    .addScaledVector(horizRight, sideSign * (3.5 + 8.5 * maneuverReveal) + offsetRotated.x * 0.55)
-    .addScaledVector(worldUp, offsetRotated.y + 7.8 * maneuverReveal);
-  const desired = localDesired.clone().lerp(heroDesired, 0.82 * maneuverReveal);
-
-  // Frame-rate-independent exponential smoothing — more responsive during
-  // hard manoeuvres so the camera can keep up with the reveal move.
-  const followK = 9.0 + maneuverReveal * 5.5;
+  const followK = 8.8 + maneuverReveal * 2.4;
   const t = 1 - Math.exp(-followK * dt);
   camera.position.lerp(desired, t);
 
-  // Ground clearance — never let the camera dip into terrain
   const gH = getHeight(camera.position.x, camera.position.z);
   if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
 
-  // Tighten the look-ahead slightly during hard manoeuvres so the aircraft
-  // stays larger in frame and the turn/climb reads better.
-  const aheadDist = 6 - maneuverReveal * 4.2;
-  const aheadLocal = planeForward.clone().multiplyScalar(aheadDist);
-  const lookTarget = plane.pos.clone().add(aheadLocal).addScaledVector(worldUp, -0.9 * maneuverReveal);
+  const lookDist = 6.2 - maneuverReveal * 1.8;
+  const lookTarget = plane.pos.clone()
+    .addScaledVector(planeForward, lookDist)
+    .addScaledVector(worldUp, -0.35 * maneuverReveal);
 
-  // Camera up = blend of world up and plane up (mostly plane up so
-  // banking & loops feel right, with a touch of world up for stability)
-  const blendedUp = worldUp.clone()
-    .multiplyScalar(0.58 + maneuverReveal * 0.42)
-    .addScaledVector(planeUp, 0.42 - maneuverReveal * 0.42)
-    .normalize();
+  const blendedUp = worldUp.clone().lerp(planeUp, 0.16).normalize();
   camera.up.copy(blendedUp);
-  camera.fov += (((72 + maneuverReveal * 12.0)) - camera.fov) * Math.min(1, dt * 3.2);
+  camera.fov += (((72 + maneuverReveal * 6.0)) - camera.fov) * Math.min(1, dt * 2.6);
   camera.updateProjectionMatrix();
 
   camera.lookAt(lookTarget);
