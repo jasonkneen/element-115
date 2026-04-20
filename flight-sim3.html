@@ -8228,6 +8228,8 @@ function updateInputLatches(dt) {
 function updatePhysics(dt) {
   if (plane.crashed) return;
 
+  updateMouseFlightSteer(dt);
+
   // ----- Input -----
   const keyPitchIn = (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0);
   const keyRollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
@@ -9668,6 +9670,13 @@ function getMouseFlightAimLimits() {
     y: aimBoxPx / Math.max(1, h * 0.5),
   };
 }
+function updateMouseFlightSteer(dt) {
+  const aimLimit = getMouseFlightAimLimits();
+  mouseFlightState.steerX += (mouseFlightState.targetX - mouseFlightState.steerX) * Math.min(0.82, dt * 24);
+  mouseFlightState.steerY += (mouseFlightState.targetY - mouseFlightState.steerY) * Math.min(0.84, dt * 25);
+  mouseFlightState.steerX = Math.max(-aimLimit.x, Math.min(aimLimit.x, mouseFlightState.steerX));
+  mouseFlightState.steerY = Math.max(-aimLimit.y, Math.min(aimLimit.y, mouseFlightState.steerY));
+}
 function estimateTrafficVelocity(rec) {
   if (!rec || !rec.pathFn) return _hudWorldH.set(0, 0, 0);
   const sampleTime = 0.12;
@@ -9757,12 +9766,6 @@ function updateReticleHud(dt = 1 / 60) {
     reticleState.visible = false;
     return;
   }
-
-  const aimLimit = getMouseFlightAimLimits();
-  mouseFlightState.steerX += (mouseFlightState.targetX - mouseFlightState.steerX) * Math.min(0.82, dt * 24);
-  mouseFlightState.steerY += (mouseFlightState.targetY - mouseFlightState.steerY) * Math.min(0.84, dt * 25);
-  mouseFlightState.steerX = Math.max(-aimLimit.x, Math.min(aimLimit.x, mouseFlightState.steerX));
-  mouseFlightState.steerY = Math.max(-aimLimit.y, Math.min(aimLimit.y, mouseFlightState.steerY));
 
   const basePoint = getMouseFlightReticleScreenPoint();
   const wobblePhase = performance.now() * 0.0042;
