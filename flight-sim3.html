@@ -8112,6 +8112,9 @@ function updatePhysics(dt) {
   const loSpeedFade = Math.max(0.25, Math.min(1, (q - 14) / 28)); // 0.25..1
   const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012);    // 1..0.5
   const maneuverAssistTune = scene.userData.__flightManeuverAssist != null ? scene.userData.__flightManeuverAssist : 1.0;
+  const autoRudderTune = scene.userData.__flightAutoRudder != null ? scene.userData.__flightAutoRudder : 1.0;
+  const selfLevelTune = scene.userData.__flightSelfLevel != null ? scene.userData.__flightSelfLevel : 1.0;
+  const weathervaneTune = scene.userData.__flightWeathervaneYaw != null ? scene.userData.__flightWeathervaneYaw : 1.0;
   // Slowing down into the manoeuvring-speed band should tighten the turn and
   // make control inputs feel more authoritative — up to a point. Real planes
   // can carve a tighter radius at lower speed/bank, but once you're too slow
@@ -8171,20 +8174,20 @@ function updatePhysics(dt) {
   const bankSign = rightWorld.y;            // negative when banked right
   const bankAmount = Math.abs(bankSign);    // 0..1
   if (bankAmount > 0.17 && q > 25) {
-    const coordYaw = bankSign * bankAmount * 0.6;
+    const coordYaw = bankSign * bankAmount * 0.6 * autoRudderTune;
     plane.angVel.y += coordYaw * authYaw * dt;
   }
   // Input-proportional rudder: rolling right (rollIn > 0) → nose right → negative angVel.y
   if (Math.abs(rollIn) > 0.01 && q > 25) {
-    plane.angVel.y += -rollIn * 0.25 * authYaw * dt;
+    plane.angVel.y += -rollIn * 0.25 * autoRudderTune * authYaw * dt;
   }
 
   // Self-correcting stability (dihedral, weathervane)
   // Level roll restore
   const worldUpLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(invQ);
-  plane.angVel.z += -worldUpLocal.x * 0.6 * authRoll * dt;
+  plane.angVel.z += -worldUpLocal.x * 0.6 * selfLevelTune * authRoll * dt;
   // Weathervane: yaw toward velocity
-  plane.angVel.y += -localVel.x * 0.002 * authYaw * dt;
+  plane.angVel.y += -localVel.x * 0.002 * weathervaneTune * authYaw * dt;
 
   // Axis damping — user-tunable in the flight options panel so the plane can
   // be made either more planted or more snappy.
@@ -8246,7 +8249,8 @@ function updatePhysics(dt) {
   // runway instead of face-planting. Scales from 0 (high AGL) to 1.35×
   // lift at 0 AGL, decaying exponentially over ~12 m.
   const aglForGE = Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z));
-  const groundEffect = 1 + 0.35 * Math.exp(-aglForGE / 12);
+  const groundEffectTune = scene.userData.__flightGroundEffect != null ? scene.userData.__flightGroundEffect : 1.0;
+  const groundEffect = 1 + 0.35 * groundEffectTune * Math.exp(-aglForGE / 12);
   const liftTune = scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0;
   const accelTune = scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0;
   const topSpeedTuneKts = scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580;
@@ -8255,7 +8259,8 @@ function updatePhysics(dt) {
 
   // Drag: parasitic + induced (∝ CL²) + gear, plus a soft top-speed limiter
   // from the live flight tuning panel.
-  const cd = DRAG_PARASITE + DRAG_INDUCED * cl * cl + GEAR_DRAG * plane.gear;
+  const gearDragTune = scene.userData.__flightGearDrag != null ? scene.userData.__flightGearDrag : 1.0;
+  const cd = DRAG_PARASITE + DRAG_INDUCED * cl * cl + GEAR_DRAG * gearDragTune * plane.gear;
   const speedKts = speed * 1.94;
   const topSpeedRatio = topSpeedTuneKts > 1 ? speedKts / topSpeedTuneKts : 0;
   const speedLimiterDrag = topSpeedRatio > 0.92
@@ -8278,9 +8283,11 @@ function updatePhysics(dt) {
   // Holding CTRL all the way to 0% = genuine engine-off (glide-only).
   // Small hysteresis (0.03) so a slight breath on throttle doesn't jitter.
   const engineEngaged = plane.throttle > 0.03 || plane.throttleTarget > 0.03;
+  const idlePowerTune = scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0;
+  const flightIdleFrac = IDLE_THRUST_FRAC * idlePowerTune;
   const effectiveThrottle = plane.onGround
     ? plane.throttle
-    : (engineEngaged ? Math.max(IDLE_THRUST_FRAC, plane.throttle) : 0);
+    : (engineEngaged ? Math.max(flightIdleFrac, plane.throttle) : 0);
   // Engine damage directly reduces available thrust. At 100% damage
   // the engine produces only 25% of rated thrust (windmilling).
   const engineFactor = 1 - plane.damage.engine * 0.75;
@@ -11314,8 +11321,8 @@ function updateFloatingTarget(dt) {
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
     dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
-    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0,
-    brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0,
+    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
+    brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
     fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
@@ -11417,15 +11424,21 @@ function updateFloatingTarget(dt) {
     scene.userData.__flightAccel = Math.max(0.5, Math.min(1.6, gfx.flightAccel || 1.0));
     scene.userData.__flightTopSpeedKts = Math.max(220, Math.min(620, gfx.topSpeedKts || 580));
     scene.userData.__flightLift = Math.max(0.7, Math.min(1.4, gfx.liftAssist || 1.0));
+    scene.userData.__flightIdlePower = Math.max(0, Math.min(1.6, gfx.idlePower != null ? gfx.idlePower : 1.0));
     scene.userData.__flightPitchAuth = Math.max(0.6, Math.min(2.0, gfx.pitchAuthority || 1.0));
     scene.userData.__flightRollAuth = Math.max(0.6, Math.min(2.0, gfx.rollAuthority || 1.0));
     scene.userData.__flightRudderAuth = Math.max(0.6, Math.min(2.0, gfx.rudderAuthority || 1.0));
+    scene.userData.__flightAutoRudder = Math.max(0, Math.min(2.0, gfx.autoRudder != null ? gfx.autoRudder : 1.0));
     scene.userData.__flightBrake = Math.max(0.5, Math.min(2.0, gfx.brakeStrength || 1.0));
     scene.userData.__flightPitchDamp = Math.max(0.6, Math.min(1.8, gfx.pitchDamping || 1.0));
     scene.userData.__flightRollDamp = Math.max(0.6, Math.min(1.8, gfx.rollDamping || 1.0));
     scene.userData.__flightRudderDamp = Math.max(0.6, Math.min(1.8, gfx.rudderDamping || 1.0));
     scene.userData.__flightStallSoft = Math.max(0.7, Math.min(1.5, gfx.stallSoftness || 1.0));
     scene.userData.__flightManeuverAssist = Math.max(0.5, Math.min(1.8, gfx.maneuverAssist || 1.0));
+    scene.userData.__flightSelfLevel = Math.max(0, Math.min(2.0, gfx.selfLevel != null ? gfx.selfLevel : 1.0));
+    scene.userData.__flightWeathervaneYaw = Math.max(0, Math.min(2.0, gfx.weathervaneYaw != null ? gfx.weathervaneYaw : 1.0));
+    scene.userData.__flightGearDrag = Math.max(0, Math.min(2.5, gfx.gearDrag != null ? gfx.gearDrag : 1.0));
+    scene.userData.__flightGroundEffect = Math.max(0, Math.min(2.0, gfx.groundEffectStrength != null ? gfx.groundEffectStrength : 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -11590,16 +11603,22 @@ function updateFloatingTarget(dt) {
     panel.appendChild(planeGrid);
 
     panel.appendChild(el('div', { style: headerStyle }, 'FLIGHT'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune how fast the plane accelerates, how much lift it has, and how snappy pitch / roll / rudder feel.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune power, turn bite, auto-stability, and landing feel. Lower damping / self-level for a looser aerobatic plane.'));
     panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
+    panel.appendChild(makeSliderRow('idlePower', 0, 1.6, 0.05, 'IDLE POWER', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('pitchAuthority', 0.6, 2.0, 0.05, 'PITCH AUTHORITY', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rollAuthority', 0.6, 2.0, 0.05, 'ROLL / TURN', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rudderAuthority', 0.6, 2.0, 0.05, 'RUDDER', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('autoRudder', 0, 2.0, 0.05, 'AUTO-RUDDER', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('maneuverAssist', 0.5, 1.8, 0.05, 'MANEUVER ASSIST', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('stallSoftness', 0.7, 1.5, 0.05, 'STALL SOFTNESS', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('groundEffectStrength', 0, 2.0, 0.05, 'GROUND EFFECT', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('brakeStrength', 0.5, 2.0, 0.05, 'BRAKE STRENGTH', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('selfLevel', 0, 2.0, 0.05, 'SELF-LEVEL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('weathervaneYaw', 0, 2.0, 0.05, 'WEATHERVANE YAW', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('gearDrag', 0, 2.5, 0.05, 'GEAR DRAG', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('pitchDamping', 0.6, 1.8, 0.05, 'PITCH DAMPING', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rollDamping', 0.6, 1.8, 0.05, 'ROLL DAMPING', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
@@ -11766,10 +11785,16 @@ window.__ap = {
       flight_accel: scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0,
       flight_top_speed_kts: scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580,
       flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
+      flight_idle_power: scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0,
       flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
       flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
       flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
+      flight_auto_rudder: scene.userData.__flightAutoRudder != null ? scene.userData.__flightAutoRudder : 1.0,
       flight_brake_strength: scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0,
+      flight_self_level: scene.userData.__flightSelfLevel != null ? scene.userData.__flightSelfLevel : 1.0,
+      flight_weathervane_yaw: scene.userData.__flightWeathervaneYaw != null ? scene.userData.__flightWeathervaneYaw : 1.0,
+      flight_gear_drag: scene.userData.__flightGearDrag != null ? scene.userData.__flightGearDrag : 1.0,
+      flight_ground_effect: scene.userData.__flightGroundEffect != null ? scene.userData.__flightGroundEffect : 1.0,
       flight_pitch_damping: scene.userData.__flightPitchDamp != null ? scene.userData.__flightPitchDamp : 1.0,
       flight_roll_damping: scene.userData.__flightRollDamp != null ? scene.userData.__flightRollDamp : 1.0,
       flight_rudder_damping: scene.userData.__flightRudderDamp != null ? scene.userData.__flightRudderDamp : 1.0,
