@@ -7992,6 +7992,9 @@ function resetPlane() {
   if (camera) {
     camera.userData.maneuverReveal = 0;
     camera.userData.revealBlend = 0;
+    camera.userData.pitchReveal = 0;
+    camera.userData.cameraHeightOffset = 0;
+    camera.userData.cameraFocusYOffset = 0;
     camera.userData.heroSide = 1;
     camera.userData.turnBias = 0;
     camera.fov = 72;
@@ -9193,11 +9196,35 @@ function updateCamera(dt) {
   camera.userData.revealBlend = maneuverReveal;
   camera.userData.maneuverReveal = maneuverReveal;
 
+  // Signed pitch reveal: climb drops the chase camera lower to expose more
+  // of the belly/underside silhouette; dives lift the camera higher to show
+  // more of the wing tops. This stays purely vertical — no side drift.
+  const signedPitchIntentRaw = Math.max(-1, Math.min(1,
+    planeForward.y * 1.85 +
+    plane.vel.y / 14
+  ));
+  const signedPitchIntent = plane.onGround
+    ? 0
+    : signedPitchIntentRaw * clamp01((maneuverReveal - 0.08) / 0.84);
+  const pitchRevealState = camera.userData.pitchReveal || 0;
+  const pitchRevealLerp = Math.abs(signedPitchIntent) > Math.abs(pitchRevealState)
+    ? Math.min(1, dt * 4.0)
+    : Math.min(1, dt * 2.2);
+  const signedPitchReveal = pitchRevealState + (signedPitchIntent - pitchRevealState) * pitchRevealLerp;
+  camera.userData.pitchReveal = signedPitchReveal;
+
   const turnBias = 0;
   camera.userData.turnBias = 0;
 
-  const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal;
-  const height = Math.max(1.6, offsetRotated.y + 3.8 * maneuverReveal);
+  const climbReveal = Math.max(0, signedPitchReveal) * maneuverReveal;
+  const diveReveal = Math.max(0, -signedPitchReveal) * maneuverReveal;
+  const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal + 1.55 * (climbReveal + diveReveal);
+  const height = Math.max(-3.2,
+    offsetRotated.y +
+    3.4 * maneuverReveal -
+    15.0 * climbReveal +
+    3.8 * diveReveal
+  );
   const desired = plane.pos.clone()
     .addScaledVector(planeForward, -backDist)
     .addScaledVector(worldUp, height);
@@ -9210,7 +9237,9 @@ function updateCamera(dt) {
   if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
 
   const lookDist = 6.2 - maneuverReveal * 1.8;
-  const lookTarget = plane.pos.clone().addScaledVector(planeForward, lookDist);
+  const lookTarget = plane.pos.clone()
+    .addScaledVector(planeForward, lookDist)
+    .addScaledVector(worldUp, 4.2 * climbReveal - 2.2 * diveReveal);
 
   const blendedUp = worldUp;
   camera.up.copy(blendedUp);
@@ -9219,6 +9248,8 @@ function updateCamera(dt) {
 
   camera.lookAt(lookTarget);
   camera.userData.focusTarget = lookTarget.clone();
+  camera.userData.cameraHeightOffset = camera.position.y - plane.pos.y;
+  camera.userData.cameraFocusYOffset = lookTarget.y - plane.pos.y;
 }
 
 // =============================================================
@@ -11846,7 +11877,10 @@ window.__ap = {
       throat_clear_smoke: engineSurgeState.throatClear,
       wing_trail_intensity: scene.userData.__wingTrailIntensity || 0,
       camera_reveal: camera.userData.maneuverReveal || 0,
+      camera_pitch_reveal: camera.userData.pitchReveal || 0,
       camera_fov: camera.fov,
+      camera_height_offset: camera.userData.cameraHeightOffset || 0,
+      camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
       crash_fx_active: !!combatState.crashFxTriggered,
       flight_phase: flightPhaseState.label,
       mission_grade: missionDebriefState.grade,
