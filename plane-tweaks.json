@@ -1,10 +1,65 @@
 {
   "models/disney_planes_-_dusty_turbo.glb": {
+    "s": 0.0178,
     "rx": 11,
     "ry": 180,
     "rz": 0,
     "px": 0,
     "py": -2,
     "pz": 0
+  },
+  "models/corsair_f4u-1_airplane.glb": {
+    "s": 27.4503,
+    "rx": -15,
+    "ry": 1,
+    "rz": 0,
+    "px": 0,
+    "py": -1.4,
+    "pz": 4
+  },
+  "models/italian_macchi_c.202_folgore.glb": {
+    "s": 0.05,
+    "rx": -13,
+    "ry": 180,
+    "rz": 0,
+    "px": 10.5,
+    "py": -5.15,
+    "pz": -11.8
+  },
+  "models/low_poly_plane.glb": {
+    "s": 1.0891,
+    "rx": -11,
+    "ry": 180,
+    "rz": 0,
+    "px": 0.044,
+    "py": -0.95,
+    "pz": -0.104
+  },
+  "models/crank_bush_plane.glb": {
+    "s": 1.0213,
+    "rx": -14,
+    "ry": 180,
+    "rz": 0,
+    "px": -0.05,
+    "py": -0.8,
+    "pz": 0.95
+  },
+  "models/colombian_emb_314_tucano.glb": {
+    "s": 1.0909,
+    "rx": -14,
+    "ry": 180,
+    "rz": 0,
+    "px": 0,
+    "py": -2.3,
+    "pz": 0.081
+  },
+  "models/yak-9.glb": {
+    "s": 0.267,
+    "rx": -10,
+    "ry": 179,
+    "rz": 0,
+    "px": 0,
+    "py": -0.35,
+    "pz": 0.521
   }
 }
