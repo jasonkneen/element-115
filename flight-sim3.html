@@ -8800,15 +8800,11 @@ function updateCamera(dt) {
   camera.userData.revealBlend = maneuverReveal;
   camera.userData.maneuverReveal = maneuverReveal;
 
-  let targetTurnBias = (planeRight.y * 0.65) + (plane.angVel.z * 0.16);
-  if (Math.abs(targetTurnBias) < 0.06) targetTurnBias = 0;
-  targetTurnBias = Math.max(-1, Math.min(1, targetTurnBias));
-  const turnBiasState = camera.userData.turnBias || 0;
-  const turnBias = turnBiasState + (targetTurnBias - turnBiasState) * Math.min(1, dt * 2.8);
-  camera.userData.turnBias = turnBias;
+  const turnBias = 0;
+  camera.userData.turnBias = 0;
 
   const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal;
-  const sideDist = turnBias * maneuverReveal * 1.35 + offsetRotated.x * 0.18;
+  const sideDist = offsetRotated.x * 0.08;
   const height = Math.max(1.6, offsetRotated.y + 3.8 * maneuverReveal);
   const desired = plane.pos.clone()
     .addScaledVector(planeForward, -backDist)
