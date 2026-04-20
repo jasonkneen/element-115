@@ -8791,14 +8791,29 @@ function updateCamera(dt) {
   camera.userData.maneuverReveal = maneuverReveal;
   const sideSign = Math.sign(planeRight.y || plane.angVel.z || 1);
 
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const horizForward = planeForward.clone().setY(0);
+  if (horizForward.lengthSq() < 1e-4) horizForward.set(0, 0, -1);
+  else horizForward.normalize();
+  const horizRight = planeRight.clone().setY(0);
+  if (horizRight.lengthSq() < 1e-4) horizRight.set(1, 0, 0);
+  else horizRight.normalize();
+
   const rearLocal = new THREE.Vector3(0, 0, offsetRotated.z - 5.0 * maneuverReveal);
   const sideLocal = new THREE.Vector3(-sideSign * 5.6 * maneuverReveal, 0, 0);
-  const liftDir = planeUp.clone().lerp(new THREE.Vector3(0, 1, 0), 0.94 * maneuverReveal).normalize();
+  const liftDir = planeUp.clone().lerp(worldUp, 0.94 * maneuverReveal).normalize();
   const liftAmount = offsetRotated.y + 6.2 * maneuverReveal;
-  const desired = plane.pos.clone()
+  const localDesired = plane.pos.clone()
     .add(rearLocal.applyQuaternion(plane.quat))
     .add(sideLocal.applyQuaternion(plane.quat))
     .addScaledVector(liftDir, liftAmount);
+
+  const heroDesired = plane.pos.clone()
+    .addScaledVector(horizForward, -(offsetRotated.z + 8.0 * maneuverReveal))
+    .addScaledVector(horizRight, sideSign * (3.5 + 8.5 * maneuverReveal) + offsetRotated.x * 0.55)
+    .addScaledVector(worldUp, offsetRotated.y + 7.8 * maneuverReveal);
+  const desired = localDesired.clone().lerp(heroDesired, 0.82 * maneuverReveal);
 
   // Frame-rate-independent exponential smoothing — more responsive during
   // hard manoeuvres so the camera can keep up with the reveal move.
@@ -8813,17 +8828,17 @@ function updateCamera(dt) {
   // Tighten the look-ahead slightly during hard manoeuvres so the aircraft
   // stays larger in frame and the turn/climb reads better.
   const aheadDist = 6 - maneuverReveal * 4.2;
-  const aheadLocal = new THREE.Vector3(0, 0, -aheadDist).applyQuaternion(plane.quat);
-  const lookTarget = plane.pos.clone().add(aheadLocal).addScaledVector(liftDir, -0.55 * maneuverReveal);
+  const aheadLocal = planeForward.clone().multiplyScalar(aheadDist);
+  const lookTarget = plane.pos.clone().add(aheadLocal).addScaledVector(worldUp, -0.9 * maneuverReveal);
 
   // Camera up = blend of world up and plane up (mostly plane up so
   // banking & loops feel right, with a touch of world up for stability)
-  const blendedUp = new THREE.Vector3(0, 1, 0)
-    .multiplyScalar(0.38 + maneuverReveal * 0.26)
-    .addScaledVector(planeUp, 0.62 - maneuverReveal * 0.26)
+  const blendedUp = worldUp.clone()
+    .multiplyScalar(0.58 + maneuverReveal * 0.42)
+    .addScaledVector(planeUp, 0.42 - maneuverReveal * 0.42)
     .normalize();
   camera.up.copy(blendedUp);
-  camera.fov += (((72 + maneuverReveal * 10.5)) - camera.fov) * Math.min(1, dt * 3.2);
+  camera.fov += (((72 + maneuverReveal * 12.0)) - camera.fov) * Math.min(1, dt * 3.2);
   camera.updateProjectionMatrix();
 
   camera.lookAt(lookTarget);
