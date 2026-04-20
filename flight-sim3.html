@@ -9714,6 +9714,36 @@ function collectAirTargetCandidates() {
   }
   return targets;
 }
+function getMouseFlightReticleScreenPoint() {
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  const limits = getMouseFlightAimLimits();
+  const centerX = w * 0.5;
+  const centerY = h * 0.43;
+  const fallback = {
+    x: centerX + mouseFlightState.targetX * w * 0.5,
+    y: centerY - mouseFlightState.targetY * h * 0.5,
+  };
+  if (!camera || !jet?.userData?.gunL || !jet?.userData?.gunR) return fallback;
+  const muzzleL = _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
+  const muzzleR = _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
+  const origin = _hudWorldC.copy(muzzleL).add(muzzleR).multiplyScalar(0.5);
+  const forward = _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const reticleWorld = _hudWorldD.copy(forward).multiplyScalar(420).add(origin);
+  const reticleNdc = _hudNdcA.copy(reticleWorld).project(camera);
+  if (!Number.isFinite(reticleNdc.x) || !Number.isFinite(reticleNdc.y) || reticleNdc.z <= -2 || reticleNdc.z >= 2) {
+    return fallback;
+  }
+  if (Math.abs(reticleNdc.x) > 2.5 || Math.abs(reticleNdc.y) > 2.5) {
+    return fallback;
+  }
+  reticleNdc.x = Math.max(-limits.x, Math.min(limits.x, reticleNdc.x));
+  reticleNdc.y = Math.max(-limits.y, Math.min(limits.y, reticleNdc.y));
+  return {
+    x: w * 0.5 + reticleNdc.x * w * 0.5,
+    y: h * 0.5 - reticleNdc.y * h * 0.5,
+  };
+}
 function updateReticleHud(dt = 1 / 60) {
   if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
     if ($crosshair) $crosshair.style.opacity = '0';
@@ -9728,36 +9758,23 @@ function updateReticleHud(dt = 1 / 60) {
     return;
   }
 
-  const localVelHud = _hudWorldE.copy(plane.vel).applyQuaternion(_hudQuatA.copy(plane.quat).invert());
-  const wobbleBase = 0.35 + Math.min(1.65, plane.angVel.length() * 0.9 + Math.abs(localVelHud.x) * 0.02 + Math.abs(localVelHud.y) * 0.012);
-  const wobblePhase = performance.now() * 0.0045;
-  const driftX = plane.angVel.y * 2.1 + localVelHud.x * 0.028 + Math.sin(wobblePhase + plane.pos.z * 0.0012) * wobbleBase;
-  const driftY = -plane.angVel.x * 2.8 - localVelHud.y * 0.018 + Math.cos(wobblePhase * 1.12 + plane.pos.x * 0.0014) * wobbleBase * 0.62;
-  const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
-  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 3.4 : 0;
   const aimLimit = getMouseFlightAimLimits();
   mouseFlightState.steerX += (mouseFlightState.targetX - mouseFlightState.steerX) * Math.min(0.82, dt * 24);
   mouseFlightState.steerY += (mouseFlightState.targetY - mouseFlightState.steerY) * Math.min(0.84, dt * 25);
   mouseFlightState.steerX = Math.max(-aimLimit.x, Math.min(aimLimit.x, mouseFlightState.steerX));
   mouseFlightState.steerY = Math.max(-aimLimit.y, Math.min(aimLimit.y, mouseFlightState.steerY));
-  const centerX = window.innerWidth * 0.5;
-  const centerY = window.innerHeight * 0.43;
-  const targetX = Math.max(24, Math.min(window.innerWidth - 24, centerX + mouseFlightState.steerX * window.innerWidth * 0.5 + driftX));
-  const targetY = Math.max(24, Math.min(window.innerHeight - 24, centerY - mouseFlightState.steerY * window.innerHeight * 0.5 + driftY - recoilKick));
 
-  const springK = 86;
-  const damping = Math.exp(-dt * 11.0);
-  if (!reticleState.visible) {
-    reticleState.x = targetX;
-    reticleState.y = targetY;
-    reticleState.vx = 0;
-    reticleState.vy = 0;
-  } else {
-    reticleState.vx = (reticleState.vx + (targetX - reticleState.x) * springK * dt) * damping;
-    reticleState.vy = (reticleState.vy + (targetY - reticleState.y) * springK * dt) * damping;
-    reticleState.x += reticleState.vx * dt;
-    reticleState.y += reticleState.vy * dt;
-  }
+  const basePoint = getMouseFlightReticleScreenPoint();
+  const wobblePhase = performance.now() * 0.0042;
+  const wobbleX = Math.sin(wobblePhase + plane.pos.z * 0.0009) * 0.9;
+  const wobbleY = Math.cos(wobblePhase * 1.08 + plane.pos.x * 0.0012) * 0.7;
+  const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
+  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 2.2 : 0;
+
+  reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x + wobbleX));
+  reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y + wobbleY - recoilKick));
+  reticleState.vx = 0;
+  reticleState.vy = 0;
   reticleState.visible = true;
   $crosshair.style.opacity = '1';
   $crosshair.style.left = `${reticleState.x.toFixed(1)}px`;
