@@ -8233,20 +8233,10 @@ function updatePhysics(dt) {
   const keyRollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
   const keyYawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
                   - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
-  const reticleCenterX = window.innerWidth * 0.5;
-  const reticleCenterY = window.innerHeight * 0.43;
-  const rawMouseSteerX = reticleState.visible ? (reticleState.x - reticleCenterX) / Math.max(120, window.innerWidth * 0.23) : 0;
-  const rawMouseSteerY = reticleState.visible ? (reticleCenterY - reticleState.y) / Math.max(90, window.innerHeight * 0.19) : 0;
-  const mouseDeadzone = 0.035;
-  const mouseSteerX = Math.abs(rawMouseSteerX) < mouseDeadzone ? 0 : Math.max(-1, Math.min(1, rawMouseSteerX));
-  const mouseSteerY = Math.abs(rawMouseSteerY) < mouseDeadzone ? 0 : Math.max(-1, Math.min(1, rawMouseSteerY));
   const mouseBlend = plane.onGround ? 0 : 1;
-  mouseFlightState.steerX += (mouseSteerX * mouseBlend - mouseFlightState.steerX) * Math.min(1, dt * 7.8);
-  mouseFlightState.steerY += (mouseSteerY * mouseBlend - mouseFlightState.steerY) * Math.min(1, dt * 7.8);
-  const mouseRollAssist = Math.abs(keyRollIn) < 0.01 ? mouseFlightState.steerX * 0.34 : 0;
-  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + mouseFlightState.steerY * 1.08));
-  const rollIn  = Math.max(-1, Math.min(1, keyRollIn + mouseRollAssist));
-  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + mouseFlightState.steerX * 0.92));
+  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + mouseFlightState.steerY * 2.35 * mouseBlend));
+  const rollIn  = Math.max(-1, Math.min(1, keyRollIn));
+  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + mouseFlightState.steerX * 2.55 * mouseBlend));
 
   if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
   if (keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
@@ -9284,20 +9274,50 @@ window.addEventListener('pointerdown', (e) => {
   const t = e.target;
   if (e.button === 0) {
     if (mouseFlightUiTarget(t)) return;
+    if (renderer?.domElement?.requestPointerLock && document.pointerLockElement !== renderer.domElement) {
+      try { renderer.domElement.requestPointerLock(); } catch {}
+    }
+    mouseFlightState.lastClientX = e.clientX;
+    mouseFlightState.lastClientY = e.clientY;
     combatState.fireHeld = true;
     return;
   }
   if (e.button === 2) {
     if (mouseFlightUiTarget(t)) return;
+    if (renderer?.domElement?.requestPointerLock && document.pointerLockElement !== renderer.domElement) {
+      try { renderer.domElement.requestPointerLock(); } catch {}
+    }
     recenterMouseFlightReticle();
+    mouseFlightState.lastClientX = e.clientX;
+    mouseFlightState.lastClientY = e.clientY;
     e.preventDefault();
   }
 }, true);
 
 window.addEventListener('pointermove', (e) => {
-  if (mouseFlightUiTarget(e.target)) return;
-  mouseFlightState.targetX = Math.max(24, Math.min(window.innerWidth - 24, e.clientX));
-  mouseFlightState.targetY = Math.max(24, Math.min(window.innerHeight - 24, e.clientY));
+  if (!running || mouseFlightUiTarget(e.target)) return;
+  let dx = 0;
+  let dy = 0;
+  if (document.pointerLockElement === renderer.domElement) {
+    dx = e.movementX || 0;
+    dy = e.movementY || 0;
+  } else {
+    if (mouseFlightState.lastClientX == null || mouseFlightState.lastClientY == null) {
+      mouseFlightState.lastClientX = e.clientX;
+      mouseFlightState.lastClientY = e.clientY;
+      return;
+    }
+    dx = e.clientX - mouseFlightState.lastClientX;
+    dy = e.clientY - mouseFlightState.lastClientY;
+    mouseFlightState.lastClientX = e.clientX;
+    mouseFlightState.lastClientY = e.clientY;
+  }
+  if (dx === 0 && dy === 0) return;
+  const mag = Math.hypot(dx, dy);
+  const accel = 0.08 + Math.min(0.42, Math.pow(mag / 54, 1.18) * 0.34);
+  const { x: aimLimitX, y: aimLimitY } = getMouseFlightAimLimits();
+  mouseFlightState.targetX = Math.max(-aimLimitX, Math.min(aimLimitX, mouseFlightState.targetX + dx * 0.00042 * (1 + accel)));
+  mouseFlightState.targetY = Math.max(-aimLimitY, Math.min(aimLimitY, mouseFlightState.targetY - dy * 0.0006 * (1 + accel)));
 }, true);
 
 window.addEventListener('pointerup', (e) => {
@@ -9309,7 +9329,16 @@ window.addEventListener('pointercancel', () => { combatState.fireHeld = false; }
 // stays latched after alt-tab / modal focus changes.
 window.addEventListener('blur', () => {
   combatState.fireHeld = false;
+  mouseFlightState.lastClientX = null;
+  mouseFlightState.lastClientY = null;
   for (const k of Object.keys(keys)) keys[k] = false;
+});
+
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement !== renderer.domElement) {
+    mouseFlightState.lastClientX = null;
+    mouseFlightState.lastClientY = null;
+  }
 });
 
 function updateCamera(dt) {
@@ -9513,10 +9542,12 @@ const reticleState = {
   visible: false,
 };
 const mouseFlightState = {
-  targetX: window.innerWidth * 0.5,
-  targetY: window.innerHeight * 0.43,
+  targetX: 0,
+  targetY: 0,
   steerX: 0,
   steerY: 0,
+  lastClientX: null,
+  lastClientY: null,
 };
 const targetHudState = {
   boxes: [],
@@ -9580,10 +9611,7 @@ function resetReticleHud() {
   reticleState.vx = 0;
   reticleState.vy = 0;
   reticleState.visible = false;
-  mouseFlightState.targetX = reticleState.x;
-  mouseFlightState.targetY = reticleState.y;
-  mouseFlightState.steerX = 0;
-  mouseFlightState.steerY = 0;
+  recenterMouseFlightReticle();
   targetHudState.visibleCount = 0;
   targetHudState.activeId = '';
   targetHudState.activeLabel = '';
@@ -9624,10 +9652,21 @@ function mouseFlightUiTarget(target) {
   );
 }
 function recenterMouseFlightReticle() {
-  mouseFlightState.targetX = window.innerWidth * 0.5;
-  mouseFlightState.targetY = window.innerHeight * 0.43;
+  mouseFlightState.targetX = 0;
+  mouseFlightState.targetY = 0;
   mouseFlightState.steerX = 0;
   mouseFlightState.steerY = 0;
+  mouseFlightState.lastClientX = null;
+  mouseFlightState.lastClientY = null;
+}
+function getMouseFlightAimLimits() {
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  const aimBoxPx = 300;
+  return {
+    x: aimBoxPx / Math.max(1, w * 0.5),
+    y: aimBoxPx / Math.max(1, h * 0.5),
+  };
 }
 function estimateTrafficVelocity(rec) {
   if (!rec || !rec.pathFn) return _hudWorldH.set(0, 0, 0);
@@ -9696,9 +9735,15 @@ function updateReticleHud(dt = 1 / 60) {
   const driftY = -plane.angVel.x * 2.8 - localVelHud.y * 0.018 + Math.cos(wobblePhase * 1.12 + plane.pos.x * 0.0014) * wobbleBase * 0.62;
   const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
   const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 3.4 : 0;
-
-  const targetX = Math.max(24, Math.min(window.innerWidth - 24, mouseFlightState.targetX + driftX));
-  const targetY = Math.max(24, Math.min(window.innerHeight - 24, mouseFlightState.targetY + driftY - recoilKick));
+  const aimLimit = getMouseFlightAimLimits();
+  mouseFlightState.steerX += (mouseFlightState.targetX - mouseFlightState.steerX) * Math.min(0.82, dt * 24);
+  mouseFlightState.steerY += (mouseFlightState.targetY - mouseFlightState.steerY) * Math.min(0.84, dt * 25);
+  mouseFlightState.steerX = Math.max(-aimLimit.x, Math.min(aimLimit.x, mouseFlightState.steerX));
+  mouseFlightState.steerY = Math.max(-aimLimit.y, Math.min(aimLimit.y, mouseFlightState.steerY));
+  const centerX = window.innerWidth * 0.5;
+  const centerY = window.innerHeight * 0.43;
+  const targetX = Math.max(24, Math.min(window.innerWidth - 24, centerX + mouseFlightState.steerX * window.innerWidth * 0.5 + driftX));
+  const targetY = Math.max(24, Math.min(window.innerHeight - 24, centerY - mouseFlightState.steerY * window.innerHeight * 0.5 + driftY - recoilKick));
 
   const springK = 86;
   const damping = Math.exp(-dt * 11.0);
@@ -12348,7 +12393,12 @@ function updateFloatingTarget(dt) {
   }, 'FPS —');
   (hudEl || document.body).appendChild(fpsDiv);
 
-  const openOptions = () => { graphicsOverlay.style.display = 'block'; };
+  const openOptions = () => {
+    if (document.pointerLockElement === renderer.domElement && document.exitPointerLock) {
+      try { document.exitPointerLock(); } catch {}
+    }
+    graphicsOverlay.style.display = 'block';
+  };
   const closeOptions = () => { graphicsOverlay.style.display = 'none'; };
   const toggleOptions = () => {
     if (graphicsOverlay.style.display === 'block') closeOptions();
