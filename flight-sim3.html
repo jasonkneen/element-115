@@ -8235,10 +8235,9 @@ function updatePhysics(dt) {
   const keyRollIn  = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
   const keyYawIn   = ((keys['KeyE'] || keys['ArrowRight']) ? 1 : 0)
                   - ((keys['KeyQ'] || keys['ArrowLeft']) ? 1 : 0);
-  const mouseBlend = plane.onGround ? 0 : 1;
-  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + mouseFlightState.steerY * 2.35 * mouseBlend));
+  const pitchIn = keyPitchIn;
   const rollIn  = Math.max(-1, Math.min(1, keyRollIn));
-  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + mouseFlightState.steerX * 2.55 * mouseBlend));
+  const yawIn   = keyYawIn;
 
   if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4);
   if (keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4);
@@ -8317,6 +8316,17 @@ function updatePhysics(dt) {
   plane.angVel.x += pitchIn * 3.4 * authPitch * pitchAuthorityTune * dt;
   plane.angVel.z += -rollIn * 5.6 * authRoll * rollAuthorityTune * dt;
   plane.angVel.y += -yawIn * 3.2 * authYaw * rudderAuthorityTune * dt;
+
+  const mousePitchSteer = plane.onGround ? 0 : mouseFlightState.steerY;
+  const mouseYawSteer = plane.onGround ? 0 : mouseFlightState.steerX;
+  if (Math.abs(mousePitchSteer) > 0.008) {
+    const mousePitchRateTarget = mousePitchSteer * 3.8 * Math.max(0.72, authPitch) * pitchAuthorityTune;
+    plane.angVel.x += (mousePitchRateTarget - plane.angVel.x) * Math.min(1, dt * 5.2);
+  }
+  if (Math.abs(mouseYawSteer) > 0.008) {
+    const mouseYawRateTarget = -mouseYawSteer * 4.2 * Math.max(0.68, authYaw) * rudderAuthorityTune;
+    plane.angVel.y += (mouseYawRateTarget - plane.angVel.y) * Math.min(1, dt * 5.0);
+  }
 
   // D13 — Airframe integrity: damaged wings introduce a roll bias and
   // general instability. Effect is subtle at full health, meaningful
@@ -9768,14 +9778,9 @@ function updateReticleHud(dt = 1 / 60) {
   }
 
   const basePoint = getMouseFlightReticleScreenPoint();
-  const wobblePhase = performance.now() * 0.0042;
-  const wobbleX = Math.sin(wobblePhase + plane.pos.z * 0.0009) * 0.9;
-  const wobbleY = Math.cos(wobblePhase * 1.08 + plane.pos.x * 0.0012) * 0.7;
-  const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
-  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 2.2 : 0;
 
-  reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x + wobbleX));
-  reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y + wobbleY - recoilKick));
+  reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x));
+  reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y));
   reticleState.vx = 0;
   reticleState.vy = 0;
   reticleState.visible = true;
