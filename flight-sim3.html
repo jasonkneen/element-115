@@ -67,15 +67,9 @@
   }
   #instruments::before,
   #throttle-wrap::before {
-    position: absolute;
-    top: 4px;
-    left: 12px;
-    font-size: 7px;
-    letter-spacing: 0.22em;
-    color: rgba(255, 226, 170, 0.46);
+    content: none;
+    display: none;
   }
-  #instruments::before { content: 'FLIGHT SURFACE'; }
-  #throttle-wrap::before { content: 'CONTROL SURFACE'; }
   .top-surface-strip,
   .bottom-surface-strip {
     box-shadow: 0 16px 44px rgba(0, 0, 0, 0.24);
@@ -148,6 +142,21 @@
     font-size: 28px;
     line-height: 0.86;
   }
+  #instruments .hud-primary-chip .hud-value,
+  #throttle-wrap .hud-primary-chip .hud-value,
+  .hud-primary-chip .hud-value,
+  .hud-engine-chip.hud-primary-chip .hud-value {
+    font-size: 36px;
+    line-height: 0.8;
+    letter-spacing: -0.065em;
+  }
+  .hud-primary-chip .hud-unit {
+    font-size: 12px;
+    color: rgba(255, 240, 214, 0.82);
+  }
+  .hud-primary-chip .hud-label {
+    color: rgba(255, 226, 170, 0.68);
+  }
   .hud-unit,
   .hud-subtle {
     color: rgba(255, 240, 214, 0.72);
@@ -155,7 +164,7 @@
     letter-spacing: 0.08em;
   }
   .hud-subtle > span {
-    font-size: 17px;
+    font-size: 18px;
     line-height: 0.92;
     font-weight: 700;
     color: #fff2cf;
@@ -263,7 +272,7 @@
     -webkit-backdrop-filter: blur(18px) saturate(145%);
   }
   #controls-help::before {
-    content: 'INPUTS';
+    content: 'CONTROLS';
     align-self: center;
     padding: 0 4px 0 2px;
     color: rgba(255, 226, 170, 0.58);
@@ -276,9 +285,9 @@
     border-radius: 999px;
     line-height: 1.2;
     color: rgba(255, 240, 214, 0.72);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
   #controls-help.collapsed {
     left: 50%;
@@ -289,7 +298,7 @@
     gap: 0;
   }
   #controls-help.collapsed::before {
-    content: 'INPUTS [H]';
+    content: 'CONTROLS [H]';
     margin-bottom: 0;
   }
   #controls-help.collapsed > div {
@@ -319,6 +328,7 @@
   .bar > div { height: 100%; background: linear-gradient(90deg, #ffcc66, #ff8844); transition: width 0.12s; }
   .warn { color: #ff5533; }
   .ok { color: #66ff99; }
+  .err { color: #ff6f6f; }
   .hud-action {
     display: block;
     width: 100%;
@@ -486,87 +496,6 @@
     color: rgba(255, 231, 176, 0.62);
     line-height: 1.4;
   }
-  #title .plane-selection-card {
-    position: relative;
-    margin-top: 14px;
-    padding: 14px 14px 12px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 215, 150, 0.14);
-    background: linear-gradient(180deg, rgba(14,18,26,0.38), rgba(8,10,16,0.14));
-    backdrop-filter: blur(16px) saturate(140%);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
-    pointer-events: auto;
-  }
-  #title .plane-selection-card::before {
-    content: 'PROP FLIGHT LINE';
-    display: block;
-    margin-bottom: 10px;
-    font-size: 9px;
-    letter-spacing: 0.22em;
-    color: rgba(255, 231, 176, 0.7);
-  }
-  #title .plane-picker-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-  #title .plane-picker-btn {
-    display: grid;
-    gap: 4px;
-    min-height: 74px;
-    padding: 10px 11px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,215,150,0.12);
-    background: rgba(255,255,255,0.035);
-    color: #fff2cf;
-    font: 600 11px/1.15 var(--game-font-ui);
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
-  }
-  #title .plane-picker-btn:hover {
-    border-color: rgba(255,225,170,0.28);
-    background: rgba(255,204,102,0.08);
-    transform: translateY(-1px);
-  }
-  #title .plane-picker-btn.active {
-    border-color: rgba(255,225,170,0.42);
-    background: linear-gradient(180deg, rgba(255,204,102,0.16), rgba(255,255,255,0.05));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.18);
-  }
-  #title .plane-picker-name {
-    font-size: 12px;
-    line-height: 1.15;
-    letter-spacing: 0.03em;
-    color: #fff3d8;
-  }
-  #title .plane-picker-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    font-size: 9px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(255, 231, 176, 0.58);
-  }
-  #title .plane-picker-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 3px 7px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,225,170,0.2);
-    background: rgba(255,255,255,0.04);
-    color: rgba(255, 242, 207, 0.9);
-  }
-  #title .plane-picker-note {
-    margin-top: 10px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    color: rgba(255, 231, 176, 0.62);
-    line-height: 1.4;
-  }
   #title .meta {
     position: relative;
     margin-top: 14px; font-size: 10px; opacity: 0.62; letter-spacing: 0.12em;
@@ -708,12 +637,8 @@
     text-align: left;
   }
   .game-status-shell::before {
-    content: 'MISSION STATUS';
-    display: block;
-    margin-bottom: 6px;
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    color: rgba(255, 226, 170, 0.64);
+    display: none;
+    content: none;
   }
   @media (max-width: 1040px) {
     .hud-compact-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -737,7 +662,7 @@
     #controls-help.collapsed { min-width: 0; width: auto; }
     #controls-help > div { flex: 1 1 calc(50% - 4px); white-space: normal; }
   }
-  .hide { opacity: 0; pointer-events: none; }
+  .hide { opacity: 0; pointer-events: none; display: none !important; }
   body.preflight #crosshair,
   body.preflight #instruments,
   body.preflight #controls-help,
@@ -863,15 +788,15 @@
   }
 </style>
 </head>
-<body class="preflight">
+<body>
 <div id="hud">
   <div id="crosshair"></div>
   <div class="panel game-dialog-chrome flight-core-shell thin-surface-hud-shell top-surface-strip" id="instruments">
     <div class="hud-compact-grid">
-      <div class="hud-stat-chip top-stat-emphasis">
+      <div class="hud-stat-chip top-stat-emphasis hud-primary-chip">
         <div class="hud-stat-line"><span class="hud-label">SPD</span><span class="hud-value big" id="speed">0</span><span class="hud-unit">KTS</span></div>
       </div>
-      <div class="hud-stat-chip top-stat-emphasis">
+      <div class="hud-stat-chip top-stat-emphasis hud-primary-chip">
         <div class="hud-stat-line"><span class="hud-label">ALT</span><span class="hud-value big" id="altitude">0</span><span class="hud-unit">FT</span></div>
       </div>
       <div class="hud-stat-chip">
@@ -881,9 +806,9 @@
         <div class="hud-stack-line"><span class="hud-subtle">AOA <span id="aoa">0</span>°</span><span class="hud-subtle">G <span id="gforce">1.0</span></span></div>
       </div>
       <div class="hud-stat-chip">
-        <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span><span class="hud-subtle">SEED <span id="seed-disp">—</span></span></div>
+        <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span></div>
       </div>
-      <div class="hud-stat-chip hud-track-chip top-stat-emphasis">
+      <div class="hud-stat-chip hud-track-chip">
         <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span></div>
         <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
       </div>
@@ -891,7 +816,7 @@
         <div class="hud-track-head"><span class="hud-label">AMMO</span><span class="hud-subtle"><span id="ammo-val">300</span>/<span id="ammo-max">300</span></span></div>
         <div class="bar hud-mini-track"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
       </div>
-      <div class="hud-stat-chip top-stat-emphasis">
+      <div class="hud-stat-chip">
         <div class="hud-track-head"><span class="hud-label">SCORE</span><span class="hud-value big" id="score-val">0</span></div>
         <div class="hud-subtle">STREAK <span id="score-streak">0</span>×</div>
       </div>
@@ -900,7 +825,7 @@
   <div class="panel game-dialog-chrome telemetry-deck-shell thin-surface-hud-shell bottom-surface-strip" id="throttle-wrap">
     <div class="hud-bottom-surface">
       <div class="hud-engine-strip">
-        <div class="hud-engine-chip top-stat-emphasis">
+        <div class="hud-engine-chip top-stat-emphasis hud-primary-chip">
           <div class="hud-inline-readout"><span class="hud-label">THR</span><span class="hud-value big" id="throttle-val">0</span><span class="hud-unit">%</span></div>
           <div class="bar hud-mini-track"><div id="throttle-bar" style="width:0%"></div></div>
         </div>
@@ -921,11 +846,10 @@
     </div>
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
-    <div id="ch-line1">S PULL UP &nbsp; W PUSH DOWN &nbsp; A/D BANK &nbsp; Q/E or ←/→ RUDDER</div>
-    <div id="ch-line2">SHIFT or ↑ THROTTLE UP &nbsp; CTRL or ↓ THROTTLE DOWN &nbsp; B BRAKE</div>
-    <div id="ch-line3">G GEAR &nbsp; H HELP &nbsp; SPACE FIRE &nbsp; L LIGHTS &nbsp; M MODEL &nbsp; T STYLE &nbsp; Y BIOME &nbsp; R RESET</div>
+    <div id="ch-line1">W/S PITCH · A/D BANK · Q/E RUDDER</div>
+    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · P OPTIONS · R RESET</div>
   </div>
-  <div class="panel game-dialog-chrome game-status-shell" id="status-msg">CLICK OR PRESS ANY KEY TO START</div>
+  <div class="panel game-dialog-chrome game-status-shell" id="status-msg">SHIFT/CTRL THROTTLE · M CHANGE PLANE · P OPTIONS</div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
        screenshot. Updated each frame by updateHUD(). -->
   <div id="dev-overlay" style="position:fixed;top:76px;right:16px;transform:none;
@@ -934,23 +858,16 @@
        letter-spacing:0.06em;z-index:50;pointer-events:none;">
     <span id="dev-planeinfo">—</span>
   </div>
-  <div id="title" class="game-dialog-chrome flight-briefing-card">
+  <div id="title" class="game-dialog-chrome flight-briefing-card hide">
     <div class="briefing-kicker">TRAINING SECTOR // CANYON RUN</div>
     <h1>CANYON AIRSTRIP</h1>
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
-      <div>1 · CLICK OR PRESS ANY KEY TO START</div>
-      <div>2 · PICK A PROP AIRFRAME BELOW OR PRESS M TO CYCLE</div>
-      <div>3 · HOLD SHIFT OR ↑ TO BUILD SPEED</div>
-      <div>4 · PRESS S TO ROTATE AND CLIMB</div>
-      <div>5 · HOLD SPACE TO FIRE THE WING GUNS</div>
-      <div>6 · RETURN TO GREEN GATES TO PRACTICE LANDING</div>
-      <div>7 · PRESS R ANY TIME TO RESET</div>
-      <div>8 · PRESS P FOR OPTIONS · H FOR HELP · ; FOR MODEL TUNE</div>
-    </div>
-    <div class="plane-selection-card">
-      <div class="plane-picker-grid" id="plane-picker-grid"></div>
-      <div class="plane-picker-note" id="plane-picker-note">Recent Downloads now feed a prop-only flight line directly inside the briefing card. The old blue hangar stays in the repo, but the main app is now the selection flow.</div>
+      <div>W/S or ↑/↓ — PITCH</div>
+      <div>A/D — BANK · Q/E — RUDDER</div>
+      <div>SHIFT/CTRL — THROTTLE</div>
+      <div>SPACE — FIRE · M — NEXT PLANE</div>
+      <div>R — RESET · P — OPTIONS</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -4399,8 +4316,8 @@ function updateMultiplayer(dt) {
       // Keep the HUD gear chip visible for fixed-gear aircraft so the thin
       // top strip still has a complete systems readout, but label it as
       // fixed rather than implying retractable gear is available.
-      const ch3 = document.getElementById('ch-line3');
-      if (ch3) ch3.textContent = 'SPACE FIRE · L LIGHTS · M MODEL · B BRAKE · T STYLE · Y BIOME · R RESET (fixed gear)';
+      const ch2 = document.getElementById('ch-line2');
+      if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · P OPTIONS · R RESET';
       const gearRow = document.getElementById('gear');
       if (gearRow) {
         gearRow.textContent = 'FIXED';
@@ -4980,6 +4897,7 @@ function updateMultiplayer(dt) {
         let collapsed = true;
         const setCollapsed = (next) => {
           collapsed = !!next;
+          panel.style.display = collapsed ? 'none' : '';
           body.style.display = collapsed ? 'none' : '';
           titleMeta.textContent = collapsed ? 'hidden until needed' : 'tap outside to hide';
           collapseBtn.textContent = collapsed ? 'EDIT' : 'HIDE';
@@ -8819,7 +8737,6 @@ const _devInfo = document.getElementById('dev-planeinfo');
 const $throttleVal = document.getElementById('throttle-val');
 const $throttleBar = document.getElementById('throttle-bar');
 const $abStatus = document.getElementById('ab-status');
-const $seedDisp = document.getElementById('seed-disp');
 const $styleInd = document.getElementById('style-ind');
 const $biomeInd = document.getElementById('biome-ind');
 const $todInd = document.getElementById('tod-ind');
@@ -9115,7 +9032,6 @@ function setHelpStripCollapsed(next, manual = false) {
   controlsHelpEl.classList.toggle('collapsed', helpStripState.collapsed);
   if (manual) helpStripState.lastManualAt = performance.now();
 }
-$seedDisp.textContent = SEED;
 if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 
 // Button click toggles style (in addition to T key)
@@ -9147,7 +9063,7 @@ function syncPropModelPicker() {
     });
   }
   if (planePickerNote) {
-    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Prop planes only here now — press M in flight to cycle, or pick directly before launch. The old blue hangar stays in the repo, but the main app is the selection flow.`;
+    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Prop planes only — press M in flight or use Options [P] to switch.`;
   }
 }
 if (mpCallsignInput) {
@@ -9245,7 +9161,7 @@ function updateFlightPhase(speedKts, aglFt, aoaDeg) {
 function updateStatusGuidance(speedKts, aoaDeg) {
   if (plane.crashed) return;
   if (!running) {
-    statusMsg.textContent = 'CLICK OR PRESS ANY KEY TO START';
+    statusMsg.textContent = 'SHIFT/CTRL THROTTLE · M CHANGE PLANE · P OPTIONS';
     statusMsg.className = 'panel';
     return;
   }
@@ -9260,35 +9176,35 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
   const landingTrainingArmed = !plane.onGround && plane.gear > 0.95 && speedKts > 55 && speedKts < 165 && aglFt > 20 && aglFt < 900 && Math.abs(plane.pos.x) < 90 && Math.abs(plane.pos.z) > 220 && Math.abs(plane.pos.z) < 1200;
 
-  let message = 'FREE FLIGHT — FOLLOW THE GATES OR EXPLORE THE CANYON';
+  let message = 'FREE FLIGHT · FOLLOW GATES OR EXPLORE';
   let className = 'panel';
 
   if (Math.abs(aoaDeg) > 17 && speedKts > 45) {
-    message = 'STALL WARNING — RELEASE S AND BUILD SPEED';
+    message = 'STALL · RELEASE S AND BUILD SPEED';
     className = 'panel warn';
   } else if (timeOfDay.daylight < 0.22 && !plane.landingLights && (plane.onGround || aglFt < 350)) {
-    message = 'LOW LIGHT — PRESS L FOR LANDING LIGHTS';
+    message = 'LOW LIGHT · PRESS L';
     className = 'panel warn';
   } else if (missionDebriefState.landings > 0 && plane.onGround && speedKts < 18) {
-    message = `ROLL OUT COMPLETE — ${missionDebriefState.landingMedal || 'GOOD LANDING'} · PRESS R TO RESET OR TAXI OUT`;
+    message = `LANDING COMPLETE · ${missionDebriefState.landingMedal || 'GOOD LANDING'} · PRESS R OR TAXI`;
     className = 'panel ok';
   } else if (landingTrainingArmed) {
-    message = 'LANDING TRAINING — FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
+    message = 'FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
     className = 'panel ok';
   } else if (plane.onGround && plane.throttle < 0.15) {
-    message = 'HOLD SHIFT OR ↑ TO ADVANCE THROTTLE';
+    message = 'HOLD SHIFT / ↑ FOR THROTTLE';
   } else if (plane.onGround && speedKts < 55) {
-    message = 'TAKEOFF ROLL — USE Q/E TO STAY STRAIGHT';
+    message = 'TAKEOFF ROLL · USE Q/E TO TRACK';
   } else if (plane.onGround) {
-    message = 'ROTATE NOW — PRESS S TO LIFT OFF';
+    message = 'ROTATE · PRESS S';
     className = 'panel ok';
   } else if (aglFt < 80) {
-    message = 'POSITIVE CLIMB — RELAX S AS YOU CLEAR THE RUNWAY';
+    message = 'POSITIVE CLIMB · EASE OFF S';
     className = 'panel ok';
   } else if (!plane.fixedGear && plane.gear > 0.95) {
-    message = 'CLIMB STABLE — PRESS G TO RETRACT GEAR';
+    message = 'GEAR UP · PRESS G';
   } else if (aglFt < 260) {
-    message = 'AHEAD IS OPEN — FOLLOW THE TRAINING GATES OR FREE-FLY';
+    message = 'CLEAR OF RUNWAY · FOLLOW GATES OR FREE FLY';
     className = 'panel ok';
   }
 
@@ -9517,18 +9433,36 @@ renderScene();
 const title = document.getElementById('title');
 document.getElementById('seed-display').textContent = SEED;
 function isPreflightInteractiveTarget(target) {
-  return !!(target && target.closest && target.closest('input, button, label, .multiplayer-setup-card, .plane-selection-card'));
+  return !!(target && target.closest && target.closest('input, button, label, .multiplayer-setup-card'));
 }
-function beginFlight() {
-  title.classList.add('hide');
+function beginFlight(opts = {}) {
+  if (running) return;
+  const enableAudio = opts.enableAudio !== false;
+  const focusCanvas = opts.focusCanvas !== false;
+  if (title) title.classList.add('hide');
   document.body.classList.remove('preflight');
   running = true;
   resetMissionDebrief();
   helpStripState.autoCollapsed = false;
   setHelpStripCollapsed(false);
-  setAudioEnabled(true);
-  syncAudioIndicator();
-  renderer.domElement.focus();
+  if (enableAudio) {
+    setAudioEnabled(true);
+    syncAudioIndicator();
+  }
+  if (focusCanvas) renderer.domElement.focus();
+}
+function armFirstInteractionAudio() {
+  let armed = true;
+  const unlock = () => {
+    if (!armed) return;
+    armed = false;
+    setAudioEnabled(true);
+    syncAudioIndicator();
+    window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('keydown', unlock);
+  };
+  window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('keydown', unlock, { once: true });
 }
 title.addEventListener('click', (e) => {
   if (isPreflightInteractiveTarget(e.target)) return;
@@ -9543,6 +9477,8 @@ window.addEventListener('keydown', (e) => {
     beginFlight();
   }
 }, { once: true });
+armFirstInteractionAudio();
+beginFlight({ enableAudio: false, focusCanvas: false });
 
 // __overlay_dismiss_focus__ — re-focus game canvas on any click/key
 // so external popups (Twitter/X sign-in, etc.) don't block input
@@ -11109,6 +11045,42 @@ function updateFloatingTarget(dt) {
       presetRow.appendChild(b);
     });
     panel.appendChild(presetRow);
+
+    panel.appendChild(el('div', { style: headerStyle }, 'AIRFRAME'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Prop planes only. Click a card to load it, or press M in flight to cycle.'));
+    const activePreset = getActivePropPreset();
+    const planeGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    PROP_MODEL_PRESETS.forEach((preset) => {
+      const active = preset.key === activePreset.key;
+      const btn = el('button', {
+        type: 'button',
+        style: [
+          'display:grid',
+          'gap:4px',
+          'min-height:66px',
+          'padding:10px 11px',
+          'border-radius:14px',
+          'text-align:left',
+          'cursor:pointer',
+          'background:' + (active ? 'linear-gradient(180deg, rgba(255,204,102,0.16), rgba(255,255,255,0.05))' : 'rgba(255,255,255,0.035)'),
+          'border:1px solid ' + (active ? 'rgba(255,225,170,0.42)' : 'rgba(255,215,150,0.12)'),
+          'color:#fff2cf',
+          'box-shadow:' + (active ? 'inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.18)' : 'none')
+        ].join(';')
+      });
+      btn.appendChild(el('strong', { style: 'font-size:12px;line-height:1.15;letter-spacing:0.03em;color:#fff3d8;' }, preset.name || preset.label));
+      const meta = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,231,176,0.58);' });
+      meta.appendChild(el('span', {}, preset.type || 'Prop'));
+      meta.appendChild(el('span', {
+        style: 'display:inline-flex;align-items:center;justify-content:center;padding:3px 7px;border-radius:999px;border:1px solid rgba(255,225,170,0.2);background:rgba(255,255,255,0.04);color:rgba(255,242,207,0.9);'
+      }, active ? 'ACTIVE' : (preset.badge || 'READY')));
+      btn.appendChild(meta);
+      btn.addEventListener('click', () => {
+        if (!active) applyPropModelPreset(preset.key);
+      });
+      planeGrid.appendChild(btn);
+    });
+    panel.appendChild(planeGrid);
 
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
