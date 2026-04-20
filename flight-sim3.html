@@ -353,12 +353,87 @@
     width: 50px; height: 50px;
     border: 1px solid rgba(255, 204, 102, 0.35);
     border-radius: 50%;
+    pointer-events: none;
+    will-change: left, top, transform;
+    box-shadow: 0 0 18px rgba(255, 197, 92, 0.12);
   }
   #crosshair::before, #crosshair::after {
     content: ''; position: absolute; background: rgba(255, 204, 102, 0.35);
   }
   #crosshair::before { top: 50%; left: -12px; right: -12px; height: 1px; }
   #crosshair::after { left: 50%; top: -12px; bottom: -12px; width: 1px; }
+  #crosshair.locked {
+    border-color: rgba(255, 226, 162, 0.76);
+    box-shadow: 0 0 26px rgba(255, 209, 116, 0.28), inset 0 0 22px rgba(255, 208, 120, 0.08);
+  }
+  #crosshair.locked::before,
+  #crosshair.locked::after {
+    background: rgba(255, 236, 176, 0.8);
+  }
+  #target-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .target-bracket {
+    position: absolute;
+    pointer-events: none;
+    color: rgba(255, 224, 164, 0.92);
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    will-change: transform, opacity, width, height;
+  }
+  .target-frame {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255, 206, 104, 0.52);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255, 210, 110, 0.06), rgba(255, 210, 110, 0.01));
+    box-shadow: inset 0 0 0 1px rgba(255, 231, 176, 0.08), 0 0 20px rgba(255, 186, 64, 0.08);
+  }
+  .target-frame::before,
+  .target-frame::after {
+    content: '';
+    position: absolute;
+    inset: 8px;
+    border-top: 1px solid rgba(255, 223, 152, 0.42);
+    border-bottom: 1px solid rgba(255, 223, 152, 0.18);
+    opacity: 0.65;
+  }
+  .target-tag,
+  .target-readout {
+    position: absolute;
+    left: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(10, 16, 24, 0.58);
+    backdrop-filter: blur(10px) saturate(145%);
+    -webkit-backdrop-filter: blur(10px) saturate(145%);
+    border: 1px solid rgba(255, 215, 140, 0.18);
+    font: 600 10px/1.1 var(--game-font-ui);
+    letter-spacing: 0.14em;
+    white-space: nowrap;
+  }
+  .target-tag {
+    top: -24px;
+    text-transform: uppercase;
+  }
+  .target-readout {
+    top: calc(100% + 6px);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: rgba(255, 237, 196, 0.82);
+  }
+  .target-bracket.active .target-frame {
+    border-color: rgba(255, 236, 176, 0.9);
+    box-shadow: inset 0 0 0 1px rgba(255, 236, 176, 0.16), 0 0 26px rgba(255, 196, 92, 0.2);
+  }
+  .target-bracket.active .target-tag,
+  .target-bracket.active .target-readout {
+    border-color: rgba(255, 232, 170, 0.34);
+    background: rgba(12, 18, 28, 0.7);
+    color: rgba(255, 244, 206, 0.98);
+  }
   #title.flight-briefing-card {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
@@ -664,11 +739,13 @@
   }
   .hide { opacity: 0; pointer-events: none; display: none !important; }
   body.preflight #crosshair,
+  body.preflight #target-overlay,
   body.preflight #instruments,
   body.preflight #controls-help,
   body.preflight #throttle-wrap,
   body.preflight #status-msg,
   body.review-open #crosshair,
+  body.review-open #target-overlay,
   body.review-open #instruments,
   body.review-open #controls-help,
   body.review-open #throttle-wrap,
@@ -678,6 +755,14 @@
   body.review-open #tweak-hud {
     opacity: 0;
     pointer-events: none;
+  }
+  body.preflight #crosshair,
+  body.preflight #target-overlay,
+  body.review-open #crosshair,
+  body.review-open #target-overlay {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    display: none !important;
   }
   body.review-open #replay-panel {
     bottom: 50%;
@@ -791,6 +876,7 @@
 <body>
 <div id="hud">
   <div id="crosshair"></div>
+  <div id="target-overlay"></div>
   <div class="panel game-dialog-chrome flight-core-shell thin-surface-hud-shell top-surface-strip" id="instruments">
     <div class="hud-compact-grid">
       <div class="hud-stat-chip top-stat-emphasis hud-primary-chip">
@@ -3987,6 +4073,7 @@ function buildLocalMultiplayerState() {
     callsign: playerProfileState.callsign,
     spawnMode: playerProfileState.spawnMode,
     planeKey: getActivePropPreset().key,
+    speedKts: plane.vel.length() * 1.94,
     t: Date.now(),
   };
 }
@@ -4059,6 +4146,8 @@ function ensureRemotePlayer(id) {
       group,
       labelSprite: group.userData.labelSprite,
       callsign: sanitizeCallsign(id),
+      planeKey: '',
+      speedKts: 0,
       targetPos: new THREE.Vector3(),
       targetQuat: new THREE.Quaternion(),
       lastSeen: Date.now(),
@@ -4095,6 +4184,8 @@ function handleMultiplayerMessage(raw) {
     const rec = ensureRemotePlayer(msg.id);
     rec.targetPos.set(msg.state.pos.x, msg.state.pos.y, msg.state.pos.z);
     rec.targetQuat.set(msg.state.quat.x, msg.state.quat.y, msg.state.quat.z, msg.state.quat.w);
+    rec.planeKey = msg.state.planeKey || rec.planeKey || '';
+    rec.speedKts = msg.state.speedKts != null ? msg.state.speedKts : rec.speedKts || 0;
     if (msg.state.callsign) setRemotePlayerCallsign(rec, msg.state.callsign);
     rec.lastSeen = Date.now();
     syncMultiplayerIndicator();
@@ -8004,6 +8095,7 @@ function resetPlane() {
     camera.fov = 72;
     camera.updateProjectionMatrix();
   }
+  if (typeof resetReticleHud === 'function') resetReticleHud();
   scene.userData.__wingTrailIntensity = 0;
   vaporTimer = 0;
   _prevFwdSpd = 0;
@@ -9296,6 +9388,8 @@ const $vs = document.getElementById('vspeed');
 const $aoa = document.getElementById('aoa');
 const $gforce = document.getElementById('gforce');
 const $gear = document.getElementById('gear');
+const $crosshair = document.getElementById('crosshair');
+const $targetOverlay = document.getElementById('target-overlay');
 const $hullPct = document.getElementById('hull-pct');
 const $hullBar = document.getElementById('hull-bar');
 const $ammoVal = document.getElementById('ammo-val');
@@ -9371,6 +9465,253 @@ const landingCompleteState = {
   bonusPoints: 0,
   result: null,
 };
+const reticleState = {
+  x: window.innerWidth * 0.5,
+  y: window.innerHeight * 0.43,
+  vx: 0,
+  vy: 0,
+  baseYOffset: -18,
+  visible: false,
+};
+const targetHudState = {
+  boxes: [],
+  visibleCount: 0,
+  activeId: '',
+  activeLabel: '',
+  activeDistanceM: 0,
+};
+const _hudWorldA = new THREE.Vector3();
+const _hudWorldB = new THREE.Vector3();
+const _hudWorldC = new THREE.Vector3();
+const _hudWorldD = new THREE.Vector3();
+const _hudWorldE = new THREE.Vector3();
+const _hudWorldF = new THREE.Vector3();
+const _hudQuatA = new THREE.Quaternion();
+const _hudDirA = new THREE.Vector3();
+const _hudNdcA = new THREE.Vector3();
+const _hudNdcB = new THREE.Vector3();
+const _hudHalfBase = new THREE.Vector3();
+const TARGET_BOX_LIMIT = 8;
+function inferTargetTypeLabel(id) {
+  const token = String(id || '').toLowerCase();
+  if (token.includes('f14')) return 'F-14';
+  if (token.includes('warthog') || token.includes('a-10')) return 'A-10';
+  if (token.includes('plane')) return 'PROP';
+  if (token.includes('stunt')) return 'STUNT';
+  if (token.includes('drone')) return 'DRONE';
+  return String(id || 'AIR').replace(/^models\//, '').replace(/\.glb$/i, '').replace(/[_-]+/g, ' ').trim().toUpperCase() || 'AIR';
+}
+function ensureTargetHudPool() {
+  if (!$targetOverlay) return;
+  while (targetHudState.boxes.length < TARGET_BOX_LIMIT) {
+    const el = document.createElement('div');
+    el.className = 'target-bracket';
+    el.style.display = 'none';
+    const frame = document.createElement('div');
+    frame.className = 'target-frame';
+    const tag = document.createElement('div');
+    tag.className = 'target-tag';
+    const readout = document.createElement('div');
+    readout.className = 'target-readout';
+    el.appendChild(frame);
+    el.appendChild(tag);
+    el.appendChild(readout);
+    $targetOverlay.appendChild(el);
+    targetHudState.boxes.push({ el, tag, readout });
+  }
+}
+function resetReticleHud() {
+  reticleState.x = window.innerWidth * 0.5;
+  reticleState.y = window.innerHeight * 0.43;
+  reticleState.vx = 0;
+  reticleState.vy = 0;
+  reticleState.visible = false;
+  targetHudState.visibleCount = 0;
+  targetHudState.activeId = '';
+  targetHudState.activeLabel = '';
+  targetHudState.activeDistanceM = 0;
+  if ($crosshair) {
+    $crosshair.style.left = `${reticleState.x}px`;
+    $crosshair.style.top = `${reticleState.y}px`;
+    $crosshair.style.opacity = '0';
+    $crosshair.classList.remove('locked');
+  }
+  for (const box of targetHudState.boxes) {
+    box.el.style.display = 'none';
+    box.el.classList.remove('active');
+  }
+}
+function collectAirTargetCandidates() {
+  const targets = [];
+  let trafficIndex = 0;
+  for (const rec of traffic) {
+    if (!rec || !rec.loaded || !rec.group || !rec.destructible || !rec.destructible.alive || rec.group.visible === false) continue;
+    trafficIndex += 1;
+    targets.push({
+      id: `traffic-${trafficIndex}`,
+      label: `BANDIT ${String(trafficIndex).padStart(2, '0')}`,
+      type: inferTargetTypeLabel(rec.file || rec.group.name || 'traffic'),
+      object: rec.group,
+      radius: Math.max(6, (rec.destructible.radius || 6) * 1.15),
+      distanceM: plane.pos.distanceTo(rec.group.position),
+      speedKts: (rec.speed || 0) * 1.94,
+      altFt: rec.group.position.y * 3.28,
+    });
+  }
+  for (const [id, rec] of multiplayerState.remotePlayers) {
+    if (!rec || !rec.group || rec.group.visible === false) continue;
+    targets.push({
+      id: `remote-${id}`,
+      label: rec.callsign || sanitizeCallsign(id),
+      type: inferTargetTypeLabel(rec.planeKey || id),
+      object: rec.group,
+      radius: 8.4,
+      distanceM: plane.pos.distanceTo(rec.group.position),
+      speedKts: rec.speedKts || 0,
+      altFt: rec.group.position.y * 3.28,
+    });
+  }
+  return targets;
+}
+function updateReticleHud(dt = 1 / 60) {
+  if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
+    if ($crosshair) $crosshair.style.opacity = '0';
+    reticleState.visible = false;
+    return;
+  }
+  const body = document.body;
+  const hudHidden = !running || (body && (body.classList.contains('preflight') || body.classList.contains('review-open')));
+  if (hudHidden) {
+    $crosshair.style.opacity = '0';
+    reticleState.visible = false;
+    return;
+  }
+
+  const muzzleL = _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
+  const muzzleR = _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
+  const muzzleOrigin = _hudWorldC.copy(muzzleL).add(muzzleR).multiplyScalar(0.5);
+  const gunForward = _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const lookAhead = Math.max(190, Math.min(560, 220 + plane.vel.length() * 4.6));
+  const aimPoint = _hudWorldD.copy(gunForward).multiplyScalar(lookAhead).add(muzzleOrigin);
+  _hudNdcA.copy(aimPoint).project(camera);
+  if (!Number.isFinite(_hudNdcA.x) || !Number.isFinite(_hudNdcA.y) || _hudNdcA.z < -1 || _hudNdcA.z > 1.25) {
+    $crosshair.style.opacity = '0';
+    reticleState.visible = false;
+    return;
+  }
+
+  const localVelHud = _hudWorldE.copy(plane.vel).applyQuaternion(_hudQuatA.copy(plane.quat).invert());
+  const wobbleBase = 1.35 + Math.min(6.4, plane.angVel.length() * 4.8 + Math.abs(localVelHud.x) * 0.18 + Math.abs(localVelHud.y) * 0.08);
+  const wobblePhase = performance.now() * 0.0045;
+  const driftX = plane.angVel.y * 12 + localVelHud.x * 0.12 + Math.sin(wobblePhase + plane.pos.z * 0.0012) * wobbleBase;
+  const driftY = -plane.angVel.x * 15 - localVelHud.y * 0.08 + Math.cos(wobblePhase * 1.12 + plane.pos.x * 0.0014) * wobbleBase * 0.72;
+  const recoilAge = (performance.now() - combatState.lastFiredAt) / 1000;
+  const recoilKick = recoilAge >= 0 && recoilAge < 0.11 ? (1 - recoilAge / 0.11) * 6.2 : 0;
+
+  const targetX = Math.max(24, Math.min(window.innerWidth - 24, (_hudNdcA.x * 0.5 + 0.5) * window.innerWidth + driftX));
+  const targetY = Math.max(24, Math.min(window.innerHeight - 24, (-_hudNdcA.y * 0.5 + 0.5) * window.innerHeight + reticleState.baseYOffset + driftY - recoilKick));
+
+  const springK = 74;
+  const damping = Math.exp(-dt * 10.2);
+  if (!reticleState.visible) {
+    reticleState.x = targetX;
+    reticleState.y = targetY;
+    reticleState.vx = 0;
+    reticleState.vy = 0;
+  } else {
+    reticleState.vx = (reticleState.vx + (targetX - reticleState.x) * springK * dt) * damping;
+    reticleState.vy = (reticleState.vy + (targetY - reticleState.y) * springK * dt) * damping;
+    reticleState.x += reticleState.vx * dt;
+    reticleState.y += reticleState.vy * dt;
+  }
+  reticleState.visible = true;
+  $crosshair.style.opacity = '1';
+  $crosshair.style.left = `${reticleState.x.toFixed(1)}px`;
+  $crosshair.style.top = `${reticleState.y.toFixed(1)}px`;
+}
+function updateTargetHud() {
+  if (!$targetOverlay || !$crosshair || !reticleState.visible || !running) {
+    resetReticleHud();
+    return;
+  }
+  const body = document.body;
+  if (body && (body.classList.contains('preflight') || body.classList.contains('review-open'))) {
+    resetReticleHud();
+    return;
+  }
+  ensureTargetHudPool();
+  const camForward = _hudWorldF.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+  const camRight = _hudWorldB.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  const camUp = _hudWorldC.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  const visible = [];
+  let active = null;
+  let bestScore = Infinity;
+  for (const candidate of collectAirTargetCandidates()) {
+    candidate.object.getWorldPosition(_hudWorldA);
+    const depth = _hudWorldD.copy(_hudWorldA).sub(camera.position).dot(camForward);
+    if (depth < 24) continue;
+    _hudNdcA.copy(_hudWorldA).project(camera);
+    if (!Number.isFinite(_hudNdcA.x) || !Number.isFinite(_hudNdcA.y) || _hudNdcA.z < -1 || _hudNdcA.z > 1) continue;
+    const centerX = (_hudNdcA.x * 0.5 + 0.5) * window.innerWidth;
+    const centerY = (-_hudNdcA.y * 0.5 + 0.5) * window.innerHeight;
+    const extent = Math.max(4.5, candidate.radius || 6);
+    _hudWorldD.copy(_hudWorldA).addScaledVector(camRight, extent);
+    _hudWorldE.copy(_hudWorldA).addScaledVector(camUp, extent * 0.72);
+    _hudNdcB.copy(_hudWorldD).project(camera);
+    const rightX = (_hudNdcB.x * 0.5 + 0.5) * window.innerWidth;
+    _hudNdcB.copy(_hudWorldE).project(camera);
+    const upY = (-_hudNdcB.y * 0.5 + 0.5) * window.innerHeight;
+    const width = Math.max(42, Math.min(220, Math.abs(rightX - centerX) * 2));
+    const height = Math.max(24, Math.min(140, Math.abs(upY - centerY) * 2));
+    const left = centerX - width * 0.5;
+    const top = centerY - height * 0.5;
+    if (left > window.innerWidth || top > window.innerHeight || left + width < 0 || top + height < 0) continue;
+    const dx = centerX - reticleState.x;
+    const dy = centerY - reticleState.y;
+    const score = dx * dx + dy * dy + depth * 0.45;
+    const entry = {
+      ...candidate,
+      centerX,
+      centerY,
+      width,
+      height,
+      left,
+      top,
+      depth,
+      score,
+    };
+    visible.push(entry);
+    if (score < bestScore) {
+      bestScore = score;
+      active = entry;
+    }
+  }
+  visible.sort((a, b) => a.score - b.score || a.depth - b.depth);
+  targetHudState.visibleCount = Math.min(TARGET_BOX_LIMIT, visible.length);
+  targetHudState.activeId = active ? active.id : '';
+  targetHudState.activeLabel = active ? active.label : '';
+  targetHudState.activeDistanceM = active ? active.distanceM : 0;
+  $crosshair.classList.toggle('locked', !!active && bestScore < 54000);
+  for (let i = 0; i < targetHudState.boxes.length; i++) {
+    const poolEntry = targetHudState.boxes[i];
+    const target = visible[i];
+    if (!target) {
+      poolEntry.el.style.display = 'none';
+      poolEntry.el.classList.remove('active');
+      continue;
+    }
+    poolEntry.el.style.display = 'block';
+    poolEntry.el.style.transform = `translate(${target.left.toFixed(1)}px, ${target.top.toFixed(1)}px)`;
+    poolEntry.el.style.width = `${target.width.toFixed(1)}px`;
+    poolEntry.el.style.height = `${target.height.toFixed(1)}px`;
+    const isActive = !!active && active.id === target.id;
+    poolEntry.el.classList.toggle('active', isActive);
+    poolEntry.tag.textContent = `${target.label} · ${target.type}`;
+    poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft`;
+  }
+}
+ensureTargetHudPool();
+resetReticleHud();
 function setFlightPhase(label, tone = '') {
   flightPhaseState.label = label;
   flightPhaseState.tone = tone || '';
@@ -9782,7 +10123,7 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   statusMsg.textContent = message;
   statusMsg.className = className;
 }
-function updateHUD() {
+function updateHUD(dt = 1 / 60) {
   // Speed — m/s * ~1.94 = knots
   const sp = plane.vel.length() * 1.94;
   $speed.textContent = Math.round(sp);
@@ -9898,6 +10239,8 @@ function updateHUD() {
     helpStripState.autoCollapsed = true;
   }
   updateStatusGuidance(sp, aoa);
+  updateReticleHud(dt);
+  updateTargetHud();
 }
 
 // =============================================================
@@ -9953,7 +10296,7 @@ function animate(now) {
   updateAudio(dt);
   updateMissionDebrief(dt, plane.vel.length() * 1.94);
   updateLandingCompleteFlow(plane.vel.length() * 1.94);
-  updateHUD();
+  updateHUD(dt);
   updateCombat(dt);
   if (typeof updateGateScoring === 'function') updateGateScoring(dt);
   if (window.__damageDecalUpdate) window.__damageDecalUpdate(dt);
@@ -10072,6 +10415,16 @@ window.addEventListener('resize', () => {
     postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
       postFX.bokehPass.materialBokeh.uniforms.aspect.value = camera.aspect;
+    }
+  }
+  if (typeof reticleState !== 'undefined') {
+    reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, reticleState.visible ? reticleState.x : window.innerWidth * 0.5));
+    reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, reticleState.visible ? reticleState.y : window.innerHeight * 0.43));
+    reticleState.vx = 0;
+    reticleState.vy = 0;
+    if ($crosshair) {
+      $crosshair.style.left = `${reticleState.x}px`;
+      $crosshair.style.top = `${reticleState.y}px`;
     }
   }
 });
@@ -10834,6 +11187,7 @@ function spawnTraffic(file, pathFn, opts) {
   scene.add(group);
   const rec = {
     group, pathFn, loaded: false,
+    file,
     phase: opts.phaseOffset || 0,
     speed: opts.speed || 60,          // metres/sec along path
     bankSmoothed: 0,
@@ -12027,6 +12381,12 @@ window.__ap = {
       camera_fov: camera.fov,
       camera_height_offset: camera.userData.cameraHeightOffset || 0,
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
+      reticle_x: reticleState.x,
+      reticle_y: reticleState.y,
+      target_boxes: targetHudState.visibleCount || 0,
+      target_lock: targetHudState.activeId || '',
+      target_lock_label: targetHudState.activeLabel || '',
+      target_lock_distance_m: targetHudState.activeDistanceM || 0,
       crash_fx_active: !!combatState.crashFxTriggered,
       flight_phase: flightPhaseState.label,
       mission_grade: missionDebriefState.grade,
