@@ -8225,12 +8225,21 @@ function updatePhysics(dt) {
   // lift at 0 AGL, decaying exponentially over ~12 m.
   const aglForGE = Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z));
   const groundEffect = 1 + 0.35 * Math.exp(-aglForGE / 12);
-  const liftMag = LIFT_K * v * v * cl * groundEffect;
+  const liftTune = scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0;
+  const accelTune = scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0;
+  const topSpeedTuneKts = scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580;
+  const liftMag = LIFT_K * liftTune * v * v * cl * groundEffect;
   const lift = up.clone().multiplyScalar(liftMag);
 
-  // Drag: parasitic + induced (∝ CL²) + gear
+  // Drag: parasitic + induced (∝ CL²) + gear, plus a soft top-speed limiter
+  // from the live flight tuning panel.
   const cd = DRAG_PARASITE + DRAG_INDUCED * cl * cl + GEAR_DRAG * plane.gear;
-  const dragMag = cd * speed * speed;
+  const speedKts = speed * 1.94;
+  const topSpeedRatio = topSpeedTuneKts > 1 ? speedKts / topSpeedTuneKts : 0;
+  const speedLimiterDrag = topSpeedRatio > 0.92
+    ? 1 + Math.pow((topSpeedRatio - 0.92) / 0.08, 2) * 1.45
+    : 1;
+  const dragMag = cd * speed * speed * speedLimiterDrag;
   const drag = speed > 0.01
     ? plane.vel.clone().normalize().multiplyScalar(-dragMag)
     : new THREE.Vector3();
@@ -8254,7 +8263,7 @@ function updatePhysics(dt) {
   // the engine produces only 25% of rated thrust (windmilling).
   const engineFactor = 1 - plane.damage.engine * 0.75;
   const effectiveThrottleWithSurge = effectiveThrottle * engineSurgeState.powerMul * engineFactor;
-  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST);
+  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST * accelTune);
 
   // Gravity
   const gravity = new THREE.Vector3(0, -GRAVITY, 0);
@@ -11282,6 +11291,7 @@ function updateFloatingTarget(dt) {
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
     dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
+    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0,
     fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
@@ -11379,6 +11389,11 @@ function updateFloatingTarget(dt) {
   function applyAmbientFx() {
     scene.userData.__ambientFxDensity = Math.max(0, Math.min(1.2, gfx.ambientFxDensity || 1.0));
   }
+  function applyFlightTuning() {
+    scene.userData.__flightAccel = Math.max(0.5, Math.min(1.6, gfx.flightAccel || 1.0));
+    scene.userData.__flightTopSpeedKts = Math.max(220, Math.min(620, gfx.topSpeedKts || 580));
+    scene.userData.__flightLift = Math.max(0.7, Math.min(1.4, gfx.liftAssist || 1.0));
+  }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
     scene.userData.__nightLift = gfx.nightLift;
@@ -11389,7 +11404,7 @@ function updateFloatingTarget(dt) {
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
   function applyAll() {
-    applyShadows(); applyFog(); applyDof(); applyBloom(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyAmbientFx(); applyWorldTuning();
+    applyShadows(); applyFog(); applyDof(); applyBloom(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyAmbientFx(); applyFlightTuning(); applyWorldTuning();
     if (fpsDiv) fpsDiv.style.display = gfx.fps ? 'block' : 'none';
   }
 
@@ -11482,9 +11497,9 @@ function updateFloatingTarget(dt) {
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
     panel.appendChild(el('div', { class: 'options-title' }, 'OPTIONS [P]'));
-    panel.appendChild(el('div', { class: 'options-kicker' }, 'Graphics / world / performance // ESC or backdrop to return to flight'));
+    panel.appendChild(el('div', { class: 'options-kicker' }, 'Aircraft / flight / environment / visuals // ESC or backdrop to return to flight'));
 
-    panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'PRESETS'));
+    panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'QUICK PRESETS'));
     const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
     const presetMeta = {
       low: ['LOW', 'lean / cooler'],
@@ -11541,6 +11556,12 @@ function updateFloatingTarget(dt) {
     });
     panel.appendChild(planeGrid);
 
+    panel.appendChild(el('div', { style: headerStyle }, 'FLIGHT'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune how fast the plane accelerates, how much lift it has, and its soft top-speed limit.'));
+    panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
+
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
     panel.appendChild(row('Depth of field', makeToggle('dof')));
@@ -11554,7 +11575,7 @@ function updateFloatingTarget(dt) {
     panel.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
     panel.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
 
-    panel.appendChild(el('div', { style: headerStyle }, 'WORLD'));
+    panel.appendChild(el('div', { style: headerStyle }, 'ENVIRONMENT'));
     panel.appendChild(row('Fog', makeToggle('fog')));
     panel.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
     panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
@@ -11700,6 +11721,9 @@ window.__ap = {
       night_lift: scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35,
       atmosphere_depth: scene.userData.__atmosphereDepth != null ? scene.userData.__atmosphereDepth : 1.0,
       airframe_fill: scene.userData.__airframeFill != null ? scene.userData.__airframeFill : 0.55,
+      flight_accel: scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0,
+      flight_top_speed_kts: scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580,
+      flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
