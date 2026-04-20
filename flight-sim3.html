@@ -5964,18 +5964,20 @@ function updateAtmospheric(dt) {
   const fwdAccel = Math.max(0, (fwdSpd - _prevFwdSpd) / Math.max(dt, 1e-3));
   _prevFwdSpd = fwdSpd;
 
-  // Thin wing-vapor only appears when the aircraft is working hard: tight
-  // bank, fast pull/push, or strong climb/descent. Keep it sparse so it
-  // reads as condensation rather than constant smoke.
+  // Wing-vapor should only show during genuinely aggressive manoeuvres:
+  // tight turns, pull-ups, or push-downs — never during normal cruise or
+  // mild corrections.
   const airborneGate = Math.min(1, fwdSpd / 34);
-  const turnLoad = Math.max(
-    Math.max(0, Math.abs(aoa) - 0.10) * 4.8,
-    Math.max(0, rollRate  - 0.42) * 1.9,
-    Math.max(0, pitchRate - 0.38) * 1.8,
-    Math.max(0, yawRate   - 0.32) * 1.25,
-    Math.max(0, verticalRate - 5.5) * 0.07,
-    Math.max(0, fwdAccel  - 5.0) * 0.10
-  ) * airborneGate;
+  const tightTurn = rollRate > 0.72 || yawRate > 0.52;
+  const pullPush = pitchRate > 0.48 || verticalRate > 8.5 || Math.abs(aoa) > 0.14;
+  const trailActive = !plane.onGround && airborneGate > 0.55 && (tightTurn || pullPush);
+  const turnLoad = trailActive ? Math.max(
+    Math.max(0, Math.abs(aoa) - 0.14) * 5.2,
+    Math.max(0, rollRate  - 0.72) * 2.2,
+    Math.max(0, pitchRate - 0.48) * 2.0,
+    Math.max(0, yawRate   - 0.52) * 1.4,
+    Math.max(0, verticalRate - 8.5) * 0.085
+  ) * airborneGate : 0;
   scene.userData.__wingTrailIntensity = plane.onGround ? 0 : turnLoad;
   const greySmokeMix = clamp01(Math.max(engineSurgeState.greyMix * 1.1, Math.max(0, turnLoad - 0.78) * 0.24));
   const throatClearMix = clamp01(engineSurgeState.throatClear);
@@ -9512,14 +9514,6 @@ function animate(now) {
   updateLensFlare();
   // Clouds live in world space and wrap when the player flies far past them
   updateClouds(dt, plane.pos.x, plane.pos.z);
-
-  // Subtle high-speed camera shake (engine/buffeting feel)
-  const sp = plane.vel.length();
-  const shakeAmt = Math.max(0, (sp - 60) / 200) * 0.08;
-  if (shakeAmt > 0) {
-    camera.position.x += (Math.random() - 0.5) * shakeAmt;
-    camera.position.y += (Math.random() - 0.5) * shakeAmt;
-  }
 
   updateDepthOfField();
   renderScene();
