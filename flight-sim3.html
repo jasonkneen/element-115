@@ -1305,7 +1305,7 @@ const FOG_COLOR = currentBiome.fogColor;
 const SUN_DIR = new THREE.Vector3(0.58, 0.76, 0.28).normalize();
 const sunDir = SUN_DIR.clone();
 const ATMOS_REALISTIC = Object.freeze({ fogNear: 360, fogFar: 6200, hazeStrength: 0.92, hazeExponent: 1.55 });
-const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 420, fogFar: 5400, hazeStrength: 1.18, hazeExponent: 1.22 });
+const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 500, fogFar: 6100, hazeStrength: 0.98, hazeExponent: 1.30 });
 const timeOfDay = {
   phase: 0.12,
   cycleSeconds: 420,
@@ -6833,8 +6833,8 @@ function updateTimeOfDay(dt = 0) {
   const farMul = 1 - (atmosphereDepth - 1) * 0.16;
   const realFogNear = (280 + (1 - terrainFade) * 260) * fogMul;
   const realFogFar = (4300 + terrainFade * 3200) * farMul;
-  const lowFogNear = (340 + (1 - terrainFade) * 280) * fogMul;
-  const lowFogFar = (3600 + terrainFade * 2400) * farMul;
+  const lowFogNear = (420 + (1 - terrainFade) * 320) * fogMul;
+  const lowFogFar = (4000 + terrainFade * 2800) * farMul;
   const lowPoly = styleMode.current === 'lowpoly';
 
   scene.background.copy(todFog);
@@ -6863,8 +6863,8 @@ function updateTimeOfDay(dt = 0) {
   sandMatLowPoly.uniforms.fogColor.value.copy(todFog);
   sandMatLowPoly.uniforms.fogNear.value = lowFogNear;
   sandMatLowPoly.uniforms.fogFar.value = fogEnabled ? lowFogFar : 1e9;
-  sandMatLowPoly.uniforms.hazeStrength.value = ATMOS_LOWPOLY.hazeStrength + terrainFade * 0.30 + (1 - daylight) * 0.08 + (atmosphereDepth - 1) * 0.38;
-  sandMatLowPoly.uniforms.hazeExponent.value = ATMOS_LOWPOLY.hazeExponent + terrainFade * 0.08 + (atmosphereDepth - 1) * 0.06;
+  sandMatLowPoly.uniforms.hazeStrength.value = ATMOS_LOWPOLY.hazeStrength + terrainFade * 0.18 + (1 - daylight) * 0.05 + (atmosphereDepth - 1) * 0.24;
+  sandMatLowPoly.uniforms.hazeExponent.value = ATMOS_LOWPOLY.hazeExponent + terrainFade * 0.04 + (atmosphereDepth - 1) * 0.03;
   sandMatLowPoly.uniforms.skyTint.value.copy(todSkyTop);
   sandMatLowPoly.uniforms.groundTint.value.copy(todGround);
   sandMatLowPoly.uniforms.ambientColor.value.copy(todLowPolyAmbient);
@@ -9216,8 +9216,10 @@ function updateCamera(dt) {
   const turnBias = 0;
   camera.userData.turnBias = 0;
 
-  const climbReveal = Math.max(0, signedPitchReveal) * maneuverReveal;
-  const diveReveal = Math.max(0, -signedPitchReveal) * maneuverReveal;
+  const climbRevealTune = scene.userData.__cameraClimbReveal != null ? scene.userData.__cameraClimbReveal : 1.0;
+  const diveRevealTune = scene.userData.__cameraDiveReveal != null ? scene.userData.__cameraDiveReveal : 1.0;
+  const climbReveal = Math.max(0, signedPitchReveal) * maneuverReveal * climbRevealTune;
+  const diveReveal = Math.max(0, -signedPitchReveal) * maneuverReveal * diveRevealTune;
   const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal + 1.55 * (climbReveal + diveReveal);
   const height = Math.max(-3.2,
     offsetRotated.y +
@@ -11352,12 +11354,14 @@ function updateFloatingTarget(dt) {
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
     dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
+    flightProfile: 'custom',
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
     brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
+    cameraClimbReveal: 1.0, cameraDiveReveal: 1.0,
     fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, bloom: false, bloomStrength: 0.18, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, atmosphereDepth: 0.74, airframeFill: 0.30, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, ambientFxDensity: 0.35, renderScale: 0.65, resolutionScale: 0.82 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, renderScale: 0.60, resolutionScale: 0.78 },
     medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, renderScale: 0.85, resolutionScale: 0.95 },
     high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, renderScale: 1.0,  resolutionScale: 1.0 },
     ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, renderScale: 1.0,  resolutionScale: 1.18 },
@@ -11372,6 +11376,64 @@ function updateFloatingTarget(dt) {
   window.__gfxParticleScale = () => gfx.particleScale;
 
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(gfx)); } catch {} };
+
+  const FLIGHT_PROFILE_FIELDS = new Set([
+    'flightAccel', 'topSpeedKts', 'liftAssist', 'idlePower',
+    'pitchAuthority', 'rollAuthority', 'rudderAuthority', 'autoRudder',
+    'maneuverAssist', 'stallSoftness', 'groundEffectStrength', 'brakeStrength',
+    'selfLevel', 'weathervaneYaw', 'gearDrag',
+    'pitchDamping', 'rollDamping', 'rudderDamping',
+    'cameraClimbReveal', 'cameraDiveReveal'
+  ]);
+  const FLIGHT_PROFILES = {
+    trainer: {
+      title: 'TRAINER',
+      note: 'stable / forgiving',
+      flightAccel: 0.96, topSpeedKts: 540, liftAssist: 1.06, idlePower: 1.0,
+      pitchAuthority: 0.94, rollAuthority: 0.90, rudderAuthority: 0.92, autoRudder: 1.30,
+      maneuverAssist: 1.16, stallSoftness: 1.22, groundEffectStrength: 1.08, brakeStrength: 1.10,
+      selfLevel: 1.34, weathervaneYaw: 1.24, gearDrag: 1.02,
+      pitchDamping: 1.12, rollDamping: 1.16, rudderDamping: 1.08,
+      cameraClimbReveal: 0.95, cameraDiveReveal: 1.0,
+    },
+    stunt: {
+      title: 'STUNT',
+      note: 'snappy / loose',
+      flightAccel: 1.08, topSpeedKts: 540, liftAssist: 1.12, idlePower: 0.90,
+      pitchAuthority: 1.58, rollAuthority: 1.72, rudderAuthority: 1.46, autoRudder: 0.55,
+      maneuverAssist: 1.46, stallSoftness: 1.18, groundEffectStrength: 0.95, brakeStrength: 0.94,
+      selfLevel: 0.44, weathervaneYaw: 0.55, gearDrag: 1.0,
+      pitchDamping: 0.82, rollDamping: 0.72, rudderDamping: 0.82,
+      cameraClimbReveal: 1.34, cameraDiveReveal: 1.24,
+    },
+    bush: {
+      title: 'BUSH',
+      note: 'lift / short-field',
+      flightAccel: 0.94, topSpeedKts: 420, liftAssist: 1.28, idlePower: 1.08,
+      pitchAuthority: 1.10, rollAuthority: 0.92, rudderAuthority: 1.20, autoRudder: 1.14,
+      maneuverAssist: 1.30, stallSoftness: 1.30, groundEffectStrength: 1.46, brakeStrength: 1.46,
+      selfLevel: 1.08, weathervaneYaw: 1.18, gearDrag: 1.32,
+      pitchDamping: 1.00, rollDamping: 1.08, rudderDamping: 0.96,
+      cameraClimbReveal: 1.08, cameraDiveReveal: 0.95,
+    },
+    racer: {
+      title: 'RACER',
+      note: 'fast / committed',
+      flightAccel: 1.34, topSpeedKts: 620, liftAssist: 0.92, idlePower: 0.88,
+      pitchAuthority: 1.08, rollAuthority: 1.28, rudderAuthority: 0.95, autoRudder: 0.86,
+      maneuverAssist: 1.00, stallSoftness: 0.88, groundEffectStrength: 0.80, brakeStrength: 0.86,
+      selfLevel: 0.72, weathervaneYaw: 0.84, gearDrag: 0.72,
+      pitchDamping: 0.90, rollDamping: 0.86, rudderDamping: 0.92,
+      cameraClimbReveal: 1.22, cameraDiveReveal: 1.36,
+    },
+  };
+  const recommendedFlightProfileForPlane = (preset) => {
+    if (!preset) return 'trainer';
+    if ((preset.type || '').includes('Stunt') || /^stunt/.test(preset.key)) return 'stunt';
+    if ((preset.type || '').includes('Utility') || preset.key === 'bush') return 'bush';
+    if ((preset.type || '').includes('Racing') || ['scruggs', 'ripslinger'].includes(preset.key)) return 'racer';
+    return 'trainer';
+  };
 
   let fpsDiv = null, fpsFrames = 0, fpsLast = performance.now(), fpsSmoothed = 60;
   function tickFps() {
@@ -11470,6 +11532,8 @@ function updateFloatingTarget(dt) {
     scene.userData.__flightWeathervaneYaw = Math.max(0, Math.min(2.0, gfx.weathervaneYaw != null ? gfx.weathervaneYaw : 1.0));
     scene.userData.__flightGearDrag = Math.max(0, Math.min(2.5, gfx.gearDrag != null ? gfx.gearDrag : 1.0));
     scene.userData.__flightGroundEffect = Math.max(0, Math.min(2.0, gfx.groundEffectStrength != null ? gfx.groundEffectStrength : 1.0));
+    scene.userData.__cameraClimbReveal = Math.max(0.4, Math.min(2.2, gfx.cameraClimbReveal != null ? gfx.cameraClimbReveal : 1.0));
+    scene.userData.__cameraDiveReveal = Math.max(0.4, Math.min(2.2, gfx.cameraDiveReveal != null ? gfx.cameraDiveReveal : 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -11556,6 +11620,7 @@ function updateFloatingTarget(dt) {
     const input = el('input', { type: 'range', min, max, step, value: gfx[id], style: 'width:100%;display:block;margin-top:3px;' });
     input.addEventListener('input', () => {
       gfx[id] = parseFloat(input.value);
+      if (FLIGHT_PROFILE_FIELDS.has(id) && gfx.flightProfile !== 'custom') gfx.flightProfile = 'custom';
       valSpan.textContent = fmt(gfx[id]);
       applyAll(); save();
     });
@@ -11568,6 +11633,29 @@ function updateFloatingTarget(dt) {
     r.appendChild(el('span', {}, labelText));
     r.appendChild(controlEl);
     return r;
+  };
+  const flightCardStyle = (active, recommended) => [
+    'display:grid',
+    'gap:4px',
+    'min-height:62px',
+    'padding:10px 11px',
+    'border-radius:14px',
+    'text-align:left',
+    'cursor:pointer',
+    'background:' + (active ? 'linear-gradient(180deg, rgba(255,204,102,0.18), rgba(255,255,255,0.05))' : (recommended ? 'rgba(255,204,102,0.08)' : 'rgba(255,255,255,0.035)')),
+    'border:1px solid ' + (active ? 'rgba(255,225,170,0.42)' : (recommended ? 'rgba(255,204,102,0.24)' : 'rgba(255,215,150,0.12)')),
+    'color:#fff2cf',
+    'box-shadow:' + (active ? 'inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.18)' : 'none')
+  ].join(';');
+  const applyFlightProfilePreset = (key) => {
+    const preset = FLIGHT_PROFILES[key];
+    if (!preset) return;
+    Object.entries(preset).forEach(([field, value]) => {
+      if (field === 'title' || field === 'note') return;
+      gfx[field] = value;
+    });
+    gfx.flightProfile = key;
+    rebuild(); applyAll(); save();
   };
 
   const rebuild = () => {
@@ -11592,7 +11680,7 @@ function updateFloatingTarget(dt) {
         class: 'preset-card',
         style: `text-align:left;cursor:pointer;${gfx.shadowQuality === (PRESETS[key].shadowQuality || gfx.shadowQuality) && gfx.floraDensity === (PRESETS[key].floraDensity || gfx.floraDensity) ? 'border-color:rgba(255,225,170,0.42);background:rgba(255,204,102,0.12);' : ''}`
       }, el('strong', {}, meta[0]), el('span', {}, meta[1]));
-      b.addEventListener('click', () => { Object.assign(gfx, DEFAULTS, PRESETS[key]); rebuild(); applyAll(); save(); });
+      b.addEventListener('click', () => { Object.assign(gfx, PRESETS[key]); rebuild(); applyAll(); save(); });
       presetRow.appendChild(b);
     });
     panel.appendChild(presetRow);
@@ -11627,14 +11715,32 @@ function updateFloatingTarget(dt) {
       }, active ? 'ACTIVE' : (preset.badge || 'READY')));
       btn.appendChild(meta);
       btn.addEventListener('click', () => {
-        if (!active) applyPropModelPreset(preset.key);
+        if (!active) {
+          applyPropModelPreset(preset.key);
+          rebuild();
+        }
       });
       planeGrid.appendChild(btn);
     });
     panel.appendChild(planeGrid);
 
     panel.appendChild(el('div', { style: headerStyle }, 'FLIGHT'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Tune power, turn bite, auto-stability, and landing feel. Lower damping / self-level for a looser aerobatic plane.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Quick tunes for each prop role, then fine-tune power, stability, landing feel, and chase-camera reveal.'));
+    const recommendedFlightProfile = recommendedFlightProfileForPlane(activePreset);
+    const recommendedMeta = FLIGHT_PROFILES[recommendedFlightProfile];
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, `Recommended for ${activePreset.name || activePreset.label}: ${recommendedMeta.title} · ${recommendedMeta.note}`));
+    const flightProfileGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    ['trainer','stunt','bush','racer'].forEach((key) => {
+      const preset = FLIGHT_PROFILES[key];
+      const active = gfx.flightProfile === key;
+      const recommended = recommendedFlightProfile === key;
+      const btn = el('button', { type: 'button', style: flightCardStyle(active, recommended) });
+      btn.appendChild(el('strong', { style: 'font-size:12px;line-height:1.15;letter-spacing:0.03em;color:#fff3d8;' }, preset.title));
+      btn.appendChild(el('span', { style: 'font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,231,176,0.58);' }, recommended ? `${preset.note} · recommended` : preset.note));
+      btn.addEventListener('click', () => applyFlightProfilePreset(key));
+      flightProfileGrid.appendChild(btn);
+    });
+    panel.appendChild(flightProfileGrid);
     panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
@@ -11653,6 +11759,11 @@ function updateFloatingTarget(dt) {
     panel.appendChild(makeSliderRow('pitchDamping', 0.6, 1.8, 0.05, 'PITCH DAMPING', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rollDamping', 0.6, 1.8, 0.05, 'ROLL DAMPING', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
+
+    panel.appendChild(el('div', { style: headerStyle }, 'CHASE CAMERA'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, 'Pure vertical reveal only — climbs show more belly, dives show more wing tops. No automatic side drift.'));
+    panel.appendChild(makeSliderRow('cameraClimbReveal', 0.4, 2.2, 0.05, 'CAM CLIMB REVEAL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('cameraDiveReveal', 0.4, 2.2, 0.05, 'CAM DIVE REVEAL', (v) => `${Math.round(v * 100)}%`));
 
     panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
     panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
@@ -11685,7 +11796,7 @@ function updateFloatingTarget(dt) {
     panel.appendChild(row('FPS meter', makeToggle('fps')));
     panel.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
 
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'FXAA is now real. Shadow range and ground detail are the safest live levers for performance.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'LOW preset now pushes low-poly readability/perf first. Shadow range, clouds, and ground detail are the safest live levers when tuning performance.'));
   };
   rebuild();
   const hudEl = document.getElementById('hud');
@@ -11817,6 +11928,7 @@ window.__ap = {
       flight_top_speed_kts: scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580,
       flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
       flight_idle_power: scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0,
+      flight_profile: (window.gfx && window.gfx.flightProfile) ? window.gfx.flightProfile : 'custom',
       flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
       flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
       flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
@@ -11878,6 +11990,8 @@ window.__ap = {
       wing_trail_intensity: scene.userData.__wingTrailIntensity || 0,
       camera_reveal: camera.userData.maneuverReveal || 0,
       camera_pitch_reveal: camera.userData.pitchReveal || 0,
+      camera_climb_reveal: scene.userData.__cameraClimbReveal != null ? scene.userData.__cameraClimbReveal : 1.0,
+      camera_dive_reveal: scene.userData.__cameraDiveReveal != null ? scene.userData.__cameraDiveReveal : 1.0,
       camera_fov: camera.fov,
       camera_height_offset: camera.userData.cameraHeightOffset || 0,
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
