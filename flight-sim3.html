@@ -1452,9 +1452,9 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 const renderer = new THREE.WebGLRenderer({
-  antialias: true, powerPreference: 'high-performance'
+  antialias: false, powerPreference: 'high-performance'
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1587,7 +1587,7 @@ const sun = new THREE.DirectionalLight(0xfff1d4, 1.65);
 sun.position.copy(sunDir).multiplyScalar(650);
 sun.target = sunTarget;
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.bias = -0.00018;
 sun.shadow.normalBias = 0.02;
 sun.shadow.radius = 3;
@@ -2102,7 +2102,7 @@ function makeChunk(cx, cz) {
   }
   const clutterDensity = (typeof window !== 'undefined' && window.gfx && window.gfx.floraDensity != null)
     ? Math.max(0.2, Math.min(1.2, window.gfx.floraDensity))
-    : 1.0;
+    : 0.78;
   rocks.count = Math.max(0, Math.min(added, Math.round(added * clutterDensity)));
   rocks.instanceMatrix.needsUpdate = true;
   rocks.userData.__densityGroup = 'terrain-clutter';
@@ -3665,18 +3665,16 @@ function makeJet() {
   root.userData.bellyLight = bellyLight;
   root.userData.landingRigs = [landingLeft, landingRight];
   root.userData.cockpitGlow = { panelMat, hudGlass, visorMat, canopyMat: matCanopy, parts: cockpitGlowParts };
-  // Local-space anchor points for particle emitters.
-  // engineSmokeL/R — aerobatic smoke, each side of the engine cowling
-  //   just behind the prop spinner (forward-left / forward-right). These
-  //   are tuned for the procedural jet; the GLB-swap block overrides
-  //   them based on the extracted prop hub so they track the real plane.
+  // Local-space anchor points for atmospheric FX.
+  // engineSmokeL/R — light engine exhaust / damage smoke near the cowling.
+  // wingtipL/R — condensation / wing-vapor points used during aggressive
+  // manoeuvres so healthy trails read from the wings, not the nose.
   // engineExhaust — behind-nozzle position for jet contrail (unused by
   //   swapped GLB props since suppressJetFX is set).
-  root.userData.engineSmokeL  = new THREE.Vector3(-0.9, 0.0, -3.2);
-  root.userData.engineSmokeR  = new THREE.Vector3( 0.9, 0.0, -3.2);
-  // Kept as back-compat aliases in case other code still references them.
-  root.userData.wingtipL      = root.userData.engineSmokeL;
-  root.userData.wingtipR      = root.userData.engineSmokeR;
+  root.userData.engineSmokeL  = new THREE.Vector3(-0.85, 0.10, -3.00);
+  root.userData.engineSmokeR  = new THREE.Vector3( 0.85, 0.10, -3.00);
+  root.userData.wingtipL      = new THREE.Vector3(-5.35, 0.16,  2.90);
+  root.userData.wingtipR      = new THREE.Vector3( 5.35, 0.16,  2.90);
   root.userData.engineExhaust = new THREE.Vector3(0, 0, 9.5);
 
   return root;
@@ -4655,6 +4653,38 @@ function updateMultiplayer(dt) {
 
       // CRITICAL: always assign props to plane object so telemetry shows prop_count>0
       plane.props = props;
+
+      // Re-anchor atmospheric FX to the actual swapped-in airframe so wing
+      // vapor comes from the wing tips and engine smoke stays near the prop.
+      {
+        const spanX = modelBoxLocal.max.x - modelBoxLocal.min.x;
+        const spanY = modelBoxLocal.max.y - modelBoxLocal.min.y;
+        const spanZ = modelBoxLocal.max.z - modelBoxLocal.min.z;
+        const tipY = modelBoxLocal.min.y + spanY * 0.48;
+        const tipZ = modelBoxLocal.min.z + spanZ * 0.46;
+        jet.userData.wingtipL = new THREE.Vector3(modelBoxLocal.min.x + spanX * 0.05, tipY, tipZ);
+        jet.userData.wingtipR = new THREE.Vector3(modelBoxLocal.max.x - spanX * 0.05, tipY, tipZ);
+
+        let propHubLocal = new THREE.Vector3(
+          (modelBoxLocal.min.x + modelBoxLocal.max.x) * 0.5,
+          modelBoxLocal.min.y + spanY * 0.52,
+          modelBoxLocal.min.z + spanZ * 0.10
+        );
+        const propRef = props[0];
+        if (propRef && typeof propRef.getWorldPosition === 'function') {
+          jet.updateMatrixWorld(true);
+          model.updateMatrixWorld(true);
+          const propWorld = new THREE.Vector3();
+          propRef.getWorldPosition(propWorld);
+          propHubLocal = jet.worldToLocal(propWorld.clone());
+        }
+        const smokeDx = Math.max(0.18, spanX * 0.055);
+        const smokeDy = Math.max(0.04, spanY * 0.03);
+        const smokeDz = Math.max(0.18, spanZ * 0.04);
+        jet.userData.engineSmokeL = propHubLocal.clone().add(new THREE.Vector3(-smokeDx, smokeDy, smokeDz));
+        jet.userData.engineSmokeR = propHubLocal.clone().add(new THREE.Vector3( smokeDx, smokeDy, smokeDz));
+      }
+
       jet.userData.visualModel = model;
       const controlSurfaces = { aileronL: [], aileronR: [], elevatorL: [], elevatorR: [], rudder: [] };
       const surfaceDefs = [
@@ -5312,6 +5342,59 @@ class ParticlePool {
   }
 }
 
+class StreamTrail {
+  constructor(scene, opts = {}) {
+    this.max = opts.max || 84;
+    this.pointsData = [];
+    this.positions = new Float32Array(this.max * 3);
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.mat = new THREE.LineBasicMaterial({
+      color: opts.color || 0xf7fbff,
+      transparent: true,
+      opacity: opts.opacity || 0.56,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    this.line = new THREE.Line(this.geo, this.mat);
+    this.line.frustumCulled = false;
+    this.line.renderOrder = 8;
+    scene.add(this.line);
+    this.targetOpacity = this.mat.opacity;
+    this.fadeRate = opts.fadeRate || 1.8;
+  }
+  addPoint(pos) {
+    const last = this.pointsData[this.pointsData.length - 1];
+    if (last && last.distanceToSquared(pos) < 0.18) return;
+    this.pointsData.push(pos.clone());
+    while (this.pointsData.length > this.max) this.pointsData.shift();
+  }
+  clear() {
+    this.pointsData.length = 0;
+    this.geo.setDrawRange(0, 0);
+    this.geo.attributes.position.needsUpdate = true;
+  }
+  update(dt, active = false, opacity = 0.42) {
+    this.targetOpacity = active ? opacity : 0;
+    this.mat.opacity += (this.targetOpacity - this.mat.opacity) * Math.min(1, dt * 6.0);
+    this.line.visible = this.mat.opacity > 0.01 || this.pointsData.length > 1;
+    if (!active && this.pointsData.length) {
+      const trim = Math.max(1, Math.round(dt * this.fadeRate * 18));
+      this.pointsData.splice(0, Math.min(trim, this.pointsData.length));
+    }
+    const count = Math.min(this.pointsData.length, this.max);
+    for (let i = 0; i < count; i++) {
+      const p = this.pointsData[i];
+      this.positions[i * 3] = p.x;
+      this.positions[i * 3 + 1] = p.y;
+      this.positions[i * 3 + 2] = p.z;
+    }
+    this.geo.setDrawRange(0, count);
+    this.geo.attributes.position.needsUpdate = true;
+  }
+}
+
 const sharedSpriteTex = makeSpriteTexture(64, 0.7);
 // Multi-lobe cotton puff texture shared by the engine smoke pools. Larger
 // canvas (128) gives enough resolution that the lobes read on screen.
@@ -5712,19 +5795,19 @@ function updateCombat(dt) {
   explosionSmokePool.update(dt);
 }
 
-// Engine-side smoke puffs — aerobatic-display style. Each "event" emits a
-// small cluster (handled in updateAtmospheric) so the trail reads as a
-// string of puffy clouds rather than a thin line. Pool size and life are
-// generous because 3 particles per emission × frequent events builds up
-// fast — we want a long trailing sausage.
+// Wing-vapor pools — continuous wingtip condensation stream for hard turns,
+// climbs and descents. These use a softer sprite and frequent single-particle
+// emission so they read as a thin vapor ribbon rather than a chain of puffs.
 const vaporL = new ParticlePool(scene, {
-  max: 380, color: 0xffffff, size: 2.3,
-  life: 3.2, growth: 2.1, additive: false, texture: puffTex,
+  max: 420, color: 0xf7fbff, size: 1.15,
+  life: 1.85, growth: 2.2, additive: false, texture: sharedSpriteTex,
 });
 const vaporR = new ParticlePool(scene, {
-  max: 380, color: 0xffffff, size: 2.3,
-  life: 3.2, growth: 2.1, additive: false, texture: puffTex,
+  max: 420, color: 0xf7fbff, size: 1.15,
+  life: 1.85, growth: 2.2, additive: false, texture: sharedSpriteTex,
 });
+const wingTrailStreamL = new StreamTrail(scene, { max: 110, color: 0xf9fdff, opacity: 0.52, fadeRate: 1.2 });
+const wingTrailStreamR = new StreamTrail(scene, { max: 110, color: 0xf9fdff, opacity: 0.52, fadeRate: 1.2 });
 // Track previous forward speed so we can estimate longitudinal
 // acceleration frame-to-frame — a cheap way to catch "speed-ups" without
 // maintaining a full motion integrator.
@@ -5851,16 +5934,21 @@ let throatClearSmokeTimer = 0;
 let dirtyExhaustCoreTimer = 0;
 let contrailTimer = 0;
 function updateAtmospheric(dt) {
-  // Compute world positions of emitter anchors. Smoke now fires from
-  // either side of the engine cowling (just behind the spinner) rather
-  // than the wingtips, so the trails read as engine smoke — classic
-  // airshow / stunt-team look.
+  // Engine smoke stays near the cowling; healthy condensation trails come
+  // from the real wing tips so hard manoeuvres read as wing vapor instead
+  // of the engine smoking all the time.
   const smokeLAnchor = jet.userData.engineSmokeL || jet.userData.wingtipL;
   const smokeRAnchor = jet.userData.engineSmokeR || jet.userData.wingtipR;
+  const wingLAnchor = jet.userData.wingtipL || smokeLAnchor;
+  const wingRAnchor = jet.userData.wingtipR || smokeRAnchor;
   const wlL = smokeLAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
   const wlR = smokeRAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
   const wlE = jet.userData.engineExhaust.clone().applyQuaternion(plane.quat).add(plane.pos);
   const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const wingRightWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+  const trailBack = forwardWorld.clone().multiplyScalar(-0.28);
+  const wtL = wingLAnchor.clone().applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, -0.45).add(trailBack);
+  const wtR = wingRAnchor.clone().applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, 0.45).add(trailBack);
   const wlCore = wlL.clone().lerp(wlR, 0.5).addScaledVector(forwardWorld, -0.35);
 
   const speed = plane.vel.length();
@@ -5870,45 +5958,44 @@ function updateAtmospheric(dt) {
   const rollRate  = Math.abs(plane.angVel.z);
   const pitchRate = Math.abs(plane.angVel.x);
   const yawRate   = Math.abs(plane.angVel.y);
+  const verticalRate = Math.abs(plane.vel.y);
+  const pScale = (typeof window !== 'undefined' && window.__gfxParticleScale) ? window.__gfxParticleScale() : 1.0;
   // Longitudinal acceleration (m/s²) along the nose. Positive = speeding up.
   const fwdAccel = Math.max(0, (fwdSpd - _prevFwdSpd) / Math.max(dt, 1e-3));
   _prevFwdSpd = fwdSpd;
 
-  // Wingtip smoke fires on ANY of:
-  //   • AoA > ~5° (high-alpha turn / climb)               → classic vortex
-  //   • roll rate > 0.6 rad/s                              → sharp bank
-  //   • pitch rate > 0.6 rad/s                             → yank on the stick
-  //   • yaw rate > 0.45 rad/s (sustained banked turn via auto-rudder)
-  //   • forward accel > 4 m/s²                              → speed-up
-  // Scaled down at very low airspeed so a parked plane doesn't puff smoke.
-  const airborneGate = Math.min(1, fwdSpd / 30);
-  const vaporIntensity = Math.max(
-    Math.max(0, Math.abs(aoa) - 0.09) * 5.5,
-    Math.max(0, rollRate  - 0.60) * 1.4,
-    Math.max(0, pitchRate - 0.60) * 1.4,
-    Math.max(0, yawRate   - 0.45) * 1.6,
-    Math.max(0, fwdAccel  - 4.0) * 0.18
+  // Thin wing-vapor only appears when the aircraft is working hard: tight
+  // bank, fast pull/push, or strong climb/descent. Keep it sparse so it
+  // reads as condensation rather than constant smoke.
+  const airborneGate = Math.min(1, fwdSpd / 34);
+  const turnLoad = Math.max(
+    Math.max(0, Math.abs(aoa) - 0.10) * 4.8,
+    Math.max(0, rollRate  - 0.42) * 1.9,
+    Math.max(0, pitchRate - 0.38) * 1.8,
+    Math.max(0, yawRate   - 0.32) * 1.25,
+    Math.max(0, verticalRate - 5.5) * 0.07,
+    Math.max(0, fwdAccel  - 5.0) * 0.10
   ) * airborneGate;
-  const greySmokeMix = clamp01(Math.max(engineSurgeState.greyMix * 1.15, Math.max(0, vaporIntensity - 0.28) * 0.8));
+  scene.userData.__wingTrailIntensity = plane.onGround ? 0 : turnLoad;
+  const greySmokeMix = clamp01(Math.max(engineSurgeState.greyMix * 1.1, Math.max(0, turnLoad - 0.78) * 0.24));
   const throatClearMix = clamp01(engineSurgeState.throatClear);
 
   vaporTimer += dt;
-  // Throttle the emit rate a touch — each event now produces 3 puffs, so
-  // we don't need to fire quite as often to build a dense trail.
-  if (vaporIntensity > 0.04 && vaporTimer > 0.045) {
-    vaporTimer = 0;
-    const ints = Math.min(1.8, vaporIntensity);
-    const whiteMix = 1 - greySmokeMix * 0.58;
-    const sz   = (0.7 + ints * 0.55) * (0.78 + whiteMix * 0.22);
-    // Cluster of 3 puffs per side with small spherical offsets (±0.35 m)
-    // and a gentle upward drift (0.6 m/s) so each emission reads as a
-    // fluffy multi-lobe puff rather than a single dot. Spread scales
-    // slightly with intensity so harder manoeuvres produce bigger blobs.
-    const spread  = 0.30 + ints * 0.20;
-    const driftUp = 0.55;
-    const whiteCount = greySmokeMix > 0.65 ? 1 : greySmokeMix > 0.38 ? 2 : 3;
-    vaporL.emitCluster(wlL, whiteCount, spread, driftUp, ints * whiteMix, sz);
-    vaporR.emitCluster(wlR, whiteCount, spread, driftUp, ints * whiteMix, sz);
+  if (turnLoad > 0.08) {
+    const ints = Math.min(1.35, turnLoad);
+    const emitInterval = ints > 1.0 ? 0.024 : ints > 0.62 ? 0.032 : 0.042;
+    wingTrailStreamL.addPoint(wtL);
+    wingTrailStreamR.addPoint(wtR);
+    wingTrailStreamL.update(dt, true, 0.34 + ints * 0.22);
+    wingTrailStreamR.update(dt, true, 0.34 + ints * 0.22);
+
+    while (vaporTimer > emitInterval) {
+      vaporTimer -= emitInterval;
+    }
+  } else {
+    vaporTimer = Math.min(vaporTimer, 0.02);
+    wingTrailStreamL.update(dt, false, 0);
+    wingTrailStreamR.update(dt, false, 0);
   }
 
   // --- Damage-driven smoke (C8/C9) -----------------------------------
@@ -5919,7 +6006,6 @@ function updateAtmospheric(dt) {
   // smoke. Engine events (power-cut restart, stall recovery) trigger a
   // transient dark puff via plane.engineEvent.
   plane.engineEvent = Math.max(0, plane.engineEvent - dt * 1.1); // ~1s decay
-  const pScale = (typeof window !== 'undefined' && window.__gfxParticleScale) ? window.__gfxParticleScale() : 1.0;
 
   // Engine heat — builds at sustained high throttle (>80%) and cools
   // below 50%. A hot engine (>0.7) joins damage as a trigger for dark
@@ -5944,7 +6030,7 @@ function updateAtmospheric(dt) {
   );
 
   greyTurnSmokeTimer += dt;
-  if (!plane.crashed && damageSmokeMix > 0.06 && greyTurnSmokeTimer > 0.05) {
+  if (!plane.crashed && damageSmokeMix > 0.06 && greyTurnSmokeTimer > 0.07) {
     greyTurnSmokeTimer = 0;
     const spread = 0.26 + damageSmokeMix * 0.24;
     const driftUp = 0.30 + damageSmokeMix * 0.14;
@@ -5961,7 +6047,7 @@ function updateAtmospheric(dt) {
     Math.max(throatClearMix, plane.engineEvent * 0.9) * (damageMix > 0.2 ? 1 : 0)
   );
   throatClearSmokeTimer += dt;
-  if (!plane.crashed && throatClearDriven > 0.05 && throatClearSmokeTimer > 0.04) {
+  if (!plane.crashed && throatClearDriven > 0.05 && throatClearSmokeTimer > 0.055) {
     throatClearSmokeTimer = 0;
     const spread = 0.18 + throatClearDriven * 0.24;
     const driftUp = 0.22 + throatClearDriven * 0.12;
@@ -5976,7 +6062,7 @@ function updateAtmospheric(dt) {
   // the engine is properly cooked. This is the "trailing black column"
   // people associate with a doomed plane.
   dirtyExhaustCoreTimer += dt;
-  if (!plane.crashed && criticalMix > 0.08 && dirtyExhaustCoreTimer > 0.032) {
+  if (!plane.crashed && criticalMix > 0.08 && dirtyExhaustCoreTimer > 0.045) {
     dirtyExhaustCoreTimer = 0;
     const coreSpread = 0.10 + criticalMix * 0.10;
     const coreLife = 0.90 + criticalMix * 0.95;
@@ -6014,7 +6100,7 @@ function updateAtmospheric(dt) {
 // Weather state — public so other systems (graphics panel, future
 // weather events) can modulate it. `clouds` in [0,1] scales density
 // at build time (CLOUD_COUNT * clouds). Set before buildClouds().
-const weather = { clouds: 0.6, storm: 0 };
+const weather = { clouds: 0.42, storm: 0 };
 const CLOUD_COUNT_MAX = 90;
 const CLOUD_COUNT = Math.round(CLOUD_COUNT_MAX * weather.clouds);
 
@@ -6074,7 +6160,7 @@ function currentCloudMat() {
 }
 
 function currentCloudStyle() {
-  return (typeof window !== 'undefined' && window.gfx && window.gfx.cloudStyle) ? window.gfx.cloudStyle : 'soft';
+  return (typeof window !== 'undefined' && window.gfx && window.gfx.cloudStyle) ? window.gfx.cloudStyle : 'chunky';
 }
 
 function buildClouds() {
@@ -6135,6 +6221,7 @@ bootLog.step('clouds', clouds && clouds.data && clouds.data.length > 0,
 
 function updateClouds(dt, px, pz) {
   for (const c of clouds.data) {
+    if (c.holder && c.holder.visible === false) continue;
     c.ox += c.vx * dt;
     c.oz += c.vz * dt;
     // Wrap — when the player has flown more than 5 km past this cloud, re-anchor
@@ -7548,6 +7635,16 @@ function resetPlane() {
   if (typeof replayClear === 'function') replayClear();
   if (typeof syncReplayUI === 'function') syncReplayUI();
   if (typeof camOrbit !== 'undefined') { camOrbit.yaw = 0; camOrbit.pitch = 0; }
+  if (camera) {
+    camera.userData.maneuverReveal = 0;
+    camera.fov = 72;
+    camera.updateProjectionMatrix();
+  }
+  scene.userData.__wingTrailIntensity = 0;
+  vaporTimer = 0;
+  _prevFwdSpd = 0;
+  if (typeof wingTrailStreamL !== 'undefined') wingTrailStreamL.clear();
+  if (typeof wingTrailStreamR !== 'undefined') wingTrailStreamR.clear();
   if (typeof resetGateScoring === 'function') resetGateScoring();
   resetEngineSurgeFx();
   setFlightPhase(spawn.onGround ? 'ON STAND' : 'AIR START', spawn.onGround ? '' : 'ok');
@@ -8678,19 +8775,34 @@ window.addEventListener('blur', () => {
 });
 
 function updateCamera(dt) {
-  // Desired camera position: offset in the plane's local frame,
-  // so it stays behind no matter how the plane is oriented.
-  // Apply user orbit (right-mouse drag) on top of the plane frame.
+  // Desired camera position: aft in aircraft space, but during aggressive
+  // manoeuvres we bias upward toward world-up and add a slight side peek so
+  // the player can read the top/bottom of the aircraft more clearly.
   const orbitQ = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(camOrbit.pitch, camOrbit.yaw, 0, 'YXZ')
   );
   const offsetRotated = camLocalOffset.clone().applyQuaternion(orbitQ);
-  const offsetWorld = offsetRotated.applyQuaternion(plane.quat);
-  const desired = plane.pos.clone().add(offsetWorld);
+  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
+  const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+  const bankReveal = clamp01(Math.abs(planeRight.y) * 1.15);
+  const pitchReveal = clamp01(Math.abs(plane.vel.y) / 24);
+  const rateReveal = clamp01((Math.abs(plane.angVel.z) + Math.abs(plane.angVel.x) * 0.85 - 0.32) / 1.25);
+  const maneuverReveal = Math.max(bankReveal, pitchReveal, rateReveal);
+  camera.userData.maneuverReveal = maneuverReveal;
+  const sideSign = Math.sign(planeRight.y || plane.angVel.z || 1);
 
-  // Frame-rate-independent exponential smoothing — tight enough to
-  // keep up with hard maneuvers but smooth enough to avoid jitter
-  const followK = 9.0;
+  const rearLocal = new THREE.Vector3(0, 0, offsetRotated.z - 5.0 * maneuverReveal);
+  const sideLocal = new THREE.Vector3(-sideSign * 5.6 * maneuverReveal, 0, 0);
+  const liftDir = planeUp.clone().lerp(new THREE.Vector3(0, 1, 0), 0.94 * maneuverReveal).normalize();
+  const liftAmount = offsetRotated.y + 6.2 * maneuverReveal;
+  const desired = plane.pos.clone()
+    .add(rearLocal.applyQuaternion(plane.quat))
+    .add(sideLocal.applyQuaternion(plane.quat))
+    .addScaledVector(liftDir, liftAmount);
+
+  // Frame-rate-independent exponential smoothing — more responsive during
+  // hard manoeuvres so the camera can keep up with the reveal move.
+  const followK = 9.0 + maneuverReveal * 5.5;
   const t = 1 - Math.exp(-followK * dt);
   camera.position.lerp(desired, t);
 
@@ -8698,18 +8810,21 @@ function updateCamera(dt) {
   const gH = getHeight(camera.position.x, camera.position.z);
   if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
 
-  // Look at a point slightly ahead of the plane's nose
-  const aheadLocal = new THREE.Vector3(0, 0, -6).applyQuaternion(plane.quat);
-  const lookTarget = plane.pos.clone().add(aheadLocal);
+  // Tighten the look-ahead slightly during hard manoeuvres so the aircraft
+  // stays larger in frame and the turn/climb reads better.
+  const aheadDist = 6 - maneuverReveal * 4.2;
+  const aheadLocal = new THREE.Vector3(0, 0, -aheadDist).applyQuaternion(plane.quat);
+  const lookTarget = plane.pos.clone().add(aheadLocal).addScaledVector(liftDir, -0.55 * maneuverReveal);
 
   // Camera up = blend of world up and plane up (mostly plane up so
   // banking & loops feel right, with a touch of world up for stability)
-  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
   const blendedUp = new THREE.Vector3(0, 1, 0)
-    .multiplyScalar(0.25)
-    .addScaledVector(planeUp, 0.75)
+    .multiplyScalar(0.38 + maneuverReveal * 0.26)
+    .addScaledVector(planeUp, 0.62 - maneuverReveal * 0.26)
     .normalize();
   camera.up.copy(blendedUp);
+  camera.fov += (((72 + maneuverReveal * 10.5)) - camera.fov) * Math.min(1, dt * 3.2);
+  camera.updateProjectionMatrix();
 
   camera.lookAt(lookTarget);
   camera.userData.focusTarget = lookTarget.clone();
@@ -10819,11 +10934,11 @@ function updateFloatingTarget(dt) {
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================
 (function setupGraphicsPanel() {
-  const LS_KEY = 'gfx-settings-v1';
+  const LS_KEY = 'gfx-settings-v2';
   const DEFAULTS = {
-    fxaa: true, shadowsOn: true, shadowQuality: 'med', shadowDistance: 230,
-    dof: false, bloom: true, bloomStrength: 0.42, fog: true, cloudDensity: 0.6, cloudStyle: 'soft', terrainFade: 0.58, nightLift: 0.35, atmosphereDepth: 1.0, airframeFill: 0.55, replayHeroLight: true, particleScale: 1.0, floraDensity: 1.0, ambientFxDensity: 1.0,
-    fps: false, renderScale: 1.0, resolutionScale: 1.0, motionBlur: false,
+    fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
+    dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
+    fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
   };
   const PRESETS = {
     low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 160, dof: false, bloom: false, bloomStrength: 0.18, fog: true, cloudDensity: 0.28, cloudStyle: 'chunky', terrainFade: 0.26, nightLift: 0.10, atmosphereDepth: 0.74, airframeFill: 0.30, replayHeroLight: false, particleScale: 0.40, floraDensity: 0.45, ambientFxDensity: 0.35, renderScale: 0.65, resolutionScale: 0.82 },
@@ -11285,6 +11400,9 @@ window.__ap = {
       engine_surge_power: engineSurgeState.powerMul,
       turn_smoke_mix: engineSurgeState.greyMix,
       throat_clear_smoke: engineSurgeState.throatClear,
+      wing_trail_intensity: scene.userData.__wingTrailIntensity || 0,
+      camera_reveal: camera.userData.maneuverReveal || 0,
+      camera_fov: camera.fov,
       crash_fx_active: !!combatState.crashFxTriggered,
       flight_phase: flightPhaseState.label,
       mission_grade: missionDebriefState.grade,
