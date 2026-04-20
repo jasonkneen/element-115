@@ -8804,11 +8804,9 @@ function updateCamera(dt) {
   camera.userData.turnBias = 0;
 
   const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal;
-  const sideDist = offsetRotated.x * 0.08;
   const height = Math.max(1.6, offsetRotated.y + 3.8 * maneuverReveal);
   const desired = plane.pos.clone()
     .addScaledVector(planeForward, -backDist)
-    .addScaledVector(planeRight, sideDist)
     .addScaledVector(worldUp, height);
 
   const followK = 8.8 + maneuverReveal * 2.4;
@@ -8819,11 +8817,9 @@ function updateCamera(dt) {
   if (camera.position.y < gH + 1.8) camera.position.y = gH + 1.8;
 
   const lookDist = 6.2 - maneuverReveal * 1.8;
-  const lookTarget = plane.pos.clone()
-    .addScaledVector(planeForward, lookDist)
-    .addScaledVector(worldUp, -0.35 * maneuverReveal);
+  const lookTarget = plane.pos.clone().addScaledVector(planeForward, lookDist);
 
-  const blendedUp = worldUp.clone().lerp(planeUp, 0.16).normalize();
+  const blendedUp = worldUp;
   camera.up.copy(blendedUp);
   camera.fov += (((72 + maneuverReveal * 6.0)) - camera.fov) * Math.min(1, dt * 2.6);
   camera.updateProjectionMatrix();
