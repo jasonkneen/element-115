@@ -923,6 +923,7 @@
         <div class="deck-meta-row">TIME <span id="tod-ind" class="ok hud-chip">MORNING</span></div>
         <div class="deck-meta-row">PHASE <span id="phase-ind" class="hud-chip">PREFLIGHT</span></div>
         <div class="deck-meta-row">NET <span id="mp-ind" class="hud-chip">SOLO</span></div>
+        <div class="deck-meta-row">INPUT <span id="input-ind" class="hud-chip">KBD</span></div>
       </div>
       <div class="hud-control-grid">
         <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
@@ -9374,10 +9375,38 @@ function resetGamepadState() {
   gamepadState.reset = false;
 }
 
+function syncInputIndicator() {
+  const inputInd = document.getElementById('input-ind');
+  const ch1 = document.getElementById('ch-line1');
+  const ch2 = document.getElementById('ch-line2');
+  if (inputInd) {
+    if (gamepadState.connected) {
+      const label = /xbox/i.test(gamepadState.id) ? 'XBOX PAD' : 'PAD';
+      inputInd.textContent = label;
+      inputInd.className = 'hud-chip ok';
+    } else {
+      inputInd.textContent = 'KBD';
+      inputInd.className = 'hud-chip';
+    }
+  }
+  if (gamepadState.connected) {
+    if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS YAW · A FIRE';
+    if (ch2) ch2.textContent = plane.fixedGear
+      ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · START RESET'
+      : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · START RESET';
+  } else {
+    if (ch1) ch1.textContent = 'W/S PITCH · A/D BANK · Q/E RUDDER';
+    if (ch2) ch2.textContent = plane.fixedGear
+      ? 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · P OPTIONS · R RESET'
+      : 'SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · P OPTIONS · R RESET';
+  }
+}
+
 function pollGamepadInput() {
   if (!INPUT_FLAGS.gamepad || typeof navigator.getGamepads !== 'function') {
     resetGamepadState();
     combatState.fireHeld = false;
+    syncInputIndicator();
     return gamepadState;
   }
   const pads = Array.from(navigator.getGamepads() || []).filter(Boolean);
@@ -9389,6 +9418,7 @@ function pollGamepadInput() {
   if (!pad) {
     resetGamepadState();
     combatState.fireHeld = false;
+    syncInputIndicator();
     return gamepadState;
   }
 
@@ -9415,6 +9445,7 @@ function pollGamepadInput() {
   gamepadState.lights = !!(pad.buttons?.[3]?.pressed);
   gamepadState.reset = !!(pad.buttons?.[9]?.pressed);
   combatState.fireHeld = gamepadState.fire;
+  syncInputIndicator();
   return gamepadState;
 }
 
@@ -9423,17 +9454,22 @@ window.addEventListener('gamepadconnected', (e) => {
   gamepadState.index = e.gamepad.index;
   gamepadState.connected = true;
   gamepadState.id = e.gamepad.id || `Gamepad ${e.gamepad.index}`;
-  if (typeof statusMsg !== 'undefined' && statusMsg && !plane.crashed) {
-    statusMsg.textContent = `CONTROLLER READY · ${gamepadState.id.split('(')[0].trim() || 'GAMEPAD'}`;
-    statusMsg.className = 'panel ok';
-  }
+  syncInputIndicator();
+  if (typeof flashStatus === 'function') flashStatus(`CONTROLLER READY · ${gamepadState.id.split('(')[0].trim() || 'GAMEPAD'}`, 'panel ok', 1.8);
 });
 
 window.addEventListener('gamepaddisconnected', (e) => {
   if (e.gamepad && e.gamepad.index === gamepadState.index) {
     resetGamepadState();
     combatState.fireHeld = false;
+    syncInputIndicator();
+    if (typeof flashStatus === 'function') flashStatus('CONTROLLER DISCONNECTED · KEYBOARD ACTIVE', 'panel warn', 1.6);
   }
+});
+
+window.addEventListener('focus', () => {
+  if (!INPUT_FLAGS.gamepad) return;
+  pollGamepadInput();
 });
 
 window.addEventListener('contextmenu', (e) => e.preventDefault());
