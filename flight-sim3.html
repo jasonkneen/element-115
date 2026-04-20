@@ -1956,7 +1956,46 @@ const FAR_RADIUS = 4;             // 9×9 far chunks → covers ~16.2 km
 const ROCKS_PER_CHUNK = 90;
 const chunks = new Map();
 const farChunks = new Map();
+const pendingChunkBuilds = [];
+const pendingChunkKeys = new Set();
+const pendingFarChunkBuilds = [];
+const pendingFarChunkKeys = new Set();
 const chunkKey = (cx, cz) => `${cx},${cz}`;
+
+function queueChunkBuild(list, set, map, cx, cz, priority = 0) {
+  const key = chunkKey(cx, cz);
+  if (map.has(key)) return;
+  if (set.has(key)) {
+    const existing = list.find(job => job.key === key);
+    if (existing) existing.priority = Math.min(existing.priority, priority);
+    return;
+  }
+  set.add(key);
+  list.push({ key, cx, cz, priority });
+}
+
+function trimPendingChunkBuilds(list, set, wanted) {
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (wanted.has(list[i].key)) continue;
+    set.delete(list[i].key);
+    list.splice(i, 1);
+  }
+}
+
+function processChunkBuildQueues(nearBudget = 1, farBudget = 1) {
+  if (pendingChunkBuilds.length > 1) pendingChunkBuilds.sort((a, b) => a.priority - b.priority);
+  while (nearBudget-- > 0 && pendingChunkBuilds.length) {
+    const job = pendingChunkBuilds.shift();
+    pendingChunkKeys.delete(job.key);
+    if (!chunks.has(job.key)) chunks.set(job.key, makeChunk(job.cx, job.cz));
+  }
+  if (pendingFarChunkBuilds.length > 1) pendingFarChunkBuilds.sort((a, b) => a.priority - b.priority);
+  while (farBudget-- > 0 && pendingFarChunkBuilds.length) {
+    const job = pendingFarChunkBuilds.shift();
+    pendingFarChunkKeys.delete(job.key);
+    if (!farChunks.has(job.key)) farChunks.set(job.key, makeFarChunk(job.cx, job.cz));
+  }
+}
 
 // Sedimentary strata — bands of color at fixed elevations. Mutable so the
 // biome switcher can swap the palette in-place without touching chunk code.
@@ -2333,9 +2372,11 @@ function updateChunks(px, pz) {
       const cx = pcx + dx, cz = pcz + dz;
       const key = chunkKey(cx, cz);
       wanted.add(key);
-      if (!chunks.has(key)) chunks.set(key, makeChunk(cx, cz));
+      if (!chunks.has(key)) queueChunkBuild(pendingChunkBuilds, pendingChunkKeys, chunks, cx, cz, Math.abs(dx) + Math.abs(dz));
     }
   }
+
+  trimPendingChunkBuilds(pendingChunkBuilds, pendingChunkKeys, wanted);
 
   for (const [key, c] of chunks) {
     if (!wanted.has(key)) {
@@ -2438,9 +2479,11 @@ function updateFarChunks(px, pz) {
 
       const key = chunkKey(cx, cz);
       wanted.add(key);
-      if (!farChunks.has(key)) farChunks.set(key, makeFarChunk(cx, cz));
+      if (!farChunks.has(key)) queueChunkBuild(pendingFarChunkBuilds, pendingFarChunkKeys, farChunks, cx, cz, Math.abs(dx) + Math.abs(dz));
     }
   }
+
+  trimPendingChunkBuilds(pendingFarChunkBuilds, pendingFarChunkKeys, wanted);
 
   for (const [key, c] of farChunks) {
     if (!wanted.has(key)) {
@@ -5271,13 +5314,18 @@ function applyBiome(name) {
     c.geo.dispose();
   }
   chunks.clear();
+  pendingChunkBuilds.length = 0;
+  pendingChunkKeys.clear();
   for (const c of farChunks.values()) {
     scene.remove(c.mesh);
     c.geo.dispose();
   }
   farChunks.clear();
+  pendingFarChunkBuilds.length = 0;
+  pendingFarChunkKeys.clear();
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
+  processChunkBuildQueues(16, 8);
 
   // HUD update
   if (typeof $biomeInd !== 'undefined' && $biomeInd) {
@@ -10502,6 +10550,7 @@ function animate(now) {
   updateJetVisual();
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
+  processChunkBuildQueues(2, 1);
   updateCamera(dt);
   updateAtmospheric(dt);
   updateShadow();
@@ -10542,6 +10591,7 @@ function animate(now) {
 // Initial chunk load before first frame
 updateChunks(plane.pos.x, plane.pos.z);
 updateFarChunks(plane.pos.x, plane.pos.z);
+processChunkBuildQueues(64, 96);
 updateTimeOfDay(0);
 updateJetVisual();
 updateSunShadowRig();
@@ -11513,7 +11563,8 @@ function pathTransit(p1, p2, halfPeriod) {
 }
 
 function trafficEnabled() {
-  return !MULTIPLAYER_URL;
+  const ambientDensity = scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0;
+  return !MULTIPLAYER_URL && ambientDensity > 0.28;
 }
 
 function updateTraffic(dt) {
@@ -11961,15 +12012,24 @@ function updateFloatingTarget(dt) {
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================
 (function setupGraphicsPanel() {
-  const LS_KEY = 'gfx-settings-v2';
+  const LEGACY_LS_KEY = 'gfx-settings-v2';
+  const LS_KEY = 'gfx-settings-v3';
+  const LEGACY_TUNING_FIELDS = [
+    'flightProfile', 'flightAccel', 'topSpeedKts', 'liftAssist', 'idlePower',
+    'pitchAuthority', 'rollAuthority', 'rudderAuthority', 'autoRudder',
+    'brakeStrength', 'pitchDamping', 'rollDamping', 'rudderDamping',
+    'stallSoftness', 'maneuverAssist', 'selfLevel', 'weathervaneYaw',
+    'gearDrag', 'groundEffectStrength', 'cameraClimbReveal', 'cameraDiveReveal',
+    'fps'
+  ];
   const DEFAULTS = {
-    fxaa: true, shadowsOn: true, shadowQuality: 'low', shadowDistance: 190,
-    dof: false, bloom: true, bloomStrength: 0.28, fog: true, cloudDensity: 0.42, cloudStyle: 'chunky', terrainFade: 0.44, nightLift: 0.20, atmosphereDepth: 0.86, airframeFill: 0.42, replayHeroLight: true, particleScale: 0.72, floraDensity: 0.72, ambientFxDensity: 0.60,
+    fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
+    dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
     flightProfile: 'custom',
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
     brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
     cameraClimbReveal: 1.0, cameraDiveReveal: 1.0,
-    fps: false, renderScale: 0.82, resolutionScale: 0.92, motionBlur: false,
+    fps: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false,
   };
   const PRESETS = {
     low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, renderScale: 0.60, resolutionScale: 0.78 },
@@ -11979,9 +12039,20 @@ function updateFloatingTarget(dt) {
   };
 
   const gfx = Object.assign({}, DEFAULTS);
+  let migratedLegacySettings = false;
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
-    if (saved && typeof saved === 'object') Object.assign(gfx, saved);
+    if (saved && typeof saved === 'object') {
+      Object.assign(gfx, saved);
+    } else {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_LS_KEY) || 'null');
+      if (legacy && typeof legacy === 'object') {
+        for (const field of LEGACY_TUNING_FIELDS) {
+          if (legacy[field] != null) gfx[field] = legacy[field];
+        }
+        migratedLegacySettings = true;
+      }
+    }
   } catch {}
   window.gfx = gfx;
   window.__gfxParticleScale = () => gfx.particleScale;
@@ -12446,6 +12517,7 @@ function updateFloatingTarget(dt) {
   });
 
   applyAll();
+  if (migratedLegacySettings) save();
   window.__gfxTick = tickFps;
 })();
 bootLog.step('graphics panel', !!document.getElementById('graphics-panel'),
@@ -12586,6 +12658,8 @@ window.__ap = {
       traffic_planes: trafficEnabled() ? traffic.length : 0,
       traffic_loaded: trafficEnabled() ? traffic.filter(t => t.loaded).length : 0,
       traffic_alive: trafficEnabled() ? destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length : 0,
+      pending_chunk_builds: pendingChunkBuilds.length,
+      pending_far_chunk_builds: pendingFarChunkBuilds.length,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
       shots_fired: combatState.shotsFired,
       combat_hits: combatState.shotHits,
