@@ -9728,6 +9728,23 @@ function getMouseFlightAimLimits() {
     y: aimBoxPx / Math.max(1, h * 0.5),
   };
 }
+function getMouseFlightAimBaseNdc() {
+  const limits = getMouseFlightAimLimits();
+  return {
+    x: 0,
+    y: Math.max(-limits.y * 0.35, Math.min(limits.y * 0.35, 0.14)),
+  };
+}
+function getMouseFlightAimNdc() {
+  const limits = getMouseFlightAimLimits();
+  const base = getMouseFlightAimBaseNdc();
+  const baseX = Math.max(-limits.x * 0.35, Math.min(limits.x * 0.35, base.x));
+  const baseY = Math.max(-limits.y * 0.35, Math.min(limits.y * 0.35, base.y));
+  return {
+    x: Math.max(-limits.x, Math.min(limits.x, baseX + mouseFlightState.targetX)),
+    y: Math.max(-limits.y, Math.min(limits.y, baseY + mouseFlightState.targetY)),
+  };
+}
 function updateMouseFlightSteer(dt) {
   const aimLimit = getMouseFlightAimLimits();
   mouseFlightState.steerX += (mouseFlightState.targetX - mouseFlightState.steerX) * Math.min(0.82, dt * 24);
@@ -9784,31 +9801,10 @@ function collectAirTargetCandidates() {
 function getMouseFlightReticleScreenPoint() {
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
-  const limits = getMouseFlightAimLimits();
-  const centerX = w * 0.5;
-  const centerY = h * 0.43;
-  const fallback = {
-    x: centerX + mouseFlightState.targetX * w * 0.5,
-    y: centerY - mouseFlightState.targetY * h * 0.5,
-  };
-  if (!camera || !jet?.userData?.gunL || !jet?.userData?.gunR) return fallback;
-  const muzzleL = _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
-  const muzzleR = _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
-  const origin = _hudWorldC.copy(muzzleL).add(muzzleR).multiplyScalar(0.5);
-  const forward = _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
-  const reticleWorld = _hudWorldD.copy(forward).multiplyScalar(420).add(origin);
-  const reticleNdc = _hudNdcA.copy(reticleWorld).project(camera);
-  if (!Number.isFinite(reticleNdc.x) || !Number.isFinite(reticleNdc.y) || reticleNdc.z <= -2 || reticleNdc.z >= 2) {
-    return fallback;
-  }
-  if (Math.abs(reticleNdc.x) > 2.5 || Math.abs(reticleNdc.y) > 2.5) {
-    return fallback;
-  }
-  reticleNdc.x = Math.max(-limits.x, Math.min(limits.x, reticleNdc.x));
-  reticleNdc.y = Math.max(-limits.y, Math.min(limits.y, reticleNdc.y));
+  const aimNdc = getMouseFlightAimNdc();
   return {
-    x: w * 0.5 + reticleNdc.x * w * 0.5,
-    y: h * 0.5 - reticleNdc.y * h * 0.5,
+    x: w * 0.5 + aimNdc.x * w * 0.5,
+    y: h * 0.5 - aimNdc.y * h * 0.5,
   };
 }
 function updateReticleHud(dt = 1 / 60) {
