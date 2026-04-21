@@ -101,6 +101,9 @@
     border-radius: 14px;
     color: rgba(255, 240, 214, 0.82);
   }
+  .hud-stat-chip.is-hidden {
+    display: none;
+  }
   .hud-stat-line,
   .hud-track-head,
   .hud-inline-readout,
@@ -935,24 +938,24 @@
       <div class="hud-stat-chip top-stat-emphasis hud-primary-chip">
         <div class="hud-stat-line"><span class="hud-label">ALT</span><span class="hud-value big" id="altitude">0</span><span class="hud-unit">FT</span></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip" id="hud-heading-chip">
         <div class="hud-stack-line"><span class="hud-subtle">HDG <span id="heading">000</span>°</span><span class="hud-subtle">V/S <span id="vspeed">0</span></span></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip" id="hud-aero-chip">
         <div class="hud-stack-line"><span class="hud-subtle">AOA <span id="aoa">0</span>°</span><span class="hud-subtle">G <span id="gforce">1.0</span></span></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip" id="hud-gear-chip">
         <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span></div>
       </div>
-      <div class="hud-stat-chip hud-track-chip">
+      <div class="hud-stat-chip hud-track-chip" id="hud-hull-chip">
         <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span></div>
         <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
       </div>
-      <div class="hud-stat-chip hud-track-chip">
+      <div class="hud-stat-chip hud-track-chip" id="hud-ammo-chip">
         <div class="hud-track-head"><span class="hud-label">AMMO</span><span class="hud-subtle"><span id="ammo-val">300</span>/<span id="ammo-max">300</span></span></div>
         <div class="bar hud-mini-track"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
       </div>
-      <div class="hud-stat-chip">
+      <div class="hud-stat-chip" id="hud-score-chip">
         <div class="hud-track-head"><span class="hud-label">SCORE</span><span class="hud-value big" id="score-val">0</span></div>
         <div class="hud-subtle">STREAK <span id="score-streak">0</span>×</div>
       </div>
@@ -5192,9 +5195,11 @@ function updateMultiplayer(dt) {
         }));
 
         let collapsed = true;
+        const releaseHidden = !DEBUG_UI;
         const setCollapsed = (next) => {
           collapsed = !!next;
-          panel.style.display = '';
+          const visible = !collapsed || !releaseHidden;
+          panel.style.display = visible ? '' : 'none';
           body.style.display = collapsed ? 'none' : '';
           titleMeta.textContent = collapsed ? 'position · rotation · scale' : 'tap outside to hide';
           collapseBtn.textContent = collapsed ? 'EDIT' : 'HIDE';
@@ -5221,7 +5226,7 @@ function updateMultiplayer(dt) {
           }
         });
 
-        setCollapsed(false);
+        setCollapsed(releaseHidden);
         document.body.appendChild(panel);
       }
     },
@@ -9751,6 +9756,11 @@ const $ammoVal = document.getElementById('ammo-val');
 const $ammoBar = document.getElementById('ammo-bar');
 const $scoreVal = document.getElementById('score-val');
 const $scoreStreak = document.getElementById('score-streak');
+const $headingChip = document.getElementById('hud-heading-chip');
+const $aeroChip = document.getElementById('hud-aero-chip');
+const $gearChip = document.getElementById('hud-gear-chip');
+const $ammoChip = document.getElementById('hud-ammo-chip');
+const $scoreChip = document.getElementById('hud-score-chip');
 const _aiBall = document.getElementById('ai-ball');
 const _aiRollText = document.getElementById('ai-roll-text');
 const _devInfo = document.getElementById('dev-planeinfo');
@@ -10730,6 +10740,11 @@ function updateHUD(dt = 1 / 60) {
     $scoreVal.textContent = window.__gameScore.points;
     if ($scoreStreak) $scoreStreak.textContent = window.__gameScore.streak;
   }
+  const combatRecent = (performance.now() - (combatState.lastFiredAt || 0)) < 7000;
+  const combatVisible = combatRecent || combatState.fireHeld || (targetHudState.lockAmount || 0) > 0.18 || (combatState.kills || 0) > 0 || plane.crashed;
+  if ($aeroChip) $aeroChip.classList.toggle('is-hidden', !combatVisible && plane.onGround && sp < 40);
+  if ($ammoChip) $ammoChip.classList.toggle('is-hidden', !combatVisible);
+  if ($scoreChip) $scoreChip.classList.toggle('is-hidden', !combatVisible && (!window.__gameScore || !window.__gameScore.points));
 
   // ——— Dev overlay: show prop count, fixed-gear, world-rev, throttle ———
   // This makes it trivial to see whether the prop fallback fired and
