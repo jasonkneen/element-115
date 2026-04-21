@@ -652,6 +652,11 @@
     overflow: auto;
     font-family: var(--game-font-ui);
     text-align: left;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: linear-gradient(180deg, rgba(14,18,26,0.38), rgba(8,10,16,0.16));
+    backdrop-filter: blur(20px) saturate(145%);
+    -webkit-backdrop-filter: blur(20px) saturate(145%);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
   }
   .review-panel-shell .review-heading {
     font-size: 18px;
@@ -691,7 +696,7 @@
     padding: 7px 12px;
     border-radius: 999px;
     border: 1px solid rgba(255, 215, 150, 0.18);
-    background: rgba(255,255,255,0.05);
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
     color: #fff2cf;
     font-size: 10px;
     letter-spacing: 0.18em;
@@ -714,7 +719,7 @@
     padding: 10px 11px;
     border-radius: 16px;
     border: 1px solid rgba(255, 215, 150, 0.12);
-    background: rgba(255,255,255,0.04);
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025));
   }
   .review-panel-shell .review-stat-card span {
     display: block;
@@ -3766,7 +3771,7 @@ function makeJet() {
     root.add(beam);
 
     const splash = new THREE.Mesh(
-      new THREE.PlaneGeometry(18, 30),
+      new THREE.CircleGeometry(12, 28),
       new THREE.MeshBasicMaterial({
         color: 0xffefc8,
         toneMapped: false,
@@ -6308,7 +6313,7 @@ function updateCombat(dt) {
     if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R · OR REPLAY', 'panel warn', 2.5);
     // Surface the REPLAY panel so the player can watch what killed them.
     if (typeof syncReplayUI === 'function') syncReplayUI();
-    if (!replay.playing && replay.size >= 4) replayStart();
+    if (!replay.playing && replay.size >= 1) replayStart();
   }
   if (combatState.crashBlastTimer > 0) {
     combatState.crashBlastTimer = Math.max(0, combatState.crashBlastTimer - dt);
@@ -8123,7 +8128,7 @@ const plane = {
   throttleTarget: 0,
   gear: 1, gearTarget: 1,
   brake: 0,
-  landingLights: true,
+  landingLights: false,
   onGround: initialSpawnProfile.onGround,
   crashed: false,
   // Graduated damage model. health is 0..100; crashed = (health <= 0).
@@ -8248,7 +8253,7 @@ function resetPlane() {
   plane.gear = 1;
   plane.gearTarget = 1;
   plane.brake = 0;
-  plane.landingLights = true;
+  plane.landingLights = false;
   plane.onGround = spawn.onGround;
   plane.crashed = false;
   resetMissionDebrief();
@@ -9082,7 +9087,7 @@ function updateJetVisual() {
   }
 
   const heroEnabled = scene.userData.__replayHeroLight !== false;
-  const heroActive = heroEnabled && (replay.playing || nightFactor > 0.45);
+  const heroActive = replay.playing || (heroEnabled && nightFactor > 0.45);
   replayHeroRig.spot.visible = heroActive;
   replayHeroRig.fill.visible = heroActive;
   if (heroActive) {
@@ -9187,7 +9192,7 @@ function replayBuildMovieAnchors() {
 }
 
 function replayStart() {
-  if (replay.size < 4) {
+  if (replay.size < 1) {
     if (typeof flashStatus === 'function') flashStatus('NOT ENOUGH FLIGHT DATA', 'panel warn', 1.6);
     return;
   }
@@ -9253,9 +9258,18 @@ function replayApplyCamera(frames, idx) {
 function replayPreStep(dt) {
   const frames = replayGetFrames();
   if (frames.length === 0) { replayStop(); return; }
+  if (frames.length === 1) {
+    replay.playIdx = 0;
+    replaySyncState(frames, 0);
+    return;
+  }
   const elapsed = (performance.now() - replay.playT) / 1000;
   const totalDur = (frames[frames.length - 1].t - frames[0].t) / 1000;
-  if (totalDur <= 0) { replayStop(); return; }
+  if (totalDur <= 0) {
+    replay.playIdx = frames.length - 1;
+    replaySyncState(frames, replay.playIdx);
+    return;
+  }
   const loop = elapsed % (totalDur + 2.5);
   const idx = (loop >= totalDur)
     ? frames.length - 1
@@ -9289,13 +9303,13 @@ function syncReplayUI() {
   replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : (landingCompleteState.active && !plane.crashed ? '▶ REVIEW LANDING' : '▶ REVIEW RUN');
   if (replay.ui.resetBtn) replay.ui.resetBtn.textContent = landingCompleteState.active && !plane.crashed ? '↺ NEXT SORTIE [R]' : '↺ FLY AGAIN [R]';
   if (replay.ui.subline) replay.ui.subline.textContent = summary
-    ? `${summary.reason} · ${summary.highlight}`
-    : (replay.playing ? `Camera: ${replay.mode.toUpperCase()} · tap a mode to switch` : 'Crash cam / replay loop / cinematic angles');
+    ? `${summary.reason}`
+    : (replay.playing ? `Camera: ${replay.mode.toUpperCase()}` : 'Replay');
   if (replay.ui.gradeValue) replay.ui.gradeValue.textContent = summary ? summary.grade : 'C';
-  if (replay.ui.gradeLabel) replay.ui.gradeLabel.textContent = 'RUN GRADE';
+  if (replay.ui.gradeLabel) replay.ui.gradeLabel.textContent = 'SORTIE';
   if (replay.ui.summaryGrid) {
     while (replay.ui.summaryGrid.firstChild) replay.ui.summaryGrid.removeChild(replay.ui.summaryGrid.firstChild);
-    (summary ? summary.cards : []).forEach(card => {
+    (summary ? summary.cards.slice(0, 4) : []).forEach(card => {
       const stat = document.createElement('div');
       stat.className = 'review-stat-card';
       const label = document.createElement('span');
@@ -9312,7 +9326,7 @@ function syncReplayUI() {
   }
   if (replay.ui.awardsWrap) {
     while (replay.ui.awardsWrap.firstChild) replay.ui.awardsWrap.removeChild(replay.ui.awardsWrap.firstChild);
-    (summary ? summary.awards : ['REPLAY AVAILABLE']).forEach(text => {
+    (summary ? summary.awards.slice(0, 2) : ['REPLAY']).forEach(text => {
       const pill = document.createElement('div');
       pill.className = 'review-award-pill';
       pill.textContent = text;
