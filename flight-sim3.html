@@ -1066,6 +1066,7 @@ const bootParamSource = (() => {
 const bootParams = new URLSearchParams(bootParamSource);
 const DEBUG_UI = bootParams.get('debug') === '1';
 const AUTOPILOT_UI = DEBUG_UI || bootParams.get('autopilot') === '1';
+const ENABLE_FLOATING_TARGET = DEBUG_UI || bootParams.get('floatingtarget') === '1';
 let MULTIPLAYER_URL = (() => {
   const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
   const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -12076,6 +12077,10 @@ spawnTraffic(
 
 // __world_feature_space_target__ — Big floating practice target inspired by the space game.
 (function addFloatingTarget() {
+  if (!ENABLE_FLOATING_TARGET) {
+    window.__floatingTarget = null;
+    return;
+  }
   const group = new THREE.Group();
   const ringMat = new THREE.MeshStandardMaterial({
     color: 0x62d6ff,
