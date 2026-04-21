@@ -10958,6 +10958,7 @@ function animate(now) {
   updateDustDevils(now, plane.pos.x, plane.pos.z);
   updateTraffic(dt);
   updateFloatingTarget(dt);
+  updatePracticeRingCourse(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAirfieldAmbient(dt);
   updateAudio(dt);
@@ -12243,6 +12244,58 @@ function updateFloatingTarget(dt) {
   if (target.userData.pointer) target.userData.pointer.rotation.z = Math.sin(target.userData.spin * 2.8) * 0.16;
 }
 
+// __world_feature_practice_ring_course__ — Lightweight free-fly practice ring chain
+// inspired by the R3F takes-flight ring targets. Uses our gate/scoring system.
+(function addPracticeRingCourse() {
+  const ringGeo = new THREE.TorusGeometry(24, 1.35, 14, 56);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x7fe6ff,
+    emissive: 0x2aa7d4,
+    emissiveIntensity: 0.65,
+    roughness: 0.28,
+    metalness: 0.12,
+    transparent: true,
+    opacity: 0.92,
+  });
+  const points = [
+    new THREE.Vector3(220, 88, -380),
+    new THREE.Vector3(340, 118, -620),
+    new THREE.Vector3(210, 146, -860),
+    new THREE.Vector3(10, 176, -1060),
+    new THREE.Vector3(-190, 198, -1260),
+    new THREE.Vector3(-320, 166, -1480),
+  ];
+  window.__practiceRingCourse = [];
+  for (let i = 0; i < points.length; i++) {
+    const ring = new THREE.Mesh(ringGeo, ringMat.clone());
+    const pos = points[i];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    const dir = next.clone().sub(pos);
+    ring.position.copy(pos);
+    ring.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 0, 1),
+      dir.lengthSq() > 1e-6 ? dir.normalize() : new THREE.Vector3(0, 0, -1)
+    );
+    ring.userData.baseY = pos.y;
+    ring.userData.phase = i * 0.9;
+    ring.userData.spinRate = 0.3 + i * 0.05;
+    ring.userData.label = `PRACTICE RING ${i + 1}`;
+    scene.add(ring);
+    registerGate(ring, { radius: 26, points: 160, kind: 'practice', label: ring.userData.label });
+    window.__practiceRingCourse.push(ring);
+  }
+})();
+
+function updatePracticeRingCourse(dt) {
+  const rings = window.__practiceRingCourse;
+  if (!rings) return;
+  for (const ring of rings) {
+    ring.userData.phase += dt;
+    ring.position.y = ring.userData.baseY + Math.sin(ring.userData.phase * 1.6) * 1.8;
+    ring.rotation.z += dt * (ring.userData.spinRate || 0.35);
+  }
+}
+
 // __world_feature_turn_left_rings__ — Two orange ring gates forcing left turn
 (function addTurnLeftRings() {
   const RING_RADIUS = 30;
@@ -13125,6 +13178,7 @@ window.__ap = {
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
+      practice_ring_count: window.__practiceRingCourse ? window.__practiceRingCourse.length : 0,
       airfield_clutter_count: airfieldAmbientState.clutterCount,
       world_bridge_count: worldOpportunities.bridgeCandidates.length,
       world_portal_count: worldOpportunities.portalCandidates.length,
