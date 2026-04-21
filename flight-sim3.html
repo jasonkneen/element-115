@@ -8274,6 +8274,7 @@ function resetPlane() {
   if (camera) {
     camera.userData.maneuverReveal = 0;
     camera.userData.revealBlend = 0;
+    camera.userData.followQuat = plane.quat.clone();
     camera.userData.pitchReveal = 0;
     camera.userData.cameraHeightOffset = 0;
     camera.userData.cameraFocusYOffset = 0;
@@ -9659,6 +9660,14 @@ function updateCamera(dt) {
   const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
   const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
   const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  let followQuat = camera.userData.followQuat;
+  if (!(followQuat instanceof THREE.Quaternion)) {
+    followQuat = plane.quat.clone();
+    camera.userData.followQuat = followQuat;
+  }
+  const quatCatchup = 1 - Math.exp(-(plane.onGround ? 11.0 : 5.4) * dt);
+  followQuat.slerp(plane.quat, quatCatchup);
+  const delayedForward = new THREE.Vector3(0, 0, -1).applyQuaternion(followQuat).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
 
   const bankReveal = clamp01(Math.abs(planeRight.y) * 1.05);
@@ -9720,7 +9729,7 @@ function updateCamera(dt) {
     : prevHeightState + (rawHeight - prevHeightState) * heightBlend;
   camera.userData.verticalHeightState = height;
   const desired = plane.pos.clone()
-    .addScaledVector(planeForward, -backDist)
+    .addScaledVector(delayedForward, -backDist)
     .addScaledVector(worldUp, height);
 
   const followK = 8.8 + maneuverReveal * 2.4;
@@ -9742,8 +9751,9 @@ function updateCamera(dt) {
     ? rawFocusYOffset
     : prevFocusState + (rawFocusYOffset - prevFocusState) * focusBlend;
   camera.userData.focusYOffsetState = focusYOffset;
+  const lookForward = delayedForward.clone().lerp(planeForward, 0.38 + maneuverReveal * 0.14).normalize();
   const lookTarget = plane.pos.clone()
-    .addScaledVector(planeForward, lookDist)
+    .addScaledVector(lookForward, lookDist)
     .addScaledVector(worldUp, focusYOffset);
 
   const blendedUp = worldUp;
