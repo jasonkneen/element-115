@@ -1531,6 +1531,10 @@ const waterMat = new THREE.ShaderMaterial({
     fogFar:    { value: ATMOS_LOWPOLY.fogFar },
     sunDir:    { value: SUN_DIR.clone() },
     runwayR:   { value: WATER_RUNWAY_R },
+    reflectivity: { value: 1.28 },
+    fresnelBoost: { value: 1.12 },
+    sunGlint: { value: 1.18 },
+    waterOpacity: { value: 0.92 },
   },
   vertexShader: `
     varying vec3 vWorldPos;
@@ -1556,6 +1560,10 @@ const waterMat = new THREE.ShaderMaterial({
     uniform float fogFar;
     uniform vec3 sunDir;
     uniform float runwayR;
+    uniform float reflectivity;
+    uniform float fresnelBoost;
+    uniform float sunGlint;
+    uniform float waterOpacity;
     varying vec3 vWorldPos;
     varying float vDist;
 
@@ -1602,9 +1610,10 @@ const waterMat = new THREE.ShaderMaterial({
       // close to the surface) deepens toward the centre. We don't have
       // true depth here, so fake it with a gentle radial falloff from
       // the player using camera-space distance — good enough for lakes.
-      vec3 col = mix(deep, shallow, ripple * 0.65 + 0.25);
-      col = mix(col, reflectedSky, 0.18 + fresnel * 0.42);
-      col += vec3(1.0, 0.98, 0.9) * sun * 0.55;
+      vec3 col = mix(deep, shallow, ripple * 0.58 + 0.24);
+      float reflectionMix = clamp((0.14 + fresnel * 0.44 * fresnelBoost) * reflectivity, 0.0, 0.94);
+      col = mix(col, reflectedSky, reflectionMix);
+      col += vec3(1.0, 0.98, 0.92) * sun * (0.28 + 0.42 * sunGlint);
 
       // Subtle low-poly banding so it fits the art style at distance
       col = floor(col * 12.0) / 12.0;
@@ -1613,7 +1622,7 @@ const waterMat = new THREE.ShaderMaterial({
       float fogF = clamp((vDist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
       col = mix(col, fogColor, fogF);
 
-      gl_FragColor = vec4(col, 0.88 * rwFade);
+      gl_FragColor = vec4(col, waterOpacity * rwFade);
     }
   `,
   transparent: true,
@@ -1785,14 +1794,18 @@ function updateDepthOfField() {
 
 function updateMotionBlurPostFX() {
   if (!postFX.motionBlurPass || !postFX.motionBlurPass.uniforms) return;
+  const blurEnabled = window.gfx ? window.gfx.motionBlur !== false : true;
+  const blurAmount = scene.userData.__motionBlurAmount != null ? scene.userData.__motionBlurAmount : 0.42;
   const speedKts = plane.vel.length() * 1.94;
   const throttleFactor = clamp01((plane.throttle - 0.42) / 0.58);
-  const speedFactor = clamp01((speedKts - 65) / 220);
-  const targetStrength = clamp01(speedFactor * (0.18 + throttleFactor * 0.82)) * 0.68;
+  const speedFactor = clamp01((speedKts - 75) / 250);
+  const baseStrength = clamp01(speedFactor * (0.16 + throttleFactor * 0.84)) * 0.68;
+  const targetStrength = blurEnabled ? baseStrength * blurAmount : 0;
   const current = postFX.motionBlurPass.uniforms.strength.value || 0;
-  postFX.motionBlurPass.uniforms.strength.value = current + (targetStrength - current) * 0.16;
+  const blend = targetStrength < current ? 0.24 : 0.14;
+  postFX.motionBlurPass.uniforms.strength.value = current + (targetStrength - current) * blend;
   postFX.motionBlurPass.uniforms.aspect.value = window.innerWidth / Math.max(1, window.innerHeight);
-  postFX.motionBlurPass.enabled = postFX.motionBlurPass.uniforms.strength.value > 0.015;
+  postFX.motionBlurPass.enabled = blurEnabled && postFX.motionBlurPass.uniforms.strength.value > 0.008;
 }
 
 function renderScene() {
@@ -9741,7 +9754,8 @@ function updateCamera(dt) {
     followQuat = plane.quat.clone();
     camera.userData.followQuat = followQuat;
   }
-  const quatCatchup = 1 - Math.exp(-(plane.onGround ? 11.0 : 5.4) * dt);
+  const cameraLagTune = scene.userData.__cameraLag != null ? scene.userData.__cameraLag : 1.0;
+  const quatCatchup = 1 - Math.exp(-((plane.onGround ? 11.0 : 5.4) / cameraLagTune) * dt);
   followQuat.slerp(plane.quat, quatCatchup);
   const delayedForward = new THREE.Vector3(0, 0, -1).applyQuaternion(followQuat).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
@@ -12485,18 +12499,19 @@ function updatePracticeRingCourse(dt) {
   const DEFAULTS = {
     fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
     dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
+    waterReflectivity: 1.28, waterFresnel: 1.12, waterGlint: 1.18, waterOpacity: 0.92,
     flightProfile: 'custom',
     controlPreset: 'balanced',
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
     brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
-    cameraClimbReveal: 1.0, cameraDiveReveal: 1.0,
-    fps: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false,
+    cameraClimbReveal: 1.0, cameraDiveReveal: 1.0, cameraLag: 1.0,
+    fps: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.42,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, renderScale: 0.60, resolutionScale: 0.78 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, renderScale: 0.85, resolutionScale: 0.95 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, renderScale: 1.0,  resolutionScale: 1.0 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, renderScale: 1.0,  resolutionScale: 1.18 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.38 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.5 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.66 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 0.84 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -12515,6 +12530,15 @@ function updatePracticeRingCourse(dt) {
       }
     }
   } catch {}
+  if (gfx.motionBlurAmount == null) {
+    gfx.motionBlur = true;
+    gfx.motionBlurAmount = DEFAULTS.motionBlurAmount;
+  }
+  if (gfx.waterReflectivity == null) gfx.waterReflectivity = DEFAULTS.waterReflectivity;
+  if (gfx.waterFresnel == null) gfx.waterFresnel = DEFAULTS.waterFresnel;
+  if (gfx.waterGlint == null) gfx.waterGlint = DEFAULTS.waterGlint;
+  if (gfx.waterOpacity == null) gfx.waterOpacity = DEFAULTS.waterOpacity;
+  if (gfx.cameraLag == null) gfx.cameraLag = DEFAULTS.cameraLag;
   window.gfx = gfx;
   window.__gfxParticleScale = () => gfx.particleScale;
 
@@ -12654,6 +12678,16 @@ function updatePracticeRingCourse(dt) {
       postFX.bloomPass.threshold = 0.88 - Math.min(0.26, (gfx.bloomStrength || 0.42) * 0.18);
     }
   }
+  function applyMotionBlur() {
+    scene.userData.__motionBlurAmount = Math.max(0, Math.min(1.2, gfx.motionBlurAmount != null ? gfx.motionBlurAmount : DEFAULTS.motionBlurAmount));
+    if (postFX.motionBlurPass && postFX.motionBlurPass.uniforms) {
+      if (gfx.motionBlur === false) {
+        postFX.motionBlurPass.uniforms.strength.value = 0;
+        postFX.motionBlurPass.enabled = false;
+      }
+      postFX.motionBlurPass.uniforms.aspect.value = window.innerWidth / Math.max(1, window.innerHeight);
+    }
+  }
   function applyFxaa() {
     if (postFX.fxaaPass) postFX.fxaaPass.enabled = !!gfx.fxaa;
   }
@@ -12712,6 +12746,7 @@ function updatePracticeRingCourse(dt) {
     scene.userData.__flightGroundEffect = Math.max(0, Math.min(2.0, gfx.groundEffectStrength != null ? gfx.groundEffectStrength : 1.0));
     scene.userData.__cameraClimbReveal = Math.max(0.4, Math.min(2.2, gfx.cameraClimbReveal != null ? gfx.cameraClimbReveal : 1.0));
     scene.userData.__cameraDiveReveal = Math.max(0.4, Math.min(2.2, gfx.cameraDiveReveal != null ? gfx.cameraDiveReveal : 1.0));
+    scene.userData.__cameraLag = Math.max(0.45, Math.min(1.8, gfx.cameraLag != null ? gfx.cameraLag : 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -12720,10 +12755,18 @@ function updatePracticeRingCourse(dt) {
     scene.userData.__airframeFill = Math.max(0, Math.min(1.4, gfx.airframeFill || 0));
     scene.userData.__replayHeroLight = gfx.replayHeroLight !== false;
     scene.userData.__shadowDistance = gfx.shadowDistance;
+    scene.userData.__waterReflectivity = Math.max(0.6, Math.min(1.8, gfx.waterReflectivity != null ? gfx.waterReflectivity : DEFAULTS.waterReflectivity));
+    scene.userData.__waterFresnel = Math.max(0.7, Math.min(1.8, gfx.waterFresnel != null ? gfx.waterFresnel : DEFAULTS.waterFresnel));
+    scene.userData.__waterGlint = Math.max(0.4, Math.min(1.8, gfx.waterGlint != null ? gfx.waterGlint : DEFAULTS.waterGlint));
+    scene.userData.__waterOpacity = Math.max(0.7, Math.min(0.98, gfx.waterOpacity != null ? gfx.waterOpacity : DEFAULTS.waterOpacity));
+    waterMat.uniforms.reflectivity.value = scene.userData.__waterReflectivity;
+    waterMat.uniforms.fresnelBoost.value = scene.userData.__waterFresnel;
+    waterMat.uniforms.sunGlint.value = scene.userData.__waterGlint;
+    waterMat.uniforms.waterOpacity.value = scene.userData.__waterOpacity;
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
   function applyAll() {
-    applyShadows(); applyFog(); applyDof(); applyBloom(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyAmbientFx(); applyFlightTuning(); applyWorldTuning();
+    applyShadows(); applyFog(); applyDof(); applyBloom(); applyMotionBlur(); applyFxaa(); applyRenderScale(); applyClouds(); applyTerrainClutter(); applyAmbientFx(); applyFlightTuning(); applyWorldTuning();
     if (fpsDiv) fpsDiv.style.display = gfx.fps ? 'block' : 'none';
   }
 
@@ -12986,9 +13029,10 @@ function updatePracticeRingCourse(dt) {
     advancedFlight.body.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(advancedFlight.wrap);
 
-    const advancedCamera = makeDetailsSection('ADVANCED CHASE CAMERA', 'Only needed if you want to tune climb/dive reveal for the chase camera.', false);
+    const advancedCamera = makeDetailsSection('ADVANCED CHASE CAMERA', 'Only needed if you want to tune climb/dive reveal or the amount of delayed chase lag.', false);
     advancedCamera.body.appendChild(makeSliderRow('cameraClimbReveal', 0.4, 2.2, 0.05, 'CAM CLIMB REVEAL', (v) => `${Math.round(v * 100)}%`));
     advancedCamera.body.appendChild(makeSliderRow('cameraDiveReveal', 0.4, 2.2, 0.05, 'CAM DIVE REVEAL', (v) => `${Math.round(v * 100)}%`));
+    advancedCamera.body.appendChild(makeSliderRow('cameraLag', 0.45, 1.8, 0.05, 'CHASE LAG', (v) => `${v.toFixed(2)}×`));
     panel.appendChild(advancedCamera.wrap);
 
     const advancedVisuals = makeDetailsSection('ADVANCED VISUALS & PERFORMANCE', 'Release-facing control starts with the quick presets above. Open this only when you need detailed image, world, lighting, shadow, or perf tuning.', false);
@@ -12996,9 +13040,11 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(row('Edge smoothing', makeToggle('fxaa')));
     advancedVisuals.body.appendChild(row('Depth of field', makeToggle('dof')));
     advancedVisuals.body.appendChild(row('Bloom', makeToggle('bloom')));
+    advancedVisuals.body.appendChild(row('Motion blur', makeToggle('motionBlur')));
     advancedVisuals.body.appendChild(row('Replay hero light', makeToggle('replayHeroLight')));
     advancedVisuals.body.appendChild(makeSliderRow('resolutionScale', 0.75, 1.35, 0.05, 'AA / SUPERSAMPLE', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('bloomStrength', 0.1, 0.9, 0.05, 'BLOOM STRENGTH', (v) => `${v.toFixed(2)}`));
+    advancedVisuals.body.appendChild(makeSliderRow('motionBlurAmount', 0, 1.2, 0.05, 'MOTION BLUR AMOUNT', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
     advancedVisuals.body.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
     advancedVisuals.body.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
@@ -13012,6 +13058,11 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'WATER'));
+    advancedVisuals.body.appendChild(makeSliderRow('waterReflectivity', 0.6, 1.8, 0.05, 'WATER REFLECTION', (v) => `${v.toFixed(2)}×`));
+    advancedVisuals.body.appendChild(makeSliderRow('waterFresnel', 0.7, 1.8, 0.05, 'WATER FRESNEL', (v) => `${v.toFixed(2)}×`));
+    advancedVisuals.body.appendChild(makeSliderRow('waterGlint', 0.4, 1.8, 0.05, 'SUN GLINT', (v) => `${v.toFixed(2)}×`));
+    advancedVisuals.body.appendChild(makeSliderRow('waterOpacity', 0.7, 0.98, 0.01, 'WATER OPACITY', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
     advancedVisuals.body.appendChild(makeSliderRow('nightLift', 0, 0.9, 0.05, 'MOON / NIGHT LIFT', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('airframeFill', 0, 1.4, 0.05, 'AIRFRAME FILL', (v) => `${Math.round(v * 100)}%`));
@@ -13153,6 +13204,10 @@ window.__ap = {
       night_lift: scene.userData.__nightLift != null ? scene.userData.__nightLift : 0.35,
       atmosphere_depth: scene.userData.__atmosphereDepth != null ? scene.userData.__atmosphereDepth : 1.0,
       airframe_fill: scene.userData.__airframeFill != null ? scene.userData.__airframeFill : 0.55,
+      water_reflectivity: scene.userData.__waterReflectivity != null ? scene.userData.__waterReflectivity : 1.28,
+      water_fresnel: scene.userData.__waterFresnel != null ? scene.userData.__waterFresnel : 1.12,
+      water_glint: scene.userData.__waterGlint != null ? scene.userData.__waterGlint : 1.18,
+      water_opacity: scene.userData.__waterOpacity != null ? scene.userData.__waterOpacity : 0.92,
       flight_accel: scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0,
       flight_top_speed_kts: scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580,
       flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
@@ -13191,6 +13246,8 @@ window.__ap = {
       fxaa_enabled: !!(postFX.fxaaPass && postFX.fxaaPass.enabled),
       bloom_enabled: !!(postFX.bloomPass && postFX.bloomPass.enabled),
       bloom_strength: postFX.bloomPass ? postFX.bloomPass.strength : 0,
+      motion_blur_enabled: window.gfx ? window.gfx.motionBlur !== false : true,
+      motion_blur_amount: scene.userData.__motionBlurAmount != null ? scene.userData.__motionBlurAmount : 0.42,
       motion_blur_strength: postFX.motionBlurPass && postFX.motionBlurPass.uniforms ? (postFX.motionBlurPass.uniforms.strength.value || 0) : 0,
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
@@ -13226,6 +13283,7 @@ window.__ap = {
       camera_pitch_reveal: camera.userData.pitchReveal || 0,
       camera_climb_reveal: scene.userData.__cameraClimbReveal != null ? scene.userData.__cameraClimbReveal : 1.0,
       camera_dive_reveal: scene.userData.__cameraDiveReveal != null ? scene.userData.__cameraDiveReveal : 1.0,
+      camera_lag: scene.userData.__cameraLag != null ? scene.userData.__cameraLag : 1.0,
       camera_fov: camera.fov,
       camera_height_offset: camera.userData.cameraHeightOffset || 0,
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
