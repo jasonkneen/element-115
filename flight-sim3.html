@@ -1665,6 +1665,51 @@ const postFX = {
   bokehPass: null,
   fxaaPass: null,
   bloomPass: null,
+  motionBlurPass: null,
+};
+
+const MOTION_BLUR_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    strength: { value: 0 },
+    aspect: { value: window.innerWidth / Math.max(1, window.innerHeight) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    uniform float aspect;
+    varying vec2 vUv;
+
+    float rand2(vec2 n) {
+      return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+    }
+
+    void main() {
+      vec2 centered = vUv - vec2(0.5);
+      vec2 dir = normalize(vec2(centered.x, centered.y * aspect) + vec2(0.0001));
+      float dist = length(centered);
+      float positionalStrength = max(dist - 0.08, 0.0) * strength * 0.22;
+      vec4 accum = vec4(0.0);
+      float total = 0.0;
+      for (int i = 0; i < 6; i++) {
+        float stepF = (float(i) + rand2(vUv * 8.0)) * 0.22;
+        vec2 offset = dir * positionalStrength * stepF;
+        accum += texture2D(tDiffuse, vUv + offset);
+        accum += texture2D(tDiffuse, vUv - offset);
+        total += 2.0;
+      }
+      vec4 base = texture2D(tDiffuse, vUv);
+      vec4 blur = accum / max(1.0, total);
+      gl_FragColor = mix(base, blur, clamp(strength, 0.0, 0.85));
+    }
+  `,
 };
 
 function updateFxaaPassResolution() {
@@ -1701,6 +1746,12 @@ function initPostFX() {
       postFX.composer.addPass(postFX.bloomPass);
     }
 
+    if (typeof THREE.ShaderPass === 'function') {
+      postFX.motionBlurPass = new THREE.ShaderPass(MOTION_BLUR_SHADER);
+      postFX.motionBlurPass.enabled = false;
+      postFX.composer.addPass(postFX.motionBlurPass);
+    }
+
     if (typeof THREE.ShaderPass === 'function' && typeof THREE.FXAAShader === 'object') {
       postFX.fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
       postFX.fxaaPass.enabled = true;
@@ -1732,10 +1783,23 @@ function updateDepthOfField() {
   uniforms.maxblur.value += (maxblur - uniforms.maxblur.value) * 0.12;
 }
 
+function updateMotionBlurPostFX() {
+  if (!postFX.motionBlurPass || !postFX.motionBlurPass.uniforms) return;
+  const speedKts = plane.vel.length() * 1.94;
+  const throttleFactor = clamp01((plane.throttle - 0.42) / 0.58);
+  const speedFactor = clamp01((speedKts - 65) / 220);
+  const targetStrength = clamp01(speedFactor * (0.18 + throttleFactor * 0.82)) * 0.68;
+  const current = postFX.motionBlurPass.uniforms.strength.value || 0;
+  postFX.motionBlurPass.uniforms.strength.value = current + (targetStrength - current) * 0.16;
+  postFX.motionBlurPass.uniforms.aspect.value = window.innerWidth / Math.max(1, window.innerHeight);
+  postFX.motionBlurPass.enabled = postFX.motionBlurPass.uniforms.strength.value > 0.015;
+}
+
 function renderScene() {
   const fxaaActive = !!(postFX.fxaaPass && postFX.fxaaPass.enabled);
   const bloomActive = !!(postFX.bloomPass && postFX.bloomPass.enabled);
-  if ((postFX.enabled || fxaaActive || bloomActive) && postFX.composer) postFX.composer.render();
+  const motionBlurActive = !!(postFX.motionBlurPass && postFX.motionBlurPass.enabled);
+  if ((postFX.enabled || fxaaActive || bloomActive || motionBlurActive) && postFX.composer) postFX.composer.render();
   else renderer.render(scene, camera);
 }
 
@@ -10864,6 +10928,7 @@ function animate(now) {
     starField.position.copy(camera.position);
     updateLensFlare();
     updateDepthOfField();
+    updateMotionBlurPostFX();
     renderScene();
     return;
   }
@@ -10917,6 +10982,7 @@ function animate(now) {
   updateClouds(dt, plane.pos.x, plane.pos.z);
 
   updateDepthOfField();
+  updateMotionBlurPostFX();
   renderScene();
 }
 
@@ -10934,6 +11000,7 @@ moonGrp.position.copy(camera.position).addScaledVector(sunDir, -4300);
 starField.position.copy(camera.position);
 updateLensFlare();
 updateDepthOfField();
+updateMotionBlurPostFX();
 renderScene();
 
 // =============================================================
@@ -11019,6 +11086,9 @@ window.addEventListener('resize', () => {
     postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
       postFX.bokehPass.materialBokeh.uniforms.aspect.value = camera.aspect;
+    }
+    if (postFX.motionBlurPass && postFX.motionBlurPass.uniforms && postFX.motionBlurPass.uniforms.aspect) {
+      postFX.motionBlurPass.uniforms.aspect.value = camera.aspect;
     }
   }
   if (typeof reticleState !== 'undefined') {
@@ -13067,6 +13137,7 @@ window.__ap = {
       fxaa_enabled: !!(postFX.fxaaPass && postFX.fxaaPass.enabled),
       bloom_enabled: !!(postFX.bloomPass && postFX.bloomPass.enabled),
       bloom_strength: postFX.bloomPass ? postFX.bloomPass.strength : 0,
+      motion_blur_strength: postFX.motionBlurPass && postFX.motionBlurPass.uniforms ? (postFX.motionBlurPass.uniforms.strength.value || 0) : 0,
       dof_enabled: !!(postFX.enabled && postFX.bokehPass),
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
