@@ -10397,6 +10397,8 @@ function setHelpStripCollapsed(next, manual = false) {
   if (manual) helpStripState.lastManualAt = performance.now();
 }
 if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
+const $inputDebug = document.getElementById('input-debug');
+if ($inputDebug && !DEBUG_UI) $inputDebug.remove();
 
 // Button click toggles style (in addition to T key)
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
@@ -12224,6 +12226,7 @@ function updateFloatingTarget(dt) {
     fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
     dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
     flightProfile: 'custom',
+    controlPreset: 'balanced',
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
     brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
     cameraClimbReveal: 1.0, cameraDiveReveal: 1.0,
@@ -12265,6 +12268,41 @@ function updateFloatingTarget(dt) {
     'pitchDamping', 'rollDamping', 'rudderDamping',
     'cameraClimbReveal', 'cameraDiveReveal'
   ]);
+  const CONTROL_PRESET_FIELDS = new Set([
+    'pitchAuthority', 'rollAuthority', 'rudderAuthority', 'autoRudder',
+    'maneuverAssist', 'stallSoftness', 'selfLevel', 'weathervaneYaw',
+    'pitchDamping', 'rollDamping', 'rudderDamping'
+  ]);
+  const CONTROL_PRESETS = {
+    casual: {
+      title: 'CASUAL',
+      note: 'easy / forgiving',
+      pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
+      maneuverAssist: 1.18, stallSoftness: 1.24, selfLevel: 1.36, weathervaneYaw: 1.18,
+      pitchDamping: 1.14, rollDamping: 1.18, rudderDamping: 1.10,
+    },
+    balanced: {
+      title: 'BALANCED',
+      note: 'default / neutral',
+      pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
+      maneuverAssist: 1.0, stallSoftness: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0,
+      pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0,
+    },
+    responsive: {
+      title: 'RESPONSIVE',
+      note: 'crisper / lively',
+      pitchAuthority: 1.18, rollAuthority: 1.24, rudderAuthority: 1.12, autoRudder: 0.82,
+      maneuverAssist: 1.22, stallSoftness: 1.08, selfLevel: 0.78, weathervaneYaw: 0.86,
+      pitchDamping: 0.92, rollDamping: 0.88, rudderDamping: 0.92,
+    },
+    direct: {
+      title: 'DIRECT',
+      note: 'fast / aggressive',
+      pitchAuthority: 1.34, rollAuthority: 1.42, rudderAuthority: 1.22, autoRudder: 0.58,
+      maneuverAssist: 1.42, stallSoftness: 0.94, selfLevel: 0.48, weathervaneYaw: 0.66,
+      pitchDamping: 0.82, rollDamping: 0.76, rudderDamping: 0.84,
+    },
+  };
   const FLIGHT_PROFILES = {
     trainer: {
       title: 'TRAINER',
@@ -12501,6 +12539,7 @@ function updateFloatingTarget(dt) {
     input.addEventListener('input', () => {
       gfx[id] = parseFloat(input.value);
       if (FLIGHT_PROFILE_FIELDS.has(id) && gfx.flightProfile !== 'custom') gfx.flightProfile = 'custom';
+      if (CONTROL_PRESET_FIELDS.has(id) && gfx.controlPreset !== 'custom') gfx.controlPreset = 'custom';
       valSpan.textContent = fmt(gfx[id]);
       applyAll(); save();
     });
@@ -12513,6 +12552,21 @@ function updateFloatingTarget(dt) {
     r.appendChild(el('span', {}, labelText));
     r.appendChild(controlEl);
     return r;
+  };
+  const makeDetailsSection = (titleText, noteText, open = false) => {
+    const wrap = el('details', {
+      style: 'margin:10px 0 0;border:1px solid rgba(255,215,150,0.12);border-radius:14px;background:rgba(255,255,255,0.03);overflow:hidden;'
+    });
+    if (open) wrap.open = true;
+    const summary = el('summary', {
+      style: 'cursor:pointer;padding:11px 12px;display:grid;gap:4px;background:rgba(255,255,255,0.025);'
+    });
+    summary.appendChild(el('strong', { style: 'font-size:10px;letter-spacing:0.16em;color:#fff0c6;' }, titleText));
+    if (noteText) summary.appendChild(el('span', { style: 'font-size:9px;line-height:1.45;opacity:0.6;' }, noteText));
+    const body = el('div', { style: 'padding:8px 12px 10px;' });
+    wrap.appendChild(summary);
+    wrap.appendChild(body);
+    return { wrap, body };
   };
   const flightCardStyle = (active, recommended) => [
     'display:grid',
@@ -12535,6 +12589,17 @@ function updateFloatingTarget(dt) {
       gfx[field] = value;
     });
     gfx.flightProfile = key;
+    gfx.controlPreset = 'custom';
+    rebuild(); applyAll(); save();
+  };
+  const applyControlPreset = (key) => {
+    const preset = CONTROL_PRESETS[key];
+    if (!preset) return;
+    Object.entries(preset).forEach(([field, value]) => {
+      if (field === 'title' || field === 'note') return;
+      gfx[field] = value;
+    });
+    gfx.controlPreset = key;
     rebuild(); applyAll(); save();
   };
 
@@ -12542,7 +12607,7 @@ function updateFloatingTarget(dt) {
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
     panel.appendChild(el('div', { class: 'options-title' }, 'OPTIONS [P]'));
-    panel.appendChild(el('div', { class: 'options-kicker' }, 'Aircraft / flight / environment / visuals // ESC or backdrop to return to flight'));
+    panel.appendChild(el('div', { class: 'options-kicker' }, 'Release-first options // presets first, advanced sections collapsed by default // ESC or backdrop to return to flight'));
 
     panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'QUICK PRESETS'));
     const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
@@ -12605,10 +12670,28 @@ function updateFloatingTarget(dt) {
     panel.appendChild(planeGrid);
 
     panel.appendChild(el('div', { style: headerStyle }, 'FLIGHT'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Quick tunes for each prop role, then fine-tune power, stability, landing feel, and chase-camera reveal.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Start simple: pick a control feel, pick an airframe role, then only open advanced tuning if you need it.'));
+    const activeControlMeta = CONTROL_PRESETS[gfx.controlPreset] || null;
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, activeControlMeta
+      ? `Control feel: ${activeControlMeta.title} · ${activeControlMeta.note}`
+      : 'Control feel: CUSTOM · advanced tuning is overriding the presets'));
+    const controlPresetGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    ['casual','balanced','responsive','direct'].forEach((key) => {
+      const preset = CONTROL_PRESETS[key];
+      const active = gfx.controlPreset === key;
+      const btn = el('button', {
+        type: 'button',
+        style: flightCardStyle(active, key === 'balanced') + ';min-height:58px;'
+      });
+      btn.appendChild(el('strong', { style: 'font-size:11px;line-height:1.15;letter-spacing:0.03em;color:#fff3d8;' }, preset.title));
+      btn.appendChild(el('span', { style: 'font-size:8px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,231,176,0.58);' }, preset.note));
+      btn.addEventListener('click', () => applyControlPreset(key));
+      controlPresetGrid.appendChild(btn);
+    });
+    panel.appendChild(controlPresetGrid);
     const recommendedFlightProfile = recommendedFlightProfileForPlane(activePreset);
     const recommendedMeta = FLIGHT_PROFILES[recommendedFlightProfile];
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, `Recommended for ${activePreset.name || activePreset.label}: ${recommendedMeta.title} · ${recommendedMeta.note}`));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, `Airframe role for ${activePreset.name || activePreset.label}: ${recommendedMeta.title} · ${recommendedMeta.note}`));
     const flightProfileGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     ['trainer','stunt','bush','racer'].forEach((key) => {
       const preset = FLIGHT_PROFILES[key];
@@ -12624,59 +12707,59 @@ function updateFloatingTarget(dt) {
     panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
-    panel.appendChild(makeSliderRow('idlePower', 0, 1.6, 0.05, 'IDLE POWER', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('pitchAuthority', 0.6, 2.0, 0.05, 'PITCH AUTHORITY', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('rollAuthority', 0.6, 2.0, 0.05, 'ROLL / TURN', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('rudderAuthority', 0.6, 2.0, 0.05, 'RUDDER', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('autoRudder', 0, 2.0, 0.05, 'AUTO-RUDDER', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('maneuverAssist', 0.5, 1.8, 0.05, 'MANEUVER ASSIST', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('stallSoftness', 0.7, 1.5, 0.05, 'STALL SOFTNESS', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('groundEffectStrength', 0, 2.0, 0.05, 'GROUND EFFECT', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('brakeStrength', 0.5, 2.0, 0.05, 'BRAKE STRENGTH', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('selfLevel', 0, 2.0, 0.05, 'SELF-LEVEL', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('weathervaneYaw', 0, 2.0, 0.05, 'WEATHERVANE YAW', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('gearDrag', 0, 2.5, 0.05, 'GEAR DRAG', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('pitchDamping', 0.6, 1.8, 0.05, 'PITCH DAMPING', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('rollDamping', 0.6, 1.8, 0.05, 'ROLL DAMPING', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
 
-    panel.appendChild(el('div', { style: headerStyle }, 'CHASE CAMERA'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, 'Pure vertical reveal only — climbs show more belly, dives show more wing tops. No automatic side drift.'));
-    panel.appendChild(makeSliderRow('cameraClimbReveal', 0.4, 2.2, 0.05, 'CAM CLIMB REVEAL', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('cameraDiveReveal', 0.4, 2.2, 0.05, 'CAM DIVE REVEAL', (v) => `${Math.round(v * 100)}%`));
+    const advancedFlight = makeDetailsSection('ADVANCED FLIGHT TUNING', 'Fine power, authority, stall, damping, and landing helpers stay here so release-facing settings stay clean.', false);
+    advancedFlight.body.appendChild(makeSliderRow('idlePower', 0, 1.6, 0.05, 'IDLE POWER', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('pitchAuthority', 0.6, 2.0, 0.05, 'PITCH AUTHORITY', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('rollAuthority', 0.6, 2.0, 0.05, 'ROLL / TURN', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('rudderAuthority', 0.6, 2.0, 0.05, 'RUDDER', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('autoRudder', 0, 2.0, 0.05, 'AUTO-RUDDER', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('maneuverAssist', 0.5, 1.8, 0.05, 'MANEUVER ASSIST', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('stallSoftness', 0.7, 1.5, 0.05, 'STALL SOFTNESS', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('groundEffectStrength', 0, 2.0, 0.05, 'GROUND EFFECT', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('brakeStrength', 0.5, 2.0, 0.05, 'BRAKE STRENGTH', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('selfLevel', 0, 2.0, 0.05, 'SELF-LEVEL', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('weathervaneYaw', 0, 2.0, 0.05, 'WEATHERVANE YAW', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('gearDrag', 0, 2.5, 0.05, 'GEAR DRAG', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('pitchDamping', 0.6, 1.8, 0.05, 'PITCH DAMPING', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('rollDamping', 0.6, 1.8, 0.05, 'ROLL DAMPING', (v) => `${Math.round(v * 100)}%`));
+    advancedFlight.body.appendChild(makeSliderRow('rudderDamping', 0.6, 1.8, 0.05, 'RUDDER DAMPING', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(advancedFlight.wrap);
 
-    panel.appendChild(el('div', { style: headerStyle }, 'IMAGE / POST'));
-    panel.appendChild(row('Edge smoothing', makeToggle('fxaa')));
-    panel.appendChild(row('Depth of field', makeToggle('dof')));
-    panel.appendChild(row('Bloom', makeToggle('bloom')));
-    panel.appendChild(row('Replay hero light', makeToggle('replayHeroLight')));
-    panel.appendChild(makeSliderRow('resolutionScale', 0.75, 1.35, 0.05, 'AA / SUPERSAMPLE', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('bloomStrength', 0.1, 0.9, 0.05, 'BLOOM STRENGTH', (v) => `${v.toFixed(2)}`));
+    const advancedCamera = makeDetailsSection('ADVANCED CHASE CAMERA', 'Only needed if you want to tune climb/dive reveal for the chase camera.', false);
+    advancedCamera.body.appendChild(makeSliderRow('cameraClimbReveal', 0.4, 2.2, 0.05, 'CAM CLIMB REVEAL', (v) => `${Math.round(v * 100)}%`));
+    advancedCamera.body.appendChild(makeSliderRow('cameraDiveReveal', 0.4, 2.2, 0.05, 'CAM DIVE REVEAL', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(advancedCamera.wrap);
 
-    panel.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
-    panel.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
-    panel.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
-    panel.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
-
-    panel.appendChild(el('div', { style: headerStyle }, 'ENVIRONMENT'));
-    panel.appendChild(row('Fog', makeToggle('fog')));
-    panel.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
-    panel.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
-    panel.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));
-    panel.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
-
-    panel.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
-    panel.appendChild(makeSliderRow('nightLift', 0, 0.9, 0.05, 'MOON / NIGHT LIFT', (v) => `${Math.round(v * 100)}%`));
-    panel.appendChild(makeSliderRow('airframeFill', 0, 1.4, 0.05, 'AIRFRAME FILL', (v) => `${Math.round(v * 100)}%`));
-
-    panel.appendChild(el('div', { style: headerStyle }, 'PERFORMANCE'));
-    panel.appendChild(row('FPS meter', makeToggle('fps')));
-    panel.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
-
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'LOW preset now pushes low-poly readability/perf first. Shadow range, clouds, and ground detail are the safest live levers when tuning performance.'));
+    const advancedVisuals = makeDetailsSection('ADVANCED VISUALS & PERFORMANCE', 'Release-facing control starts with the quick presets above. Open this only when you need detailed image, world, lighting, shadow, or perf tuning.', false);
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'IMAGE / POST'));
+    advancedVisuals.body.appendChild(row('Edge smoothing', makeToggle('fxaa')));
+    advancedVisuals.body.appendChild(row('Depth of field', makeToggle('dof')));
+    advancedVisuals.body.appendChild(row('Bloom', makeToggle('bloom')));
+    advancedVisuals.body.appendChild(row('Replay hero light', makeToggle('replayHeroLight')));
+    advancedVisuals.body.appendChild(makeSliderRow('resolutionScale', 0.75, 1.35, 0.05, 'AA / SUPERSAMPLE', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('bloomStrength', 0.1, 0.9, 0.05, 'BLOOM STRENGTH', (v) => `${v.toFixed(2)}`));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
+    advancedVisuals.body.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
+    advancedVisuals.body.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
+    advancedVisuals.body.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'ENVIRONMENT'));
+    advancedVisuals.body.appendChild(row('Fog', makeToggle('fog')));
+    advancedVisuals.body.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
+    advancedVisuals.body.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
+    advancedVisuals.body.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));
+    advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'LIGHTING'));
+    advancedVisuals.body.appendChild(makeSliderRow('nightLift', 0, 0.9, 0.05, 'MOON / NIGHT LIFT', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('airframeFill', 0, 1.4, 0.05, 'AIRFRAME FILL', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'PERFORMANCE'));
+    advancedVisuals.body.appendChild(row('FPS meter', makeToggle('fps')));
+    advancedVisuals.body.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
+    advancedVisuals.body.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'LOW preset now pushes low-poly readability/perf first. Shadow range, clouds, and ground detail are the safest live levers when tuning performance.'));
+    panel.appendChild(advancedVisuals.wrap);
   };
   rebuild();
   const hudEl = document.getElementById('hud');
@@ -12815,6 +12898,7 @@ window.__ap = {
       flight_lift: scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0,
       flight_idle_power: scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0,
       flight_profile: (window.gfx && window.gfx.flightProfile) ? window.gfx.flightProfile : 'custom',
+      control_preset: (window.gfx && window.gfx.controlPreset) ? window.gfx.controlPreset : 'balanced',
       flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
       flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
       flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
