@@ -238,6 +238,52 @@
     flex-wrap: wrap;
     pointer-events: auto;
   }
+  .hud-action-tray {
+    position: relative;
+    justify-self: end;
+    pointer-events: auto;
+  }
+  .hud-action-tray summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 215, 150, 0.1);
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    color: rgba(255, 240, 214, 0.82);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .hud-action-tray summary::-webkit-details-marker { display: none; }
+  .hud-action-tray[open] summary {
+    background: rgba(255,204,102,0.10);
+    border-color: rgba(255,215,150,0.22);
+    color: #fff3d4;
+  }
+  #hud-control-grid {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: min(560px, 72vw);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 215, 150, 0.1);
+    background: linear-gradient(180deg, rgba(14,18,26,0.64), rgba(8,10,16,0.46));
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
+  }
+  .hud-action-tray[open] #hud-control-grid {
+    display: flex;
+  }
   #throttle-wrap .hud-action {
     display: inline-flex;
     align-items: center;
@@ -298,7 +344,7 @@
     gap: 0;
   }
   #controls-help.collapsed::before {
-    content: 'CONTROLS [H]';
+    content: 'PILOT INPUTS [H]';
     margin-bottom: 0;
   }
   #controls-help.collapsed > div {
@@ -927,13 +973,16 @@
         <div class="deck-meta-row">NET <span id="mp-ind" class="hud-chip">SOLO</span></div>
         <div class="deck-meta-row">INPUT <span id="input-ind" class="hud-chip">KBD</span></div>
       </div>
-      <div class="hud-control-grid">
-        <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
-        <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
-        <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
-        <button type="button" class="hud-action" id="biome-btn">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
-        <button type="button" class="hud-action" id="audio-btn">SOUND <span id="audio-ind" class="warn">OFF</span></button>
-      </div>
+      <details class="hud-action-tray" id="hud-actions-tray">
+        <summary class="hud-action" id="hud-actions-summary">SYSTEMS [TAB] <span id="hud-actions-state" class="ok">SHOW</span></summary>
+        <div class="hud-control-grid" id="hud-control-grid">
+          <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
+          <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
+          <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
+          <button type="button" class="hud-action" id="biome-btn">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
+          <button type="button" class="hud-action" id="audio-btn">SOUND <span id="audio-ind" class="warn">OFF</span></button>
+        </div>
+      </details>
     </div>
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
@@ -8231,8 +8280,9 @@ function resetPlane() {
   if (typeof resetGateScoring === 'function') resetGateScoring();
   resetEngineSurgeFx();
   setFlightPhase(spawn.onGround ? 'ON STAND' : 'AIR START', spawn.onGround ? '' : 'ok');
-  helpStripState.autoCollapsed = false;
-  setHelpStripCollapsed(false);
+  helpStripState.autoCollapsed = true;
+  setHelpStripCollapsed(true);
+  if ($hudActionsTray) { $hudActionsTray.open = false; syncHudActionsTray(); }
   statusMsg.textContent = spawn.status;
   statusMsg.className = 'panel';
   if (typeof syncLandingIndicator === 'function') syncLandingIndicator();
@@ -9719,6 +9769,8 @@ const $phaseInd = document.getElementById('phase-ind');
 const $mpInd = document.getElementById('mp-ind');
 const $propModelInd = document.getElementById('prop-model-ind');
 const $landingInd = document.getElementById('landing-ind');
+const $hudActionsTray = document.getElementById('hud-actions-tray');
+const $hudActionsState = document.getElementById('hud-actions-state');
 const statusMsg = document.getElementById('status-msg');
 const $devOverlay = document.getElementById('dev-overlay');
 const controlsHelpEl = document.getElementById('controls-help');
@@ -10396,6 +10448,16 @@ function setHelpStripCollapsed(next, manual = false) {
   controlsHelpEl.classList.toggle('collapsed', helpStripState.collapsed);
   if (manual) helpStripState.lastManualAt = performance.now();
 }
+function syncHudActionsTray() {
+  if (!$hudActionsTray || !$hudActionsState) return;
+  const open = !!$hudActionsTray.open;
+  $hudActionsState.textContent = open ? 'OPEN' : 'SHOW';
+  $hudActionsState.className = open ? 'warn' : 'ok';
+}
+if ($hudActionsTray) {
+  $hudActionsTray.addEventListener('toggle', syncHudActionsTray);
+  syncHudActionsTray();
+}
 if ($devOverlay && !DEBUG_UI) $devOverlay.remove();
 const $inputDebug = document.getElementById('input-debug');
 if ($inputDebug && !DEBUG_UI) $inputDebug.remove();
@@ -10404,6 +10466,20 @@ if ($inputDebug && !DEBUG_UI) $inputDebug.remove();
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
 document.getElementById('biome-btn').addEventListener('click', cycleBiome);
 document.getElementById('prop-model-btn').addEventListener('click', () => cyclePropModel(1));
+window.addEventListener('keydown', (e) => {
+  const tgt = e.target;
+  if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
+  const graphicsOverlayEl = document.getElementById('graphics-overlay');
+  const optionsOpen = graphicsOverlayEl && graphicsOverlayEl.style.display === 'block';
+  if (e.code === 'Tab' && $hudActionsTray && running && !optionsOpen && !document.body.classList.contains('review-open')) {
+    e.preventDefault();
+    $hudActionsTray.open = !$hudActionsTray.open;
+    syncHudActionsTray();
+  } else if (e.code === 'Escape' && $hudActionsTray && $hudActionsTray.open) {
+    $hudActionsTray.open = false;
+    syncHudActionsTray();
+  }
+});
 
 function syncPropModelIndicator() {
   if (!$propModelInd) return;
@@ -10527,7 +10603,7 @@ function updateFlightPhase(speedKts, aglFt, aoaDeg) {
 function updateStatusGuidance(speedKts, aoaDeg) {
   if (plane.crashed) return;
   if (!running) {
-    statusMsg.textContent = 'SHIFT/CTRL THROTTLE · M CHANGE PLANE · P OPTIONS';
+    statusMsg.textContent = 'THROTTLE UP · P OPTIONS';
     statusMsg.className = 'panel';
     return;
   }
@@ -10542,35 +10618,35 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
   const landingTrainingArmed = !plane.onGround && plane.gear > 0.95 && speedKts > 55 && speedKts < 165 && aglFt > 20 && aglFt < 900 && Math.abs(plane.pos.x) < 90 && Math.abs(plane.pos.z) > 220 && Math.abs(plane.pos.z) < 1200;
 
-  let message = 'FREE FLIGHT · FOLLOW GATES OR EXPLORE';
+  let message = 'FREE FLIGHT';
   let className = 'panel';
 
   if (Math.abs(aoaDeg) > 17 && speedKts > 45) {
     message = 'STALL · RELEASE S AND BUILD SPEED';
     className = 'panel warn';
   } else if (timeOfDay.daylight < 0.22 && !plane.landingLights && (plane.onGround || aglFt < 350)) {
-    message = 'LOW LIGHT · PRESS L';
+    message = 'PRESS L FOR LIGHTS';
     className = 'panel warn';
   } else if (missionDebriefState.landings > 0 && plane.onGround && speedKts < 18) {
-    message = `LANDING COMPLETE · ${missionDebriefState.landingMedal || 'GOOD LANDING'} · PRESS R OR TAXI`;
+    message = `LANDING COMPLETE · ${missionDebriefState.landingMedal || 'GOOD LANDING'}`;
     className = 'panel ok';
   } else if (landingTrainingArmed) {
-    message = 'FOLLOW GREEN GATES · FLARE OVER CHEVRONS';
+    message = 'FOLLOW GATES';
     className = 'panel ok';
   } else if (plane.onGround && plane.throttle < 0.15) {
-    message = 'HOLD SHIFT / ↑ FOR THROTTLE';
+    message = 'THROTTLE UP';
   } else if (plane.onGround && speedKts < 55) {
-    message = 'TAKEOFF ROLL · USE Q/E TO TRACK';
+    message = 'TAKEOFF ROLL';
   } else if (plane.onGround) {
     message = 'ROTATE · PRESS S';
     className = 'panel ok';
   } else if (aglFt < 80) {
-    message = 'POSITIVE CLIMB · EASE OFF S';
+    message = 'CLIMB OUT';
     className = 'panel ok';
   } else if (!plane.fixedGear && plane.gear > 0.95) {
     message = 'GEAR UP · PRESS G';
   } else if (aglFt < 260) {
-    message = 'CLEAR OF RUNWAY · FOLLOW GATES OR FREE FLY';
+    message = 'CLEAR OF RUNWAY';
     className = 'panel ok';
   }
 
@@ -10820,8 +10896,9 @@ function beginFlight(opts = {}) {
   document.body.classList.remove('preflight');
   running = true;
   resetMissionDebrief();
-  helpStripState.autoCollapsed = false;
-  setHelpStripCollapsed(false);
+  helpStripState.autoCollapsed = true;
+  setHelpStripCollapsed(true);
+  if ($hudActionsTray) { $hudActionsTray.open = false; syncHudActionsTray(); }
   if (enableAudio) {
     setAudioEnabled(true);
     syncAudioIndicator();
