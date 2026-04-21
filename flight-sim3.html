@@ -1523,6 +1523,9 @@ const waterMat = new THREE.ShaderMaterial({
     time:      { value: 0 },
     shallow:   { value: new THREE.Color(0x4ea68a) },   // lake-edge teal
     deep:      { value: new THREE.Color(0x143a46) },   // lake centre
+    skyTop:    { value: SKY_TOP.clone() },
+    skyBottom: { value: SKY_BOT.clone() },
+    cameraPos: { value: new THREE.Vector3() },
     fogColor:  { value: new THREE.Color(FOG_COLOR) },
     fogNear:   { value: ATMOS_LOWPOLY.fogNear },
     fogFar:    { value: ATMOS_LOWPOLY.fogFar },
@@ -1545,6 +1548,9 @@ const waterMat = new THREE.ShaderMaterial({
     uniform float time;
     uniform vec3 shallow;
     uniform vec3 deep;
+    uniform vec3 skyTop;
+    uniform vec3 skyBottom;
+    uniform vec3 cameraPos;
     uniform vec3 fogColor;
     uniform float fogNear;
     uniform float fogFar;
@@ -1587,16 +1593,21 @@ const waterMat = new THREE.ShaderMaterial({
       float rE = noise(uv + eps.yx) - noise(uv - eps.yx);
       vec3 norm = normalize(vec3(-rN * 0.6, 1.0, -rE * 0.6));
       float sun = pow(max(0.0, dot(norm, sunDir)), 32.0);
+      vec3 viewDir = normalize(cameraPos - vWorldPos);
+      float fresnel = pow(1.0 - max(0.0, dot(norm, viewDir)), 3.0);
+      float skyMix = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
+      vec3 reflectedSky = mix(skyBottom, skyTop, pow(skyMix, 0.8));
 
       // Depth-ish tint: shallower tint near shoreline (where terrain is
       // close to the surface) deepens toward the centre. We don't have
       // true depth here, so fake it with a gentle radial falloff from
       // the player using camera-space distance — good enough for lakes.
       vec3 col = mix(deep, shallow, ripple * 0.65 + 0.25);
+      col = mix(col, reflectedSky, 0.18 + fresnel * 0.42);
       col += vec3(1.0, 0.98, 0.9) * sun * 0.55;
 
       // Subtle low-poly banding so it fits the art style at distance
-      col = floor(col * 10.0) / 10.0;
+      col = floor(col * 12.0) / 12.0;
 
       // Linear fog so water fades into the horizon haze like terrain
       float fogF = clamp((vDist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
@@ -1619,6 +1630,7 @@ scene.add(waterMesh);
 
 function updateWater(dt, px, pz) {
   waterMat.uniforms.time.value += dt;
+  waterMat.uniforms.cameraPos.value.copy(camera.position);
   // Snap position to a coarse grid so the ripple pattern doesn't
   // stutter as the player moves. Step = 40m.
   const step = 40;
