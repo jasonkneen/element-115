@@ -12260,11 +12260,75 @@ function updateFloatingTarget(dt) {
 
 // __world_feature_practice_ring_course__ — Lightweight free-fly practice ring chain
 // inspired by the R3F takes-flight ring targets. Uses our gate/scoring system.
+const PRACTICE_RING_THEMES = {
+  cyan:    { color: 0x7fe6ff, emissive: 0x2aa7d4 },
+  amber:   { color: 0xffd37f, emissive: 0xff9f1f },
+  magenta: { color: 0xff9adb, emissive: 0xb83fd6 },
+  lime:    { color: 0xcdfb8a, emissive: 0x62c542 },
+};
+function isPracticeRingThemeKey(key) {
+  return Object.prototype.hasOwnProperty.call(PRACTICE_RING_THEMES, key);
+}
+function getPracticeRingTheme(key) {
+  return isPracticeRingThemeKey(key) ? PRACTICE_RING_THEMES[key] : PRACTICE_RING_THEMES.cyan;
+}
+function applyPracticeRingCourseTuning() {
+  const course = window.__practiceRingCourse;
+  if (!course || !course.length || !course.basePoints || !course.anchorPoint) return;
+  const enabled = scene.userData.__practiceRingEnabled !== false;
+  const scale = Math.max(0.55, Math.min(1.8, scene.userData.__practiceRingScale != null ? scene.userData.__practiceRingScale : 1.0));
+  const glow = Math.max(0, Math.min(1.8, scene.userData.__practiceRingGlow != null ? scene.userData.__practiceRingGlow : 1.0));
+  const density = Math.max(0.65, Math.min(1.45, scene.userData.__practiceRingDensity != null ? scene.userData.__practiceRingDensity : 1.0));
+  const requestedCount = scene.userData.__practiceRingCount != null ? scene.userData.__practiceRingCount : course.length;
+  const activeCount = enabled ? Math.max(0, Math.min(course.length, Math.round(requestedCount))) : 0;
+  const themeKey = scene.userData.__practiceRingColor || 'cyan';
+  const theme = getPracticeRingTheme(themeKey);
+  const points = course.basePoints.map((basePos) => {
+    const offset = basePos.clone().sub(course.anchorPoint);
+    return course.anchorPoint.clone().add(new THREE.Vector3(
+      offset.x * density,
+      offset.y * (0.88 + density * 0.12),
+      offset.z * density
+    ));
+  });
+  const forwardFallback = new THREE.Vector3(0, 0, -1);
+  for (let i = 0; i < course.length; i++) {
+    const ring = course[i];
+    const point = points[i];
+    const prevPoint = points[Math.max(0, i - 1)] || point;
+    const nextPoint = points[Math.min(points.length - 1, i + 1)] || point;
+    let dir = nextPoint.clone().sub(point);
+    if (dir.lengthSq() < 1e-6) dir = point.clone().sub(prevPoint);
+    if (dir.lengthSq() < 1e-6) dir.copy(forwardFallback);
+    const active = i < activeCount;
+    ring.visible = active;
+    ring.userData.baseY = point.y;
+    ring.position.x = point.x;
+    ring.position.z = point.z;
+    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.normalize());
+    ring.scale.setScalar(scale);
+    ring.userData.gateRadius = active ? (ring.userData.__baseGateRadius || 26) * scale : 0;
+    ring.userData.__active = active;
+    if (ring.material) {
+      ring.material.color.setHex(theme.color);
+      ring.material.emissive.setHex(theme.emissive);
+      ring.material.emissiveIntensity = active ? (ring.userData.__baseEmissiveInt || 0.65) * (0.35 + glow * 0.95) : 0;
+      ring.material.opacity = active ? Math.max(0.2, Math.min(0.98, (ring.userData.__baseOpacity || 0.92) * (0.72 + glow * 0.22))) : 0;
+    }
+  }
+  course.activeCount = activeCount;
+  course.theme = themeKey;
+  course.scale = scale;
+  course.glow = glow;
+  course.density = density;
+  course.enabled = enabled;
+}
 (function addPracticeRingCourse() {
   const ringGeo = new THREE.TorusGeometry(24, 1.35, 14, 56);
+  const theme = getPracticeRingTheme('cyan');
   const ringMat = new THREE.MeshStandardMaterial({
-    color: 0x7fe6ff,
-    emissive: 0x2aa7d4,
+    color: theme.color,
+    emissive: theme.emissive,
     emissiveIntensity: 0.65,
     roughness: 0.28,
     metalness: 0.12,
@@ -12279,7 +12343,11 @@ function updateFloatingTarget(dt) {
     new THREE.Vector3(-190, 198, -1260),
     new THREE.Vector3(-320, 166, -1480),
   ];
-  window.__practiceRingCourse = [];
+  const course = [];
+  course.basePoints = points.map(p => p.clone());
+  course.anchorPoint = points[0].clone();
+  course.baseGateRadius = 26;
+  window.__practiceRingCourse = course;
   for (let i = 0; i < points.length; i++) {
     const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     const pos = points[i];
@@ -12294,10 +12362,15 @@ function updateFloatingTarget(dt) {
     ring.userData.phase = i * 0.9;
     ring.userData.spinRate = 0.3 + i * 0.05;
     ring.userData.label = `PRACTICE RING ${i + 1}`;
+    ring.userData.__courseIndex = i;
+    ring.userData.__baseGateRadius = 26;
+    ring.userData.__baseEmissiveInt = 0.65;
+    ring.userData.__baseOpacity = 0.92;
     scene.add(ring);
     registerGate(ring, { radius: 26, points: 160, kind: 'practice', label: ring.userData.label });
-    window.__practiceRingCourse.push(ring);
+    course.push(ring);
   }
+  applyPracticeRingCourseTuning();
 })();
 
 function updatePracticeRingCourse(dt) {
@@ -12306,6 +12379,7 @@ function updatePracticeRingCourse(dt) {
   for (const ring of rings) {
     ring.userData.phase += dt;
     ring.position.y = ring.userData.baseY + Math.sin(ring.userData.phase * 1.6) * 1.8;
+    if (!ring.visible) continue;
     ring.rotation.z += dt * (ring.userData.spinRate || 0.35);
   }
 }
@@ -12500,6 +12574,7 @@ function updatePracticeRingCourse(dt) {
     fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
     dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
     waterReflectivity: 1.28, waterFresnel: 1.12, waterGlint: 1.18, waterOpacity: 0.92,
+    practiceRingEnabled: true, practiceRingCount: 6, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0,
     flightProfile: 'custom',
     controlPreset: 'balanced',
     flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
@@ -12538,6 +12613,12 @@ function updatePracticeRingCourse(dt) {
   if (gfx.waterFresnel == null) gfx.waterFresnel = DEFAULTS.waterFresnel;
   if (gfx.waterGlint == null) gfx.waterGlint = DEFAULTS.waterGlint;
   if (gfx.waterOpacity == null) gfx.waterOpacity = DEFAULTS.waterOpacity;
+  if (gfx.practiceRingEnabled == null) gfx.practiceRingEnabled = DEFAULTS.practiceRingEnabled;
+  if (gfx.practiceRingCount == null) gfx.practiceRingCount = DEFAULTS.practiceRingCount;
+  if (gfx.practiceRingScale == null) gfx.practiceRingScale = DEFAULTS.practiceRingScale;
+  if (gfx.practiceRingGlow == null) gfx.practiceRingGlow = DEFAULTS.practiceRingGlow;
+  if (gfx.practiceRingColor == null) gfx.practiceRingColor = DEFAULTS.practiceRingColor;
+  if (gfx.practiceRingDensity == null) gfx.practiceRingDensity = DEFAULTS.practiceRingDensity;
   if (gfx.cameraLag == null) gfx.cameraLag = DEFAULTS.cameraLag;
   window.gfx = gfx;
   window.__gfxParticleScale = () => gfx.particleScale;
@@ -12759,10 +12840,18 @@ function updatePracticeRingCourse(dt) {
     scene.userData.__waterFresnel = Math.max(0.7, Math.min(1.8, gfx.waterFresnel != null ? gfx.waterFresnel : DEFAULTS.waterFresnel));
     scene.userData.__waterGlint = Math.max(0.4, Math.min(1.8, gfx.waterGlint != null ? gfx.waterGlint : DEFAULTS.waterGlint));
     scene.userData.__waterOpacity = Math.max(0.7, Math.min(0.98, gfx.waterOpacity != null ? gfx.waterOpacity : DEFAULTS.waterOpacity));
+    scene.userData.__practiceRingEnabled = gfx.practiceRingEnabled !== false;
+    const practiceRingMax = window.__practiceRingCourse ? window.__practiceRingCourse.length : DEFAULTS.practiceRingCount;
+    scene.userData.__practiceRingCount = Math.max(0, Math.min(practiceRingMax, Math.round(gfx.practiceRingCount != null ? gfx.practiceRingCount : DEFAULTS.practiceRingCount)));
+    scene.userData.__practiceRingScale = Math.max(0.55, Math.min(1.8, gfx.practiceRingScale != null ? gfx.practiceRingScale : DEFAULTS.practiceRingScale));
+    scene.userData.__practiceRingGlow = Math.max(0, Math.min(1.8, gfx.practiceRingGlow != null ? gfx.practiceRingGlow : DEFAULTS.practiceRingGlow));
+    scene.userData.__practiceRingColor = isPracticeRingThemeKey(gfx.practiceRingColor) ? gfx.practiceRingColor : DEFAULTS.practiceRingColor;
+    scene.userData.__practiceRingDensity = Math.max(0.65, Math.min(1.45, gfx.practiceRingDensity != null ? gfx.practiceRingDensity : DEFAULTS.practiceRingDensity));
     waterMat.uniforms.reflectivity.value = scene.userData.__waterReflectivity;
     waterMat.uniforms.fresnelBoost.value = scene.userData.__waterFresnel;
     waterMat.uniforms.sunGlint.value = scene.userData.__waterGlint;
     waterMat.uniforms.waterOpacity.value = scene.userData.__waterOpacity;
+    applyPracticeRingCourseTuning();
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
   function applyAll() {
@@ -13058,6 +13147,14 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
+    advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'PRACTICE RINGS'));
+    advancedVisuals.body.appendChild(row('Show course', makeToggle('practiceRingEnabled')));
+    advancedVisuals.body.appendChild(row('Ring tint', makeSegmented('practiceRingColor', ['cyan','amber','magenta','lime'])));
+    const practiceRingMax = window.__practiceRingCourse ? window.__practiceRingCourse.length : 6;
+    advancedVisuals.body.appendChild(makeSliderRow('practiceRingCount', 0, practiceRingMax, 1, 'ACTIVE RINGS', (v) => `${Math.round(v)}`));
+    advancedVisuals.body.appendChild(makeSliderRow('practiceRingScale', 0.55, 1.8, 0.05, 'RING SIZE', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('practiceRingGlow', 0, 1.8, 0.05, 'RING GLOW', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('practiceRingDensity', 0.65, 1.45, 0.05, 'PATH DENSITY', (v) => `${v.toFixed(2)}×`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'WATER'));
     advancedVisuals.body.appendChild(makeSliderRow('waterReflectivity', 0.6, 1.8, 0.05, 'WATER REFLECTION', (v) => `${v.toFixed(2)}×`));
     advancedVisuals.body.appendChild(makeSliderRow('waterFresnel', 0.7, 1.8, 0.05, 'WATER FRESNEL', (v) => `${v.toFixed(2)}×`));
@@ -13234,6 +13331,12 @@ window.__ap = {
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
       practice_ring_count: window.__practiceRingCourse ? window.__practiceRingCourse.length : 0,
+      practice_ring_active_count: window.__practiceRingCourse ? (window.__practiceRingCourse.activeCount || 0) : 0,
+      practice_ring_enabled: scene.userData.__practiceRingEnabled !== false,
+      practice_ring_scale: scene.userData.__practiceRingScale != null ? scene.userData.__practiceRingScale : 1.0,
+      practice_ring_glow: scene.userData.__practiceRingGlow != null ? scene.userData.__practiceRingGlow : 1.0,
+      practice_ring_density: scene.userData.__practiceRingDensity != null ? scene.userData.__practiceRingDensity : 1.0,
+      practice_ring_color: scene.userData.__practiceRingColor != null ? scene.userData.__practiceRingColor : 'cyan',
       airfield_clutter_count: airfieldAmbientState.clutterCount,
       world_bridge_count: worldOpportunities.bridgeCandidates.length,
       world_portal_count: worldOpportunities.portalCandidates.length,
