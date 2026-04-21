@@ -753,6 +753,7 @@
   body.review-open #throttle-wrap,
   body.review-open #status-msg,
   body.review-open #dev-overlay,
+  body.review-open #input-debug,
   body.review-open #combo-banner,
   body.review-open #tweak-hud {
     opacity: 0;
@@ -777,6 +778,7 @@
   #throttle-wrap,
   #status-msg,
   #dev-overlay,
+  #input-debug,
   #replay-panel {
     transition: opacity 0.25s ease, transform 0.25s ease;
   }
@@ -946,6 +948,17 @@
        font:10px/1.3 ui-monospace,Menlo,monospace;padding:3px 8px;border-radius:999px;
        letter-spacing:0.06em;z-index:50;pointer-events:none;">
     <span id="dev-planeinfo">—</span>
+  </div>
+  <div id="input-debug" style="position:fixed;top:108px;right:16px;transform:none;
+       min-width:320px;max-width:min(42vw,480px);background:rgba(4,8,12,0.52);color:#9fd7ff;
+       border:1px solid rgba(74,110,148,0.4);font:10px/1.35 ui-monospace,Menlo,monospace;
+       padding:8px 10px;border-radius:14px;letter-spacing:0.05em;z-index:50;pointer-events:none;
+       backdrop-filter:blur(8px);white-space:normal;">
+    <div id="input-debug-line1">PADS 0 · ACTIVE NONE</div>
+    <div id="input-debug-line2">FOCUS N · SECURE Y · VISIBLE</div>
+    <div id="input-debug-line3">ID —</div>
+    <div id="input-debug-line4">AX —</div>
+    <div id="input-debug-line5">BTN —</div>
   </div>
   <div id="title" class="game-dialog-chrome flight-briefing-card hide">
     <div class="briefing-kicker">TRAINING SECTOR // CANYON RUN</div>
@@ -9339,7 +9352,9 @@ const INPUT_FLAGS = Object.freeze({
 const gamepadState = {
   connected: false,
   index: -1,
+  padCount: 0,
   id: '',
+  mapping: '',
   pitch: 0,
   roll: 0,
   yaw: 0,
@@ -9350,6 +9365,8 @@ const gamepadState = {
   gear: false,
   lights: false,
   reset: false,
+  axesRaw: [],
+  buttonsRaw: [],
 };
 
 function gamepadAxisValue(value, deadzone = 0.16) {
@@ -9362,7 +9379,9 @@ function gamepadAxisValue(value, deadzone = 0.16) {
 function resetGamepadState() {
   gamepadState.connected = false;
   gamepadState.index = -1;
+  gamepadState.padCount = 0;
   gamepadState.id = '';
+  gamepadState.mapping = '';
   gamepadState.pitch = 0;
   gamepadState.roll = 0;
   gamepadState.yaw = 0;
@@ -9373,6 +9392,8 @@ function resetGamepadState() {
   gamepadState.gear = false;
   gamepadState.lights = false;
   gamepadState.reset = false;
+  gamepadState.axesRaw = [];
+  gamepadState.buttonsRaw = [];
 }
 
 function syncInputIndicator() {
@@ -9410,6 +9431,7 @@ function pollGamepadInput() {
     return gamepadState;
   }
   const pads = Array.from(navigator.getGamepads() || []).filter(Boolean);
+  gamepadState.padCount = pads.length;
   let pad = null;
   if (gamepadState.index >= 0) {
     pad = pads.find(p => p && p.index === gamepadState.index) || null;
@@ -9425,6 +9447,9 @@ function pollGamepadInput() {
   gamepadState.connected = true;
   gamepadState.index = pad.index;
   gamepadState.id = pad.id || `Gamepad ${pad.index}`;
+  gamepadState.mapping = pad.mapping || '';
+  gamepadState.axesRaw = Array.from(pad.axes || []).map(v => Number(v || 0));
+  gamepadState.buttonsRaw = Array.from(pad.buttons || []).map(b => Number((b?.value ?? 0) || 0));
 
   const lx = gamepadAxisValue(pad.axes[0] || 0);
   const ly = gamepadAxisValue(pad.axes[1] || 0);
@@ -9679,6 +9704,11 @@ const $scoreStreak = document.getElementById('score-streak');
 const _aiBall = document.getElementById('ai-ball');
 const _aiRollText = document.getElementById('ai-roll-text');
 const _devInfo = document.getElementById('dev-planeinfo');
+const _inputDebugLine1 = document.getElementById('input-debug-line1');
+const _inputDebugLine2 = document.getElementById('input-debug-line2');
+const _inputDebugLine3 = document.getElementById('input-debug-line3');
+const _inputDebugLine4 = document.getElementById('input-debug-line4');
+const _inputDebugLine5 = document.getElementById('input-debug-line5');
 const $throttleVal = document.getElementById('throttle-val');
 const $throttleBar = document.getElementById('throttle-bar');
 const $abStatus = document.getElementById('ab-status');
@@ -10633,6 +10663,20 @@ function updateHUD(dt = 1 / 60) {
       `THR ${Math.round(plane.throttle * 100)}%  ·  ` +
       `SPD ${(plane.vel.length()*1.94).toFixed(0)}kt  ·  ` +
       `POS ${plane.pos.x.toFixed(0)},${plane.pos.y.toFixed(0)},${plane.pos.z.toFixed(0)}`;
+  }
+
+  if (_inputDebugLine1 && _inputDebugLine2 && _inputDebugLine3 && _inputDebugLine4 && _inputDebugLine5) {
+    const focusLabel = document.hasFocus() ? 'Y' : 'N';
+    const secureLabel = window.isSecureContext ? 'Y' : 'N';
+    const visibilityLabel = String(document.visibilityState || 'unknown').toUpperCase();
+    const activeLabel = gamepadState.connected ? `#${gamepadState.index}` : 'NONE';
+    const axisSummary = (gamepadState.axesRaw || []).slice(0, 6).map((v, i) => `A${i}:${v >= 0 ? '+' : ''}${v.toFixed(2)}`).join('  ');
+    const buttonSummary = (gamepadState.buttonsRaw || []).slice(0, 10).map((v, i) => `B${i}:${v.toFixed(2)}`).join('  ');
+    _inputDebugLine1.textContent = `PADS ${gamepadState.padCount || 0} · ACTIVE ${activeLabel} · MAP ${gamepadState.mapping || '—'}`;
+    _inputDebugLine2.textContent = `FOCUS ${focusLabel} · SECURE ${secureLabel} · ${visibilityLabel}`;
+    _inputDebugLine3.textContent = `ID ${gamepadState.id || '—'}`;
+    _inputDebugLine4.textContent = `AX ${axisSummary || '—'}`;
+    _inputDebugLine5.textContent = `BTN ${buttonSummary || '—'}`;
   }
 
   // ——— Attitude indicator (artificial horizon) ———
@@ -12845,10 +12889,14 @@ window.__ap = {
       mouse_flight_steer_x: mouseFlightState.steerX,
       mouse_flight_steer_y: mouseFlightState.steerY,
       gamepad_connected: !!gamepadState.connected,
+      gamepad_count: gamepadState.padCount || 0,
       gamepad_id: gamepadState.id || '',
+      gamepad_mapping: gamepadState.mapping || '',
       gamepad_pitch: gamepadState.pitch,
       gamepad_roll: gamepadState.roll,
       gamepad_yaw: gamepadState.yaw,
+      gamepad_axes: (gamepadState.axesRaw || []).slice(0, 6),
+      gamepad_buttons: (gamepadState.buttonsRaw || []).slice(0, 10),
       gamepad_throttle_up: gamepadState.throttleUp,
       gamepad_throttle_down: gamepadState.throttleDown,
       gamepad_fire: !!gamepadState.fire,
