@@ -645,9 +645,11 @@
   }
   .review-panel-shell {
     border-radius: 24px;
-    padding: 14px 16px 12px;
-    min-width: 420px;
-    max-width: min(560px, calc(100vw - 28px));
+    padding: 12px 14px 10px;
+    min-width: 320px;
+    max-width: min(430px, calc(100vw - 24px));
+    max-height: min(72vh, 760px);
+    overflow: auto;
     font-family: var(--game-font-ui);
     text-align: left;
   }
@@ -703,8 +705,8 @@
   }
   .review-panel-shell .review-summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
     margin: 10px 0 12px;
   }
   .review-panel-shell .review-stat-card {
@@ -817,9 +819,10 @@
     display: none !important;
   }
   body.review-open #replay-panel {
-    bottom: 50%;
-    left: 50%;
-    transform: translate(-50%, 50%);
+    right: 16px;
+    left: auto;
+    bottom: 16px;
+    transform: none;
   }
   #crosshair,
   #instruments,
@@ -6305,6 +6308,7 @@ function updateCombat(dt) {
     if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R · OR REPLAY', 'panel warn', 2.5);
     // Surface the REPLAY panel so the player can watch what killed them.
     if (typeof syncReplayUI === 'function') syncReplayUI();
+    if (!replay.playing && replay.size >= 4) replayStart();
   }
   if (combatState.crashBlastTimer > 0) {
     combatState.crashBlastTimer = Math.max(0, combatState.crashBlastTimer - dt);
@@ -9321,7 +9325,7 @@ function replayBuildUI() {
   const panel = document.createElement('div');
   panel.className = 'panel game-dialog-chrome review-panel-shell';
   panel.id = 'replay-panel';
-  panel.style.cssText = 'bottom:20px;left:50%;transform:translateX(-50%);display:none;pointer-events:auto;';
+  panel.style.cssText = 'right:16px;left:auto;bottom:20px;transform:none;display:none;pointer-events:auto;';
 
   const title = document.createElement('div');
   title.className = 'review-heading';
