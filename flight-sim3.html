@@ -8923,12 +8923,13 @@ function updatePhysics(dt) {
 //  JET VISUAL UPDATE — gear animation, afterburner
 // =============================================================
 function updateJetVisual() {
-  // During flight-review replay the replay system puppets jet directly
-  // from recorded frames. Don't stomp it with live plane state.
-  if (!replay.playing) {
-    jet.position.copy(plane.pos);
-    jet.quaternion.copy(plane.quat);
-  }
+  // Keep the visible aircraft mesh locked to the current plane state.
+  // During flight-review replay, replayPreStep() already writes the
+  // recorded frame into plane.pos/plane.quat before this runs, so the
+  // jet should still follow plane state here rather than freezing at
+  // the crash/stop position.
+  jet.position.copy(plane.pos);
+  jet.quaternion.copy(plane.quat);
 
   // Gear rotations (1 = down, 0 = up)
   const g = plane.gear;
