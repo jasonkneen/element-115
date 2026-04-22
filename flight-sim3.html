@@ -8045,46 +8045,34 @@ function updateAudio(dt) {
   const surgeRecovery = clamp01((surgePower - 1) / 0.13);
   const propSampleActive = isPropAirframe() && !!audio.propSampleReady;
 
-  // Ground-proximity bounce — as the plane hugs terrain *in flight*,
-  // engine audio reflects off the ground and gets louder. Only applies
-  // when airborne + moving, so a parked plane stays quiet.
-  const __agl = plane && plane.pos ? Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z)) : 999;
-  const moving = plane && plane.vel && plane.vel.length() > 10;
-  const proxBoost = (moving && !plane.onGround)
-    ? 1.0 + 0.35 * Math.max(0, Math.min(1, (80 - __agl) / 40))
-    : 1.0;
-  if (audio.master && audio.enabled && !plane.crashed) {
-    audio.master.gain.setTargetAtTime(0.55 * proxBoost, ct, 0.15);
+  // Keep the master gain steady. The previous ground-proximity bounce
+  // made the single prop loop swell/duck like a second moving layer,
+  // which reads more like a fake doppler effect than a clean engine hum.
+  if (audio.master && audio.enabled) {
+    audio.master.gain.setTargetAtTime(0.55, ct, 0.15);
   }
 
   if (audio.propSampleReady) {
     if (propSampleActive) syncPropSamplePlayback();
-    // Keep the prop loop pitch steady. The user asked for the extra
-    // layered motion to go away, so throttle now reads through gain
-    // and filtering while the hum itself stays stable and easy to parse.
+    // One clear engine voice only: fixed playback rate, fixed filter tone,
+    // no extra detail beds, and only a small gain change from throttle.
     const BASE_RATE = 1.14;
     audio.propPlaybackRate = BASE_RATE;
     if (audio.propBufferNode) {
       audio.propBufferNode.playbackRate.setTargetAtTime(BASE_RATE, ct, 0.18);
     }
     audio.propTextureBlend = 0;
-    // Higher idle floor so throttle-off still sounds like a running
-    // engine (not silence). No extra texture beds layered on top.
     const sampleVol = propSampleActive
-      ? Math.min(1, 0.40 + t * 0.30)
+      ? Math.min(0.76, 0.46 + t * 0.18)
       : 0;
     if (audio.propSampleGain) {
-      audio.propSampleGain.gain.setTargetAtTime(sampleVol, ct, 0.12);
+      audio.propSampleGain.gain.setTargetAtTime(sampleVol, ct, 0.14);
     }
     if (audio.propSampleFilter) {
-      audio.propSampleFilter.frequency.setTargetAtTime(
-        920 + t * 1280,
-        ct,
-        0.14,
-      );
+      audio.propSampleFilter.frequency.setTargetAtTime(1180, ct, 0.16);
     }
     if (audio.propSampleHighpass) {
-      audio.propSampleHighpass.frequency.setTargetAtTime(48 + t * 58, ct, 0.14);
+      audio.propSampleHighpass.frequency.setTargetAtTime(58, ct, 0.16);
     }
   }
 
