@@ -9218,6 +9218,8 @@ const REPLAY_FPS = 60;
 const REPLAY_SECONDS = 30;
 const REPLAY_MAX = REPLAY_FPS * REPLAY_SECONDS;
 const REVIEW_REPLAY_LEAD_MS = 7000;
+const REVIEW_IMPACT_SLOWMO_MS = 2000;
+const REVIEW_IMPACT_SLOWMO_RATE = 0.45;
 const replay = {
   buffer: [],       // {pos:Vector3, quat:Quaternion, throttle, t} ring entries
   head: 0,          // next write index
@@ -9227,9 +9229,11 @@ const replay = {
   playing: false,
   playIdx: 0,       // current frame being replayed (absolute into logical timeline)
   startIdx: 0,      // selected lead-in frame for the current review segment
+  eventFrameIdx: 0, // event frame inside the review segment
   playT: 0,         // accumulated time since play started
-  mode: 'chase',    // 'chase' | 'cockpit' | 'wingL' | 'wingR' | 'movie'
+  mode: 'movie',    // 'chase' | 'cockpit' | 'wingL' | 'wingR' | 'movie'
   movieAnchors: [], // {pos, lookAt, t0, t1}
+  eventAnchor: null,
   ui: null,
 };
 function replayRecord() {
@@ -9258,15 +9262,22 @@ function replayClear() {
   replay.size = 0;
   replay.startIdx = 0;
   replay.eventT = 0;
+  replay.eventFrameIdx = 0;
+  replay.mode = 'movie';
+  replay.eventAnchor = null;
 }
 
 // Build 4–5 movie-cam anchors spaced along the recorded path so the
 // camera cuts between dramatic angles as the plane flies past.
-function replayBuildMovieAnchors(fromIdx = 0) {
+function replayBuildMovieAnchors(fromIdx = 0, eventIdx = null) {
   const frames = replayGetFrames();
   const startIdx = Math.max(0, Math.min(frames.length - 1, fromIdx | 0));
   const activeFrames = frames.slice(startIdx);
-  if (activeFrames.length < 2) { replay.movieAnchors = []; return; }
+  if (activeFrames.length < 2) {
+    replay.movieAnchors = [];
+    replay.eventAnchor = null;
+    return;
+  }
   replay.movieAnchors = [];
   const anchors = activeFrames.length < 24
     ? 1
@@ -9290,6 +9301,34 @@ function replayBuildMovieAnchors(fromIdx = 0) {
       endFrame: startIdx + localEnd,
     });
   }
+  const resolvedEventIdx = Math.max(startIdx, Math.min(frames.length - 1, eventIdx != null ? eventIdx : frames.length - 1));
+  const eventFrame = frames[resolvedEventIdx];
+  if (eventFrame) {
+    const eventForward = new THREE.Vector3(0, 0, -1).applyQuaternion(eventFrame.quat);
+    const eventUp = new THREE.Vector3(0, 1, 0).applyQuaternion(eventFrame.quat);
+    const eventSide = new THREE.Vector3((resolvedEventIdx % 2 === 0) ? 1 : -1, 0, 0).applyQuaternion(eventFrame.quat);
+    const landingEvent = landingCompleteState.active && !plane.crashed;
+    const anchorPos = landingEvent
+      ? eventFrame.pos.clone()
+          .addScaledVector(eventSide, 28)
+          .addScaledVector(eventUp, 8)
+          .addScaledVector(eventForward, 14)
+      : eventFrame.pos.clone()
+          .addScaledVector(eventSide, 24)
+          .addScaledVector(eventUp, 10)
+          .addScaledVector(eventForward, -6);
+    const anchorLook = landingEvent
+      ? eventFrame.pos.clone().addScaledVector(eventForward, 10).addScaledVector(eventUp, 1.2)
+      : eventFrame.pos.clone().addScaledVector(eventForward, 2).addScaledVector(eventUp, 1.0);
+    replay.eventAnchor = {
+      pos: anchorPos,
+      lookAt: anchorLook,
+      startFrame: Math.max(startIdx, resolvedEventIdx - Math.max(10, Math.floor(REPLAY_FPS * 1.6))),
+      endFrame: Math.min(frames.length - 1, resolvedEventIdx + Math.max(8, Math.floor(REPLAY_FPS * 0.5))),
+    };
+  } else {
+    replay.eventAnchor = null;
+  }
 }
 function replayFindStartFrame(frames, eventT = null) {
   if (!frames || frames.length <= 1) return 0;
@@ -9299,6 +9338,13 @@ function replayFindStartFrame(frames, eventT = null) {
   const targetT = Math.max(frames[0].t, anchorT - REVIEW_REPLAY_LEAD_MS);
   const idx = frames.findIndex(f => f.t >= targetT);
   return idx >= 0 ? idx : 0;
+}
+function replayFindEventFrame(frames, eventT = null) {
+  if (!frames || frames.length === 0) return 0;
+  if (eventT == null) return frames.length - 1;
+  const anchorT = Math.max(frames[0].t, Math.min(eventT, frames[frames.length - 1].t));
+  const idx = frames.findIndex(f => f.t >= anchorT);
+  return idx >= 0 ? idx : frames.length - 1;
 }
 
 function replayStart() {
@@ -9311,10 +9357,12 @@ function replayStart() {
     ? landingCompleteState.touchdownAt
     : (plane.crashed ? (replay.eventT || performance.now()) : performance.now());
   const startIdx = replayFindStartFrame(frames, eventT);
+  const eventFrameIdx = replayFindEventFrame(frames, eventT);
   replay.playing = true;
   replay.startIdx = startIdx;
+  replay.eventFrameIdx = eventFrameIdx;
   replay.playIdx = startIdx;
-  replayBuildMovieAnchors(startIdx);
+  replayBuildMovieAnchors(startIdx, eventFrameIdx);
   replay.mode = replay.movieAnchors.length ? 'movie' : 'chase';
   replay.playT = performance.now();
   replaySyncState(frames, startIdx);
@@ -9330,6 +9378,7 @@ function replayStart() {
 function replayStop() {
   replay.playing = false;
   replay.startIdx = 0;
+  replay.mode = 'movie';
   syncReplayUI();
 }
 // Called from animate() when replay is active, BEFORE updateJetVisual +
@@ -9369,7 +9418,10 @@ function replayApplyCamera(frames, idx) {
     const look = new THREE.Vector3(-sign * 1.4, 0.4, -10).applyQuaternion(q);
     camera.lookAt(pos.clone().add(look));
   } else if (replay.mode === 'movie') {
-    const anchor = replay.movieAnchors.find(a => idx >= a.startFrame && idx < a.endFrame)
+    const eventAnchor = replay.eventAnchor && idx >= replay.eventAnchor.startFrame && idx <= replay.eventAnchor.endFrame
+      ? replay.eventAnchor
+      : null;
+    const anchor = eventAnchor || replay.movieAnchors.find(a => idx >= a.startFrame && idx < a.endFrame)
                 || replay.movieAnchors[replay.movieAnchors.length - 1];
     if (anchor) {
       camera.position.copy(anchor.pos);
@@ -9396,11 +9448,21 @@ function replayPreStep(dt) {
     replaySyncState(frames, replay.playIdx);
     return;
   }
-  const loop = elapsed % (totalDur + 2.5);
-  const segmentFrames = Math.max(1, frames.length - startIdx - 1);
-  const idx = (loop >= totalDur)
-    ? frames.length - 1
-    : Math.min(frames.length - 1, startIdx + Math.floor((loop / totalDur) * segmentFrames));
+  const slowmoWindow = plane.crashed ? Math.min(totalDur, REVIEW_IMPACT_SLOWMO_MS / 1000) : 0;
+  const normalDur = totalDur - slowmoWindow;
+  const playbackDur = normalDur + (slowmoWindow > 0 ? slowmoWindow / REVIEW_IMPACT_SLOWMO_RATE : 0);
+  const loop = elapsed % (playbackDur + 2.5);
+  if (loop >= playbackDur) {
+    replay.playIdx = frames.length - 1;
+    replaySyncState(frames, replay.playIdx);
+    return;
+  }
+  const sourceElapsed = slowmoWindow > 0 && loop > normalDur
+    ? normalDur + (loop - normalDur) * REVIEW_IMPACT_SLOWMO_RATE
+    : loop;
+  const targetT = segmentStartT + sourceElapsed * 1000;
+  let idx = frames.findIndex((f, i) => i >= startIdx && f.t >= targetT);
+  if (idx < 0) idx = frames.length - 1;
   replay.playIdx = idx;
   replaySyncState(frames, idx);
 }
@@ -9452,11 +9514,13 @@ function syncReplayUI() {
     b.style.color = isActive ? '#fff0c8' : '#ffcc66';
     b.style.borderColor = isActive ? 'rgba(255,225,170,0.42)' : 'rgba(255,215,150,0.22)';
   });
-  replay.ui.playBtn.textContent = replay.playing ? '■ STOP REVIEW' : (landingCompleteState.active && !plane.crashed ? '▶ REVIEW LANDING' : '▶ REVIEW RUN');
-  if (replay.ui.resetBtn) replay.ui.resetBtn.textContent = landingCompleteState.active && !plane.crashed ? '↺ NEXT SORTIE [R]' : '↺ FLY AGAIN [R]';
+  if (replay.ui.modeSummary) replay.ui.modeSummary.textContent = `CAMERA · ${replay.mode.toUpperCase()}`;
+  if (replay.ui.modeDetails) replay.ui.modeDetails.open = replay.mode !== 'movie';
+  replay.ui.playBtn.textContent = replay.playing ? '■ STOP' : '▶ REPLAY';
+  if (replay.ui.resetBtn) replay.ui.resetBtn.textContent = landingCompleteState.active && !plane.crashed ? '↺ NEXT [R]' : '↺ RESET [R]';
   if (replay.ui.subline) replay.ui.subline.textContent = summary
     ? `${summary.reason}`
-    : (replay.playing ? `Camera: ${replay.mode.toUpperCase()}` : 'Replay');
+    : (replay.playing ? `CINEMA · ${replay.mode.toUpperCase()}` : 'cinematic replay');
   if (replay.ui.gradeValue) replay.ui.gradeValue.textContent = summary ? summary.grade : 'C';
   if (replay.ui.gradeLabel) replay.ui.gradeLabel.textContent = 'SORTIE';
   if (replay.ui.summaryGrid) {
@@ -9495,12 +9559,12 @@ function replayBuildUI() {
 
   const title = document.createElement('div');
   title.className = 'review-heading';
-  title.textContent = 'FLIGHT REVIEW';
+  title.textContent = 'REVIEW';
   panel.appendChild(title);
 
   const subline = document.createElement('div');
   subline.className = 'review-subline';
-  subline.textContent = 'Crash cam / replay loop / cinematic angles';
+  subline.textContent = 'cinematic replay';
   panel.appendChild(subline);
 
   const grade = document.createElement('div');
@@ -9540,9 +9604,16 @@ function replayBuildUI() {
   resetBtn.addEventListener('click', () => { if (typeof resetPlane === 'function') resetPlane(); });
   playRow.appendChild(resetBtn);
 
+  const modeDetails = document.createElement('details');
+  modeDetails.className = 'review-modes-shell';
+  modeDetails.style.cssText = 'margin-top:10px;border:1px solid rgba(255,215,150,0.12);border-radius:12px;background:rgba(255,255,255,0.03);overflow:hidden;';
+  const modeSummary = document.createElement('summary');
+  modeSummary.textContent = 'CAMERA · MOVIE';
+  modeSummary.style.cssText = 'cursor:pointer;padding:8px 10px;font-size:10px;letter-spacing:0.14em;color:#ffdf9d;background:rgba(255,255,255,0.025);';
+  modeDetails.appendChild(modeSummary);
   const modeWrap = document.createElement('div');
   modeWrap.className = 'review-modes';
-  modeWrap.style.marginTop = '10px';
+  modeWrap.style.cssText = 'margin-top:0;padding:8px 10px 10px;';
   const modes = [
     { k: 'chase',    label: 'CHASE' },
     { k: 'cockpit',  label: 'COCKPIT' },
@@ -9560,9 +9631,10 @@ function replayBuildUI() {
     modeWrap.appendChild(b);
     modeButtons.push(b);
   });
-  panel.appendChild(modeWrap);
+  modeDetails.appendChild(modeWrap);
+  panel.appendChild(modeDetails);
   hud.appendChild(panel);
-  replay.ui = { panel, playBtn, resetBtn, modeButtons, subline, gradeValue, gradeLabel, summaryGrid, awardsWrap };
+  replay.ui = { panel, playBtn, resetBtn, modeButtons, modeDetails, modeSummary, subline, gradeValue, gradeLabel, summaryGrid, awardsWrap };
 }
 replayBuildUI();
 bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
@@ -13543,6 +13615,8 @@ window.__ap = {
       flare_strength: sunGrp.userData.flareStrength || 0,
       sun_screen: sunGrp.userData.sunScreen || null,
       replay_hero_light: replayHeroRig.spot.visible ? replayHeroRig.spot.intensity : 0,
+      replay_playing: !!replay.playing,
+      replay_mode: replay.mode,
       aero_flex: { wing: aeroFlexState.wingBend, aileron: aeroFlexState.aileron, elevator: aeroFlexState.elevator, rudder: aeroFlexState.rudder },
       multiplayer_connected: !!multiplayerState.connected,
       remote_players: multiplayerState.remotePlayers.size,
@@ -13643,6 +13717,7 @@ window.__ap = {
   },
   completeLandingPreview(sample = {}) {
     const result = recordLandingTouchdown(sample);
+    landingCompleteState.touchdownAt = landingCompleteState.touchdownAt || performance.now();
     landingCompleteState.armed = false;
     landingCompleteState.active = !!result.onRunway;
     missionDebriefState.reason = result.onRunway ? 'LANDING COMPLETE' : 'LANDING REVIEW';
