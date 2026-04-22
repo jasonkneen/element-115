@@ -8256,6 +8256,7 @@ function damagePlane(amount, kind = 'airframe', opts = {}) {
   // engine audio as a steady hum without extra cough / damage stingers.
   if (plane.health <= 0) {
     plane.crashed = true;
+    replay.eventT = performance.now();
     setFlightPhase('IMPACT', 'warn');
     captureMissionDebrief(opts.reason || 'AIRFRAME FAILURE');
     if (typeof syncReplayUI === 'function') syncReplayUI();
@@ -9216,20 +9217,23 @@ const camLocalOffset = new THREE.Vector3(0, 3.0, 14);
 const REPLAY_FPS = 60;
 const REPLAY_SECONDS = 30;
 const REPLAY_MAX = REPLAY_FPS * REPLAY_SECONDS;
+const REVIEW_REPLAY_LEAD_MS = 7000;
 const replay = {
   buffer: [],       // {pos:Vector3, quat:Quaternion, throttle, t} ring entries
   head: 0,          // next write index
   size: 0,          // number of valid entries (≤ REPLAY_MAX)
   startT: 0,        // perf.now() of first recorded sample in buffer
+  eventT: 0,        // crash / landing event timestamp anchoring review lead-in
   playing: false,
   playIdx: 0,       // current frame being replayed (absolute into logical timeline)
+  startIdx: 0,      // selected lead-in frame for the current review segment
   playT: 0,         // accumulated time since play started
   mode: 'chase',    // 'chase' | 'cockpit' | 'wingL' | 'wingR' | 'movie'
   movieAnchors: [], // {pos, lookAt, t0, t1}
   ui: null,
 };
 function replayRecord() {
-  if (replay.playing) return;
+  if (replay.playing || plane.crashed) return;
   const slot = {
     pos: plane.pos.clone(),
     quat: plane.quat.clone(),
@@ -9252,20 +9256,26 @@ function replayClear() {
   replay.buffer = [];
   replay.head = 0;
   replay.size = 0;
+  replay.startIdx = 0;
+  replay.eventT = 0;
 }
 
 // Build 4–5 movie-cam anchors spaced along the recorded path so the
 // camera cuts between dramatic angles as the plane flies past.
-function replayBuildMovieAnchors() {
+function replayBuildMovieAnchors(fromIdx = 0) {
   const frames = replayGetFrames();
-  if (frames.length < 8) { replay.movieAnchors = []; return; }
+  const startIdx = Math.max(0, Math.min(frames.length - 1, fromIdx | 0));
+  const activeFrames = frames.slice(startIdx);
+  if (activeFrames.length < 2) { replay.movieAnchors = []; return; }
   replay.movieAnchors = [];
-  const anchors = Math.min(5, Math.max(3, Math.floor(frames.length / (REPLAY_FPS * 5))));
+  const anchors = activeFrames.length < 24
+    ? 1
+    : Math.min(5, Math.max(3, Math.floor(activeFrames.length / (REPLAY_FPS * 5))));
   for (let i = 0; i < anchors; i++) {
-    const start = Math.floor((i / anchors) * frames.length);
-    const end   = Math.floor(((i + 1) / anchors) * frames.length);
-    const mid = Math.floor((start + end) / 2);
-    const f = frames[mid];
+    const localStart = Math.floor((i / anchors) * activeFrames.length);
+    const localEnd   = Math.floor(((i + 1) / anchors) * activeFrames.length);
+    const localMid = Math.floor((localStart + localEnd) / 2);
+    const f = activeFrames[localMid];
     const sideDir = new THREE.Vector3(i % 2 === 0 ? 1 : -1, 0, 0).applyQuaternion(f.quat);
     const upDir = new THREE.Vector3(0, 1, 0).applyQuaternion(f.quat);
     const forwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(f.quat);
@@ -9276,10 +9286,19 @@ function replayBuildMovieAnchors() {
     replay.movieAnchors.push({
       pos,
       lookAt: f.pos.clone().addScaledVector(forwardDir, 5),
-      startFrame: start,
-      endFrame: end,
+      startFrame: startIdx + localStart,
+      endFrame: startIdx + localEnd,
     });
   }
+}
+function replayFindStartFrame(frames, eventT = null) {
+  if (!frames || frames.length <= 1) return 0;
+  const anchorT = eventT != null
+    ? Math.max(frames[0].t, Math.min(eventT, frames[frames.length - 1].t))
+    : frames[frames.length - 1].t;
+  const targetT = Math.max(frames[0].t, anchorT - REVIEW_REPLAY_LEAD_MS);
+  const idx = frames.findIndex(f => f.t >= targetT);
+  return idx >= 0 ? idx : 0;
 }
 
 function replayStart() {
@@ -9287,16 +9306,30 @@ function replayStart() {
     if (typeof flashStatus === 'function') flashStatus('NOT ENOUGH FLIGHT DATA', 'panel warn', 1.6);
     return;
   }
+  const frames = replayGetFrames();
+  const eventT = landingCompleteState.active && !plane.crashed
+    ? landingCompleteState.touchdownAt
+    : (plane.crashed ? (replay.eventT || performance.now()) : performance.now());
+  const startIdx = replayFindStartFrame(frames, eventT);
   replay.playing = true;
-  replay.playIdx = 0;
+  replay.startIdx = startIdx;
+  replay.playIdx = startIdx;
+  replayBuildMovieAnchors(startIdx);
+  replay.mode = replay.movieAnchors.length ? 'movie' : 'chase';
   replay.playT = performance.now();
-  replayBuildMovieAnchors();
+  replaySyncState(frames, startIdx);
+  jet.position.copy(plane.pos);
+  jet.quaternion.copy(plane.quat);
+  updateCamera(1 / REPLAY_FPS);
+  replayApplyCamera(frames, startIdx);
+  if (typeof updateReplayHeroLightAfterCamera === 'function') updateReplayHeroLightAfterCamera();
   // Hide the crashBlast so the replay isn't drowned in the explosion sprite
   if (typeof crashBlast !== 'undefined') crashBlast.visible = false;
   syncReplayUI();
 }
 function replayStop() {
   replay.playing = false;
+  replay.startIdx = 0;
   syncReplayUI();
 }
 // Called from animate() when replay is active, BEFORE updateJetVisual +
@@ -9349,22 +9382,25 @@ function replayApplyCamera(frames, idx) {
 function replayPreStep(dt) {
   const frames = replayGetFrames();
   if (frames.length === 0) { replayStop(); return; }
-  if (frames.length === 1) {
-    replay.playIdx = 0;
-    replaySyncState(frames, 0);
+  const startIdx = Math.max(0, Math.min(frames.length - 1, replay.startIdx || 0));
+  if (frames.length === 1 || startIdx >= frames.length - 1) {
+    replay.playIdx = startIdx;
+    replaySyncState(frames, startIdx);
     return;
   }
   const elapsed = (performance.now() - replay.playT) / 1000;
-  const totalDur = (frames[frames.length - 1].t - frames[0].t) / 1000;
+  const segmentStartT = frames[startIdx].t;
+  const totalDur = (frames[frames.length - 1].t - segmentStartT) / 1000;
   if (totalDur <= 0) {
     replay.playIdx = frames.length - 1;
     replaySyncState(frames, replay.playIdx);
     return;
   }
   const loop = elapsed % (totalDur + 2.5);
+  const segmentFrames = Math.max(1, frames.length - startIdx - 1);
   const idx = (loop >= totalDur)
     ? frames.length - 1
-    : Math.min(frames.length - 1, Math.floor((loop / totalDur) * frames.length));
+    : Math.min(frames.length - 1, startIdx + Math.floor((loop / totalDur) * segmentFrames));
   replay.playIdx = idx;
   replaySyncState(frames, idx);
 }
@@ -9373,6 +9409,31 @@ function replayPostStep() {
   const frames = replayGetFrames();
   if (frames.length === 0) return;
   replayApplyCamera(frames, replay.playIdx);
+}
+function updateReplayHeroLightAfterCamera() {
+  if (!replay.playing) return;
+  const nightFactor = timeOfDay ? (1 - timeOfDay.daylight) : 0;
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  replayHeroRig.spot.visible = true;
+  replayHeroRig.fill.visible = true;
+  replayHeroRig.spot.position.copy(camera.position)
+    .addScaledVector(camUp, 1.6)
+    .addScaledVector(camRight, 1.8)
+    .addScaledVector(camForward, 6.5);
+  replayHeroRig.fill.position.copy(plane.pos)
+    .addScaledVector(camUp, 2.1)
+    .addScaledVector(camRight, -2.8)
+    .addScaledVector(camForward, 1.2);
+  replayHeroRig.target.position.copy(plane.pos)
+    .addScaledVector(camUp, 0.8);
+  replayHeroRig.target.updateMatrixWorld();
+  replayHeroRig.spot.distance = 420;
+  replayHeroRig.spot.angle = Math.PI / 4.8;
+  replayHeroRig.spot.penumbra = 0.72;
+  replayHeroRig.spot.intensity = 2.55 + nightFactor * 0.75;
+  replayHeroRig.fill.intensity = 0.85 + nightFactor * 0.25;
 }
 function syncReplayUI() {
   if (!replay.ui) return;
@@ -10986,7 +11047,10 @@ function animate(now) {
   if (window.__gfxTick) window.__gfxTick();
   // Replay phase 2 — override camera to cockpit/wing/movie viewpoints
   // (chase mode leaves the live chase cam alone).
-  if (replay.playing) replayPostStep();
+  if (replay.playing) {
+    replayPostStep();
+    updateReplayHeroLightAfterCamera();
+  }
 
   // Sky + celestial bodies stay at apparent infinity by following the camera
   sky.position.copy(camera.position);
