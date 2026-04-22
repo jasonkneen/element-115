@@ -1142,9 +1142,7 @@ function persistPlayerProfile() {
 }
 const PROP_MODEL_PRESETS = [
   { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
-  { key: 'scruggs', label: 'CLAUDE SCRUGGS', name: 'Claude Scruggs', hudLabel: 'SCRUGGS', type: 'Racing Prop', badge: 'NEW', file: 'models/claude_scruggs.glb' },
   { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIPSLINGER', type: 'Racing Prop', badge: 'NEW', file: 'models/ripslinger.glb' },
-  { key: 'bush', label: 'CRANK BUSH', name: 'Crank Bush Plane', hudLabel: 'BUSH', type: 'Utility Prop', badge: 'NEW', file: 'models/crank_bush_plane.glb' },
   { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Tucano', hudLabel: 'TUCANO', type: 'Trainer Prop', badge: 'NEW', file: 'models/colombian_emb_314_tucano.glb' },
   { key: 'avenger', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'AVENGER', type: 'Warbird Prop', badge: 'NEW', file: 'models/p-100_avenger_-_free.glb' },
   { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird Prop', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
@@ -1156,6 +1154,10 @@ const PROP_MODEL_PRESETS = [
   { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
   { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback Prop', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
+const REMOVED_PROP_MODEL_FILES = new Set([
+  'models/claude_scruggs.glb',
+  'models/crank_bush_plane.glb',
+]);
 const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
 
 function getStoredPropModelKey() {
@@ -4508,11 +4510,24 @@ function updateMultiplayer(dt) {
   const searchStr = (window.location.search || '').replace(/^\?/, '');
   const params = new URLSearchParams(hashStr || searchStr);
   let planeFile = params.get('plane');
+  let removedPlaneParam = false;
+  if (planeFile && REMOVED_PROP_MODEL_FILES.has(planeFile)) {
+    params.delete('plane');
+    params.delete('variant');
+    planeFile = null;
+    removedPlaneParam = true;
+  }
   if (!planeFile) {
     const preset = getActivePropPreset();
     if (preset) {
       applyPropPresetToParams(params, preset);
       planeFile = params.get('plane');
+      if (removedPlaneParam && window.history && window.history.replaceState) {
+        const cleanUrl = new URL(location.href);
+        cleanUrl.search = params.toString() ? `?${params.toString()}` : '';
+        if ((cleanUrl.hash || '').includes('=')) cleanUrl.hash = '';
+        window.history.replaceState(null, '', cleanUrl.toString());
+      }
     }
   }
   if (!planeFile || planeFile === 'default') return;
