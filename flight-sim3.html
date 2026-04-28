@@ -769,6 +769,156 @@
     max-width: min(560px, calc(100vw - 36px));
     text-align: left;
   }
+  .course-director-shell {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 214px;
+    border-radius: 18px;
+    padding: 10px 12px;
+    font-family: var(--game-font-ui);
+    opacity: 0.9;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+  .course-director-shell.is-hidden {
+    opacity: 0;
+    transform: translateY(-50%) translateX(12px);
+  }
+  .course-director-shell .course-kicker {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 226, 170, 0.58);
+  }
+  .course-director-shell .course-title {
+    margin-top: 4px;
+    font-size: 18px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    color: #fff3d2;
+  }
+  .course-director-shell .course-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .course-director-shell .course-cell {
+    border: 1px solid rgba(255, 215, 150, 0.12);
+    background: rgba(255,255,255,0.035);
+    border-radius: 10px;
+    padding: 7px 8px;
+    min-width: 0;
+  }
+  .course-director-shell .course-label {
+    display: block;
+    font-size: 8px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 226, 170, 0.54);
+  }
+  .course-director-shell .course-value {
+    display: block;
+    margin-top: 3px;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 700;
+    color: #fff2cf;
+    letter-spacing: -0.02em;
+  }
+  .course-director-shell .course-cue {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(127, 230, 255, 0.16);
+    background: rgba(74, 178, 226, 0.07);
+    color: rgba(222, 247, 255, 0.9);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mp-race-panel-shell {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 250px;
+    border-radius: 18px;
+    padding: 10px 12px;
+    font-family: var(--game-font-ui);
+    opacity: 0.9;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+  .mp-race-panel-shell.is-hidden {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-12px);
+  }
+  .mp-race-panel-shell .race-kicker {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(127, 230, 255, 0.7);
+  }
+  .mp-race-panel-shell .race-timer {
+    margin-top: 4px;
+    font-size: 26px;
+    line-height: 0.95;
+    font-weight: 800;
+    color: #e9fbff;
+  }
+  .mp-race-panel-shell .race-status {
+    margin-top: 3px;
+    min-height: 13px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 230, 176, 0.72);
+  }
+  .mp-race-panel-shell .race-board {
+    margin-top: 8px;
+    display: grid;
+    gap: 5px;
+  }
+  .mp-race-panel-shell .race-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    min-height: 24px;
+    border: 1px solid rgba(127, 230, 255, 0.12);
+    background: rgba(255,255,255,0.035);
+    border-radius: 10px;
+    padding: 4px 7px;
+  }
+  .mp-race-panel-shell .race-row.local {
+    border-color: rgba(255, 230, 176, 0.32);
+    background: rgba(255, 230, 176, 0.08);
+  }
+  .mp-race-panel-shell .race-rank {
+    font-size: 10px;
+    color: rgba(233, 251, 255, 0.64);
+  }
+  .mp-race-panel-shell .race-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(233, 251, 255, 0.92);
+  }
+  .mp-race-panel-shell .race-progress {
+    font-size: 10px;
+    font-weight: 800;
+    color: #ffe6b0;
+  }
   .game-status-shell::before {
     display: none;
     content: none;
@@ -791,6 +941,8 @@
     #throttle-wrap { width: calc(100vw - 16px); padding: 6px 8px; }
     .hud-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #status-msg { top: 108px; max-width: calc(100vw - 16px); }
+    #course-director,
+    #mp-race-panel { display: none; }
     #controls-help { width: calc(100vw - 16px); bottom: 94px; border-radius: 16px; flex-wrap: wrap; }
     #controls-help.collapsed { min-width: 0; width: auto; }
     #controls-help > div { flex: 1 1 calc(50% - 4px); white-space: normal; }
@@ -801,12 +953,16 @@
   body.preflight #instruments,
   body.preflight #controls-help,
   body.preflight #throttle-wrap,
+  body.preflight #course-director,
+  body.preflight #mp-race-panel,
   body.preflight #status-msg,
   body.review-open #crosshair,
   body.review-open #target-overlay,
   body.review-open #instruments,
   body.review-open #controls-help,
   body.review-open #throttle-wrap,
+  body.review-open #course-director,
+  body.review-open #mp-race-panel,
   body.review-open #status-msg,
   body.review-open #dev-overlay,
   body.review-open #input-debug,
@@ -991,6 +1147,7 @@
           <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
           <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
           <button type="button" class="hud-action" id="biome-btn">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
+          <button type="button" class="hud-action" id="race-btn">RACE [N] <span id="race-ind" class="ok">READY</span></button>
           <button type="button" class="hud-action" id="audio-btn">SOUND <span id="audio-ind" class="warn">OFF</span></button>
         </div>
       </details>
@@ -998,9 +1155,26 @@
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
     <div id="ch-line1">W/S PITCH · A/D BANK · Q/E RUDDER</div>
-    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · P OPTIONS · R RESET</div>
+    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · N RACE · P OPTIONS · R RESET</div>
   </div>
   <div class="panel game-dialog-chrome game-status-shell" id="status-msg">SHIFT/CTRL THROTTLE · M CHANGE PLANE · P OPTIONS</div>
+  <div class="panel game-dialog-chrome thin-surface-hud-shell course-director-shell is-hidden" id="course-director">
+    <div class="course-kicker">COURSE DIRECTOR</div>
+    <div class="course-title" id="course-title">PRACTICE</div>
+    <div class="course-grid">
+      <div class="course-cell"><span class="course-label">NEXT</span><span class="course-value" id="course-next">1/6</span></div>
+      <div class="course-cell"><span class="course-label">RANGE</span><span class="course-value" id="course-range">--M</span></div>
+      <div class="course-cell"><span class="course-label">TURN</span><span class="course-value" id="course-turn">ALIGN</span></div>
+      <div class="course-cell"><span class="course-label">ALT</span><span class="course-value" id="course-alt">LEVEL</span></div>
+    </div>
+    <div class="course-cue" id="course-cue">FOLLOW THE BLUE LINE</div>
+  </div>
+  <div class="panel game-dialog-chrome thin-surface-hud-shell mp-race-panel-shell is-hidden" id="mp-race-panel">
+    <div class="race-kicker"><span>MULTIPLAYER RACE</span><span id="race-room">SOLO</span></div>
+    <div class="race-timer" id="race-timer">--:--.---</div>
+    <div class="race-status" id="race-status">PRESS N TO START COURSE</div>
+    <div class="race-board" id="race-board"></div>
+  </div>
   <!-- Dev overlay: internal state at a glance so we can diagnose from any
        screenshot. Updated each frame by updateHUD(). -->
   <div id="dev-overlay" style="position:fixed;top:76px;right:16px;transform:none;
@@ -1025,11 +1199,11 @@
     <h1>CANYON AIRSTRIP</h1>
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
-      <div>W/S or ↑/↓ — PITCH</div>
-      <div>A/D — BANK · Q/E — RUDDER</div>
-      <div>SHIFT/CTRL — THROTTLE</div>
-      <div>SPACE — FIRE · M — NEXT PLANE</div>
-      <div>R — RESET · P — OPTIONS</div>
+      <div>W/S or PAD LS — PITCH</div>
+      <div>A/D or PAD LS — BANK · Q/E or RB/LB — RUDDER</div>
+      <div>SHIFT/CTRL or RT/LT — THROTTLE</div>
+      <div>SPACE or A — FIRE · M or DPAD RIGHT — NEXT PLANE</div>
+      <div>R or START — RESET · BACK — RACE · F — FULLSCREEN</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -1046,8 +1220,8 @@
       <div class="mp-spawn-row" id="mp-spawn-row"></div>
       <div class="mp-setup-note" id="mp-setup-note">Leave server blank for SOLO. When network flight is enabled, random traffic clears out and everyone uses their chosen callsign + spawn profile.</div>
     </div>
-    <p class="meta">DESKTOP / KEYBOARD RECOMMENDED · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
-    <div class="cta">CLICK OR PRESS ANY KEY TO FLY</div>
+    <p class="meta">KEYBOARD OR CONTROLLER · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
+    <div class="cta">CLICK, PRESS ANY KEY, OR PRESS A ON CONTROLLER TO FLY</div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1148,10 +1322,10 @@ const PROP_MODEL_PRESETS = [
   { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird Prop', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
   { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Prop', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
   { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird Prop', badge: 'HEAVY', file: 'models/yak-9.glb' },
-  { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/stunt_plane.glb', variant: '1' },
-  { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
-  { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/stunt_plane.glb', variant: '3' },
-  { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
+  { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/low_poly_plane.glb', variant: '1' },
+  { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/low_poly_plane.glb', variant: '2' },
+  { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/low_poly_plane.glb', variant: '3' },
+  { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/low_poly_plane.glb', variant: '4' },
   { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback Prop', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
 const REMOVED_PROP_MODEL_FILES = new Set([
@@ -1166,7 +1340,9 @@ function getStoredPropModelKey() {
 }
 
 function findPropPresetByPlaneFile(file) {
-  return PROP_MODEL_PRESETS.find(p => p.file === file) || null;
+  return PROP_MODEL_PRESETS.find(p => p.file === file && p.variant == null)
+    || PROP_MODEL_PRESETS.find(p => p.file === file)
+    || null;
 }
 
 function findPropPresetByParams(params) {
@@ -1800,8 +1976,8 @@ function updateMotionBlurPostFX() {
   const blurAmount = scene.userData.__motionBlurAmount != null ? scene.userData.__motionBlurAmount : 0.42;
   const speedKts = plane.vel.length() * 1.94;
   const throttleFactor = clamp01((plane.throttle - 0.42) / 0.58);
-  const speedFactor = clamp01((speedKts - 75) / 250);
-  const baseStrength = clamp01(speedFactor * (0.16 + throttleFactor * 0.84)) * 0.68;
+  const speedFactor = clamp01((speedKts - 45) / 230);
+  const baseStrength = clamp01(speedFactor * (0.22 + throttleFactor * 0.92)) * 0.82;
   const targetStrength = blurEnabled ? baseStrength * blurAmount : 0;
   const current = postFX.motionBlurPass.uniforms.strength.value || 0;
   const blend = targetStrength < current ? 0.24 : 0.14;
@@ -4154,6 +4330,157 @@ const multiplayerState = {
   sendTimer: 0,
   reconnectAt: 0,
 };
+const MP_RACE_BEST_KEY = 'flight_mp_race_best_ms';
+const multiplayerRaceState = {
+  status: 'idle',
+  raceId: '',
+  startedAt: 0,
+  startedWallAt: 0,
+  countdownUntil: 0,
+  finishedAt: 0,
+  localGateIndex: 0,
+  gateCount: 0,
+  localLapMs: 0,
+  bestMs: (() => {
+    try {
+      const v = Number(localStorage.getItem(MP_RACE_BEST_KEY));
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    } catch {
+      return 0;
+    }
+  })(),
+  lastGateAt: 0,
+  lastAnnouncement: '',
+  lastAnnouncementUntil: 0,
+  adoptedStart: false,
+};
+
+function formatRaceTime(ms, compact = false) {
+  if (!Number.isFinite(ms) || ms <= 0) return compact ? '--' : '--:--.---';
+  const total = Math.max(0, Math.floor(ms));
+  const minutes = Math.floor(total / 60000);
+  const seconds = Math.floor((total % 60000) / 1000);
+  const millis = total % 1000;
+  if (compact) return minutes > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${seconds}.${String(Math.floor(millis / 100)).padStart(1, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+}
+
+function announceMultiplayerRace(title, detail = '', tone = 'ok') {
+  multiplayerRaceState.lastAnnouncement = title;
+  multiplayerRaceState.lastAnnouncementUntil = performance.now() + 1600;
+  if (typeof window.showComboBanner === 'function') window.showComboBanner(title, detail, tone === 'warn' ? '#ffcc66' : '#7fe6ff');
+  if (typeof flashStatus === 'function') flashStatus(detail ? `${title} · ${detail}` : title, tone === 'warn' ? 'panel warn' : 'panel ok', 1.4);
+}
+
+function resetPracticeCourseForRace() {
+  const course = window.__practiceRingCourse;
+  if (!course || !course.length) return 0;
+  const activeCount = course.activeCount || course.length || 0;
+  course.nextIndex = 0;
+  course.completedRuns = course.completedRuns || 0;
+  for (const ring of course) {
+    if (ring && ring.userData) ring.userData.scored = false;
+  }
+  return activeCount;
+}
+
+function startMultiplayerRaceCountdown(opts = {}) {
+  const activeCount = resetPracticeCourseForRace();
+  const now = performance.now();
+  const wallNow = Date.now();
+  const requestedWallStart = Number(opts.startedWallAt);
+  const startedWallAt = Number.isFinite(requestedWallStart)
+    ? Math.max(wallNow + 700, requestedWallStart)
+    : wallNow + 3200;
+  multiplayerRaceState.status = 'countdown';
+  multiplayerRaceState.raceId = opts.raceId || `race_${wallNow.toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  multiplayerRaceState.startedAt = 0;
+  multiplayerRaceState.startedWallAt = startedWallAt;
+  multiplayerRaceState.countdownUntil = now + Math.max(700, startedWallAt - wallNow);
+  multiplayerRaceState.finishedAt = 0;
+  multiplayerRaceState.localGateIndex = 0;
+  multiplayerRaceState.gateCount = activeCount;
+  multiplayerRaceState.localLapMs = 0;
+  multiplayerRaceState.lastGateAt = 0;
+  multiplayerRaceState.adoptedStart = !!opts.adopted;
+  announceMultiplayerRace(opts.adopted ? 'SYNC START' : 'RACE ARMED', `${Math.max(1, Math.ceil((multiplayerRaceState.countdownUntil - now) / 1000))} SECOND COUNTDOWN`);
+  if (multiplayerState.connected) sendMultiplayerState();
+}
+
+function beginMultiplayerRaceIfDue(now = performance.now()) {
+  if (multiplayerRaceState.status !== 'countdown') return;
+  if (now < multiplayerRaceState.countdownUntil) return;
+  multiplayerRaceState.status = 'racing';
+  multiplayerRaceState.startedAt = now;
+  multiplayerRaceState.localLapMs = 0;
+  multiplayerRaceState.localGateIndex = 0;
+  multiplayerRaceState.lastGateAt = now;
+  announceMultiplayerRace('GO', 'THREAD THE COURSE');
+}
+
+function finishMultiplayerRace(activeCount = multiplayerRaceState.gateCount) {
+  if (multiplayerRaceState.status !== 'racing') return;
+  const now = performance.now();
+  multiplayerRaceState.status = 'finished';
+  multiplayerRaceState.finishedAt = now;
+  multiplayerRaceState.localGateIndex = Math.max(multiplayerRaceState.localGateIndex, activeCount || multiplayerRaceState.localGateIndex);
+  multiplayerRaceState.localLapMs = Math.max(1, now - multiplayerRaceState.startedAt);
+  if (!multiplayerRaceState.bestMs || multiplayerRaceState.localLapMs < multiplayerRaceState.bestMs) {
+    multiplayerRaceState.bestMs = multiplayerRaceState.localLapMs;
+    try { localStorage.setItem(MP_RACE_BEST_KEY, String(Math.round(multiplayerRaceState.bestMs))); } catch {}
+  }
+  announceMultiplayerRace('RACE COMPLETE', `${formatRaceTime(multiplayerRaceState.localLapMs)} · BEST ${formatRaceTime(multiplayerRaceState.bestMs, true)}`);
+  if (multiplayerState.connected) sendMultiplayerState();
+}
+
+function recordMultiplayerRaceGate(nextGateIndex, activeCount) {
+  beginMultiplayerRaceIfDue();
+  if (multiplayerRaceState.status !== 'racing') return;
+  multiplayerRaceState.gateCount = activeCount || multiplayerRaceState.gateCount;
+  multiplayerRaceState.localGateIndex = Math.max(multiplayerRaceState.localGateIndex, Math.min(activeCount || nextGateIndex, nextGateIndex));
+  multiplayerRaceState.localLapMs = Math.max(1, performance.now() - multiplayerRaceState.startedAt);
+  multiplayerRaceState.lastGateAt = performance.now();
+  if (activeCount > 0 && nextGateIndex >= activeCount) finishMultiplayerRace(activeCount);
+  if (multiplayerState.connected) sendMultiplayerState();
+}
+
+function toggleMultiplayerRace() {
+  startMultiplayerRaceCountdown();
+}
+
+function buildLocalRaceState() {
+  beginMultiplayerRaceIfDue();
+  const now = performance.now();
+  const lapMs = multiplayerRaceState.status === 'racing'
+    ? Math.max(1, now - multiplayerRaceState.startedAt)
+    : multiplayerRaceState.localLapMs;
+  return {
+    version: 1,
+    raceId: multiplayerRaceState.raceId,
+    status: multiplayerRaceState.status,
+    gateIndex: multiplayerRaceState.localGateIndex,
+    gateCount: multiplayerRaceState.gateCount || (window.__practiceRingCourse ? (window.__practiceRingCourse.activeCount || window.__practiceRingCourse.length || 0) : 0),
+    lapMs: Math.round(lapMs || 0),
+    bestMs: Math.round(multiplayerRaceState.bestMs || 0),
+    startedWallAt: multiplayerRaceState.startedWallAt || 0,
+    countdownMs: multiplayerRaceState.status === 'countdown' ? Math.max(0, Math.round(multiplayerRaceState.countdownUntil - now)) : 0,
+    t: Date.now(),
+  };
+}
+
+function maybeAdoptRemoteRaceCountdown(race) {
+  if (!race || race.status !== 'countdown') return;
+  if (multiplayerRaceState.status !== 'idle' && multiplayerRaceState.status !== 'finished') return;
+  const startedWallAt = Number(race.startedWallAt);
+  if (!Number.isFinite(startedWallAt) || !startedWallAt) return;
+  const delta = startedWallAt - Date.now();
+  if (delta < 250 || delta > 9000) return;
+  startMultiplayerRaceCountdown({
+    startedWallAt,
+    raceId: race.raceId || '',
+    adopted: true,
+  });
+}
 
 function makeCallsignTexture(text, colorHex = 0xffe6b0) {
   const c = document.createElement('canvas');
@@ -4285,6 +4612,7 @@ function buildLocalMultiplayerState() {
     spawnMode: playerProfileState.spawnMode,
     planeKey: getActivePropPreset().key,
     speedKts: plane.vel.length() * 1.94,
+    race: buildLocalRaceState(),
     t: Date.now(),
   };
 }
@@ -4358,6 +4686,7 @@ function ensureRemotePlayer(id) {
       labelSprite: group.userData.labelSprite,
       callsign: sanitizeCallsign(id),
       planeKey: '',
+      race: null,
       speedKts: 0,
       targetPos: new THREE.Vector3(),
       targetQuat: new THREE.Quaternion(),
@@ -4397,6 +4726,8 @@ function handleMultiplayerMessage(raw) {
     rec.targetQuat.set(msg.state.quat.x, msg.state.quat.y, msg.state.quat.z, msg.state.quat.w);
     rec.planeKey = msg.state.planeKey || rec.planeKey || '';
     rec.speedKts = msg.state.speedKts != null ? msg.state.speedKts : rec.speedKts || 0;
+    rec.race = msg.state.race || rec.race || null;
+    if (rec.race) maybeAdoptRemoteRaceCountdown(rec.race);
     if (msg.state.callsign) setRemotePlayerCallsign(rec, msg.state.callsign);
     rec.lastSeen = Date.now();
     syncMultiplayerIndicator();
@@ -4630,10 +4961,14 @@ function updateMultiplayer(dt) {
       model.updateMatrixWorld(true);
       const modelBoxLocal = new THREE.Box3().setFromObject(model);
 
-      // `stunt_plane.glb` ships with UVs but no embedded texture images. If
-      // the original source texture has been copied into the project, use it;
-      // otherwise fall back to a procedural stunt livery.
-      if (/stunt_plane\.glb$/i.test(planeFile)) {
+      // The stunt variants share the low-poly prop mesh and swap between the
+      // four copied livery textures. Older builds pointed at a missing
+      // stunt_plane.glb, so keep that filename accepted for local URLs too.
+      const activePropPreset = getActivePropPreset();
+      const isStuntVariant = /stunt_plane\.glb$/i.test(planeFile)
+        || !!(activePropPreset && (activePropPreset.type || '').includes('Stunt'))
+        || (/low_poly_plane\.glb$/i.test(planeFile) && /^[1-4]$/.test(String(params.get('variant') || '')));
+      if (isStuntVariant) {
         let stuntTex = null;
         const variant = String(params.get('variant') || getActivePropPreset().variant || '1');
         const safeVariant = /^[1-4]$/.test(variant) ? variant : '1';
@@ -4716,13 +5051,60 @@ function updateMultiplayer(dt) {
       // ——— Find propeller meshes to spin ———
       const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
       const props = [];
+      const rawProps = [];
+      const addPropDiscToPivot = (pivot, sweepR) => {
+        if (!(sweepR > 0.12)) return;
+        const discGeo = new THREE.CircleGeometry(sweepR * 1.02, 40);
+        const discMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff, transparent: true, opacity: 0.0,
+          side: THREE.DoubleSide, depthWrite: false,
+        });
+        const disc = new THREE.Mesh(discGeo, discMat);
+        disc.position.z = -0.02;
+        disc.renderOrder = 2;
+        pivot.add(disc);
+        pivot.userData.__disc = disc;
+        pivot.userData.__sweepR = sweepR;
+      };
+      const wrapNamedPropPivot = (node) => {
+        if (!node || !node.parent || node.userData.__apWrappedProp) return null;
+        node.updateMatrixWorld(true);
+        const parent = node.parent;
+        parent.updateMatrixWorld(true);
+        const worldBox = new THREE.Box3().setFromObject(node);
+        if (worldBox.isEmpty()) return null;
+        const centerWorld = worldBox.getCenter(new THREE.Vector3());
+        const sizeWorld = worldBox.getSize(new THREE.Vector3());
+        const centerLocal = parent.worldToLocal(centerWorld.clone());
+        const pivot = new THREE.Group();
+        pivot.name = 'ap_named_prop_' + (node.name || 'prop');
+        pivot.position.copy(centerLocal);
+        parent.add(pivot);
+        parent.updateMatrixWorld(true);
+        pivot.attach(node);
+        pivot.userData.__propAxis = 'z';
+        pivot.userData.__isNamedProp = true;
+        addPropDiscToPivot(pivot, Math.max(sizeWorld.x, sizeWorld.y) * 0.5);
+        node.userData.__apWrappedProp = true;
+        return pivot;
+      };
       model.traverse(o => {
         if (!o.isMesh && !o.isObject3D) return;
         if (o === model) return;
-        if (propNames.test(o.name || '')) {
-          o.userData.__propAxis = 'z';
-          props.push(o);
+        if (propNames.test(o.name || '')) rawProps.push(o);
+      });
+      const rawPropSet = new Set(rawProps);
+      const topLevelRawProps = rawProps.filter((o) => {
+        let p = o.parent;
+        while (p && p !== model) {
+          if (rawPropSet.has(p)) return false;
+          p = p.parent;
         }
+        return true;
+      });
+      topLevelRawProps.forEach((o) => {
+        const pivot = wrapNamedPropPivot(o);
+        if (pivot) props.push(pivot);
       });
 
       // ——— Geometry surgery: extract baked-in prop triangles ———
@@ -5037,21 +5419,97 @@ function updateMultiplayer(dt) {
       // CRITICAL: always assign props to plane object so telemetry shows prop_count>0
       plane.props = props;
 
-      // Re-anchor atmospheric FX to the actual swapped-in airframe so wing
-      // vapor comes from the wing tips and engine smoke stays near the prop.
-      {
-        const spanX = modelBoxLocal.max.x - modelBoxLocal.min.x;
-        const spanY = modelBoxLocal.max.y - modelBoxLocal.min.y;
-        const spanZ = modelBoxLocal.max.z - modelBoxLocal.min.z;
-        const tipY = modelBoxLocal.min.y + spanY * 0.48;
-        const tipZ = modelBoxLocal.min.z + spanZ * 0.46;
-        jet.userData.wingtipL = new THREE.Vector3(modelBoxLocal.min.x + spanX * 0.05, tipY, tipZ);
-        jet.userData.wingtipR = new THREE.Vector3(modelBoxLocal.max.x - spanX * 0.05, tipY, tipZ);
+      function computeModelBoxInJetLocal() {
+        jet.updateMatrixWorld(true);
+        model.updateMatrixWorld(true);
+        const jetWorldInv = new THREE.Matrix4().copy(jet.matrixWorld).invert();
+        const box = new THREE.Box3();
+        const tmp = new THREE.Vector3();
+        let hasPoint = false;
+        model.traverse(o => {
+          if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+          o.updateMatrixWorld(true);
+          const toJetLocal = new THREE.Matrix4().multiplyMatrices(jetWorldInv, o.matrixWorld);
+          const posAttr = o.geometry.attributes.position;
+          for (let i = 0; i < posAttr.count; i++) {
+            tmp.fromBufferAttribute(posAttr, i).applyMatrix4(toJetLocal);
+            if (!hasPoint) {
+              box.min.copy(tmp);
+              box.max.copy(tmp);
+              hasPoint = true;
+            } else {
+              box.expandByPoint(tmp);
+            }
+          }
+        });
+        return hasPoint ? box : modelBoxLocal.clone();
+      }
+      function computeWingtipAnchors(modelBox) {
+        jet.updateMatrixWorld(true);
+        model.updateMatrixWorld(true);
+        const jetWorldInv = new THREE.Matrix4().copy(jet.matrixWorld).invert();
+        const tmp = new THREE.Vector3();
+        const spanX = modelBox.max.x - modelBox.min.x;
+        const leftXLimit = modelBox.min.x + spanX * 0.08;
+        const rightXLimit = modelBox.max.x - spanX * 0.08;
+        const left = { x: modelBox.min.x, y: 0, z: 0, n: 0 };
+        const right = { x: modelBox.max.x, y: 0, z: 0, n: 0 };
+        model.traverse(o => {
+          if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+          o.updateMatrixWorld(true);
+          const toJetLocal = new THREE.Matrix4().multiplyMatrices(jetWorldInv, o.matrixWorld);
+          const posAttr = o.geometry.attributes.position;
+          for (let i = 0; i < posAttr.count; i++) {
+            tmp.fromBufferAttribute(posAttr, i).applyMatrix4(toJetLocal);
+            if (tmp.x <= leftXLimit) {
+              left.y += tmp.y;
+              left.z += tmp.z;
+              left.n++;
+            }
+            if (tmp.x >= rightXLimit) {
+              right.y += tmp.y;
+              right.z += tmp.z;
+              right.n++;
+            }
+          }
+        });
+        return {
+          left: new THREE.Vector3(left.x, left.n ? left.y / left.n : (modelBox.min.y + (modelBox.max.y - modelBox.min.y) * 0.5), left.n ? left.z / left.n : (modelBox.min.z + (modelBox.max.z - modelBox.min.z) * 0.46)),
+          right: new THREE.Vector3(right.x, right.n ? right.y / right.n : (modelBox.min.y + (modelBox.max.y - modelBox.min.y) * 0.5), right.n ? right.z / right.n : (modelBox.min.z + (modelBox.max.z - modelBox.min.z) * 0.46)),
+        };
+      }
+      function refreshSwappedPlaneAnchors() {
+        const modelBox = computeModelBoxInJetLocal();
+        const spanX = modelBox.max.x - modelBox.min.x;
+        const spanY = modelBox.max.y - modelBox.min.y;
+        const spanZ = modelBox.max.z - modelBox.min.z;
+        const centerX = (modelBox.min.x + modelBox.max.x) * 0.5;
+        const tipInset = Math.max(0.03, spanX * 0.05);
+        const tipAnchors = computeWingtipAnchors(modelBox);
+        const wingtipL = tipAnchors.left.clone().setX(modelBox.min.x + tipInset);
+        const wingtipR = tipAnchors.right.clone().setX(modelBox.max.x - tipInset);
+        jet.userData.wingtipL = wingtipL.clone();
+        jet.userData.wingtipR = wingtipR.clone();
+        if (jet.userData.navRed) {
+          jet.userData.navRed.position.copy(wingtipL).add(new THREE.Vector3(-Math.max(0.04, spanX * 0.005), 0.02, 0));
+          jet.userData.navRed.userData.__basePos = jet.userData.navRed.position.clone();
+        }
+        if (jet.userData.navGrn) {
+          jet.userData.navGrn.position.copy(wingtipR).add(new THREE.Vector3( Math.max(0.04, spanX * 0.005), 0.02, 0));
+          jet.userData.navGrn.userData.__basePos = jet.userData.navGrn.position.clone();
+        }
+        if (jet.userData.strobe) {
+          jet.userData.strobe.position.set(
+            centerX,
+            modelBox.max.y + Math.max(0.06, spanY * 0.03),
+            modelBox.max.z - spanZ * 0.12
+          );
+        }
 
         let propHubLocal = new THREE.Vector3(
-          (modelBoxLocal.min.x + modelBoxLocal.max.x) * 0.5,
-          modelBoxLocal.min.y + spanY * 0.52,
-          modelBoxLocal.min.z + spanZ * 0.10
+          centerX,
+          modelBox.min.y + spanY * 0.52,
+          modelBox.min.z + spanZ * 0.10
         );
         const propRef = props[0];
         if (propRef && typeof propRef.getWorldPosition === 'function') {
@@ -5067,6 +5525,8 @@ function updateMultiplayer(dt) {
         jet.userData.engineSmokeL = propHubLocal.clone().add(new THREE.Vector3(-smokeDx, smokeDy, smokeDz));
         jet.userData.engineSmokeR = propHubLocal.clone().add(new THREE.Vector3( smokeDx, smokeDy, smokeDz));
       }
+      jet.userData.__refreshSwappedAnchors = refreshSwappedPlaneAnchors;
+      refreshSwappedPlaneAnchors();
 
       jet.userData.visualModel = model;
       const controlSurfaces = { aileronL: [], aileronR: [], elevatorL: [], elevatorR: [], rudder: [] };
@@ -5121,6 +5581,7 @@ function updateMultiplayer(dt) {
         if (Number.isFinite(t.px)) model.position.x = t.px;
         if (Number.isFinite(t.py)) model.position.y = t.py;
         if (Number.isFinite(t.pz)) model.position.z = t.pz;
+        if (typeof jet.userData.__refreshSwappedAnchors === 'function') jet.userData.__refreshSwappedAnchors();
       };
 
       const snapshotTweak = () => ({
@@ -5233,11 +5694,19 @@ function updateMultiplayer(dt) {
 
           slider.addEventListener('input', () => {
             const v = parseFloat(slider.value);
-            if (Number.isFinite(v)) { setter(v); num.value = fmt(step, v); }
+            if (Number.isFinite(v)) {
+              setter(v);
+              if (typeof jet.userData.__refreshSwappedAnchors === 'function') jet.userData.__refreshSwappedAnchors();
+              num.value = fmt(step, v);
+            }
           });
           num.addEventListener('input', () => {
             const v = parseFloat(num.value);
-            if (Number.isFinite(v)) { setter(v); slider.value = String(v); }
+            if (Number.isFinite(v)) {
+              setter(v);
+              if (typeof jet.userData.__refreshSwappedAnchors === 'function') jet.userData.__refreshSwappedAnchors();
+              slider.value = String(v);
+            }
           });
 
           row.appendChild(lab);
@@ -8237,6 +8706,24 @@ const plane = {
   engineEvent: 0,   // 0..1, decays over ~1s
   lastDamageAt: -Infinity,
 };
+const controlState = {
+  pitch: 0,
+  roll: 0,
+  yaw: 0,
+  throttleUp: 0,
+  throttleDown: 0,
+};
+function smoothSignedInput(current, target, dt, rise = 10, fall = 7) {
+  const targetAbs = Math.abs(target);
+  const currentAbs = Math.abs(current);
+  const changingDirection = current * target < -0.001;
+  const rate = (targetAbs > currentAbs || changingDirection) ? rise : fall;
+  return current + (target - current) * (1 - Math.exp(-rate * dt));
+}
+function shapeControlInput(value, expo = 0.32) {
+  const v = Math.max(-1, Math.min(1, value));
+  return v * (1 - expo) + v * Math.abs(v) * expo;
+}
 
 // Apply damage; returns whether this blow was fatal.
 // `kind` is one of 'airframe', 'engine', 'leftWing', 'rightWing'; amount in 0..1.
@@ -8296,7 +8783,7 @@ window.__sim = { plane, jet, scene, camera, renderer, weather, THREE,
 };
 
 const GRAVITY = 9.81;
-const MAX_THRUST = 32;         // m/s² (≈ 3.3 G)
+const MAX_THRUST = 52;         // m/s², arcade-snappy prop acceleration
 // Flight-idle thrust floor. Tuned so steady-state trim at idle sits
 // ≈ 150 kts (77 m/s) in level flight — just above cruise target so the
 // plane lazily sheds speed toward cruise rather than either bleeding
@@ -8318,12 +8805,15 @@ const DRAG_INDUCED = 0.018;    // multiplied by CL²
 const GEAR_DRAG = 0.00020;
 const GEAR_HEIGHT = 2.3;       // wheel clearance below jet center
 const STALL_AOA = 0.30;        // ~17°
-const MAX_ANG_VEL = 5.0;       // rad/s clamp to prevent runaway spin
+const MAX_ANG_VEL = 3.2;       // rad/s clamp to prevent runaway spin
+const MAX_PITCH_RATE = 1.55;   // rad/s, ~89 deg/s
+const MAX_ROLL_RATE = 2.35;    // rad/s, ~135 deg/s
+const MAX_YAW_RATE = 0.82;     // rad/s, ~47 deg/s
 
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (['Space', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -8334,6 +8824,17 @@ let resetPressed = false;
 let stylePressed = false;
 let biomePressed = false;
 let helpPressed = false;
+let fullscreenPressed = false;
+let racePressed = false;
+
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenElement) {
+    if (root.requestFullscreen) root.requestFullscreen().catch(() => {});
+  } else if (document.exitFullscreen) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
 
 function resetPlane() {
   const spawn = getSpawnProfileState(playerProfileState.spawnMode);
@@ -8349,6 +8850,11 @@ function resetPlane() {
   plane.landingLights = false;
   plane.onGround = spawn.onGround;
   plane.crashed = false;
+  controlState.pitch = 0;
+  controlState.roll = 0;
+  controlState.yaw = 0;
+  controlState.throttleUp = 0;
+  controlState.throttleDown = 0;
   resetMissionDebrief();
   healPlane();
   resetCombatState();
@@ -8426,7 +8932,7 @@ function updateInputLatches(dt) {
     }
   } else lightsPressed = false;
 
-  if (keys['KeyM']) {
+  if (keys['KeyM'] || (INPUT_FLAGS.gamepad && gamepadState.model)) {
     if (!modelPressed) { cyclePropModel(1); modelPressed = true; }
   } else modelPressed = false;
 
@@ -8444,6 +8950,20 @@ function updateInputLatches(dt) {
       helpPressed = true;
     }
   } else helpPressed = false;
+
+  if (keys['KeyF']) {
+    if (!fullscreenPressed) {
+      toggleFullscreen();
+      fullscreenPressed = true;
+    }
+  } else fullscreenPressed = false;
+
+  if (keys['KeyN'] || (INPUT_FLAGS.gamepad && gamepadState.race)) {
+    if (!racePressed) {
+      toggleMultiplayerRace();
+      racePressed = true;
+    }
+  } else racePressed = false;
 }
 
 function updatePhysics(dt) {
@@ -8459,15 +8979,23 @@ function updatePhysics(dt) {
   const gamepadPitchIn = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.pitch : 0;
   const gamepadRollIn  = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.roll : 0;
   const gamepadYawIn   = INPUT_FLAGS.gamepad && gamepadState.connected ? gamepadState.yaw : 0;
-  const pitchIn = Math.max(-1, Math.min(1, keyPitchIn + gamepadPitchIn));
-  const rollIn  = Math.max(-1, Math.min(1, keyRollIn + gamepadRollIn));
-  const yawIn   = Math.max(-1, Math.min(1, keyYawIn + gamepadYawIn));
+  const pitchTarget = shapeControlInput(Math.max(-1, Math.min(1, keyPitchIn + gamepadPitchIn)), 0.04);
+  const rollTarget  = shapeControlInput(Math.max(-1, Math.min(1, keyRollIn + gamepadRollIn)), 0.04);
+  const yawTarget   = shapeControlInput(Math.max(-1, Math.min(1, keyYawIn + gamepadYawIn)), 0.08);
+  controlState.pitch = smoothSignedInput(controlState.pitch, pitchTarget, dt, 70, 48);
+  controlState.roll = smoothSignedInput(controlState.roll, rollTarget, dt, 82, 52);
+  controlState.yaw = smoothSignedInput(controlState.yaw, yawTarget, dt, 58, 38);
+  const pitchIn = controlState.pitch;
+  const rollIn = controlState.roll;
+  const yawIn = controlState.yaw;
 
   const throttleUpIn = Math.max((keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleUp : 0);
   const throttleDownIn = Math.max((keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleDown : 0);
-  if (throttleUpIn > 0.01) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 1.4 * throttleUpIn);
-  if (throttleDownIn > 0.01) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 1.4 * throttleDownIn);
-  plane.throttle += (plane.throttleTarget - plane.throttle) * Math.min(1, dt * 4.0);
+  controlState.throttleUp += (throttleUpIn - controlState.throttleUp) * (1 - Math.exp(-18 * dt));
+  controlState.throttleDown += (throttleDownIn - controlState.throttleDown) * (1 - Math.exp(-18 * dt));
+  if (controlState.throttleUp > 0.01) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 2.75 * controlState.throttleUp);
+  if (controlState.throttleDown > 0.01) plane.throttleTarget = Math.max(0, plane.throttleTarget - dt * 2.2 * controlState.throttleDown);
+  plane.throttle += (plane.throttleTarget - plane.throttle) * (1 - Math.exp(-12.0 * dt));
   maybeTriggerEngineStart();
 
   plane.brake = (keys['KeyB'] || (INPUT_FLAGS.gamepad && gamepadState.brake)) ? 1 : 0;
@@ -8504,8 +9032,8 @@ function updatePhysics(dt) {
   // stall no longer compounds into a spiral — the pilot (or AI) can
   // nose down and recover.
   const q = Math.max(0, forwardSpeed);
-  const loSpeedFade = Math.max(0.25, Math.min(1, (q - 14) / 28)); // 0.25..1
-  const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 60)) * 0.012);    // 1..0.5
+  const loSpeedFade = Math.max(0.22, Math.min(1, (q - 16) / 34)); // 0.22..1
+  const hiSpeedDamp = 1 / (1 + Math.max(0, (q - 55)) * 0.020);    // stronger high-speed authority falloff
   const maneuverAssistTune = scene.userData.__flightManeuverAssist != null ? scene.userData.__flightManeuverAssist : 1.0;
   const autoRudderTune = scene.userData.__flightAutoRudder != null ? scene.userData.__flightAutoRudder : 1.0;
   const selfLevelTune = scene.userData.__flightSelfLevel != null ? scene.userData.__flightSelfLevel : 1.0;
@@ -8515,43 +9043,59 @@ function updatePhysics(dt) {
   // can carve a tighter radius at lower speed/bank, but once you're too slow
   // the controls should still soften again. Peak assist lives in the mid-band,
   // not at the stall edge.
-  const maneuverBand = smoothstepRange(20, 38, q) * (1 - smoothstepRange(56, 90, q));
-  const maneuverRollBoost = 1 + maneuverBand * 0.42 * maneuverAssistTune;
-  const maneuverPitchBoost = 1 + maneuverBand * 0.24 * maneuverAssistTune;
-  const maneuverYawBoost = 1 + maneuverBand * 0.55 * maneuverAssistTune;
+  const maneuverBand = smoothstepRange(24, 42, q) * (1 - smoothstepRange(58, 88, q));
+  const maneuverRollBoost = 1 + maneuverBand * 0.18 * maneuverAssistTune;
+  const maneuverPitchBoost = 1 + maneuverBand * 0.12 * maneuverAssistTune;
+  const maneuverYawBoost = 1 + maneuverBand * 0.14 * maneuverAssistTune;
   // Roll + pitch get the lighter low-speed fade (sqrt) and a weaker
   // hi-speed damp — these are the primary manoeuvring inputs and need
   // to stay crisp. Pitch in particular should snap the nose up when S
   // is held. Stall protection is still active at very low speed +
   // high AoA (see below) so crisp pitch won't spiral the AI.
-  const rollScale  = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp) * maneuverRollBoost;
-  const pitchScale = Math.sqrt(loSpeedFade) * Math.max(0.72, hiSpeedDamp) * maneuverPitchBoost;
+  const rollScale  = Math.sqrt(loSpeedFade) * Math.max(0.50, hiSpeedDamp) * maneuverRollBoost;
+  const pitchScale = Math.sqrt(loSpeedFade) * Math.max(0.56, hiSpeedDamp) * maneuverPitchBoost;
   const yawScale   = loSpeedFade * hiSpeedDamp * maneuverYawBoost;
-  const authPitch = Math.min(1.2, q / 28) * pitchScale;
-  const authRoll  = Math.min(1.5, q / 22) * rollScale;
-  const authYaw   = Math.min(1.0, q / 50) * yawScale;
+  const authPitch = Math.min(1.0, q / 34) * pitchScale;
+  const authRoll  = Math.min(1.0, q / 30) * rollScale;
+  const authYaw   = Math.min(0.72, q / 72) * yawScale;
   const pitchAuthorityTune = scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0;
   const rollAuthorityTune = scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0;
   const rudderAuthorityTune = scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0;
 
-  // Apply torque (pitch=X, yaw=Y, roll=Z in local frame).
-  //   pitch  1.8 → 3.4 — S/W now flicks the nose around ≈55°/s at cruise
-  //   roll   3.2 → 5.0 — banks snap in ≈45° per key-press
-  //   yaw    0.9 → 3.2 — rudder is a first-class input; arrow keys
-  //          swing the nose at ≈50°/s at cruise.
-  plane.angVel.x += pitchIn * 3.4 * authPitch * pitchAuthorityTune * dt;
-  plane.angVel.z += -rollIn * 5.6 * authRoll * rollAuthorityTune * dt;
-  plane.angVel.y += -yawIn * 3.2 * authYaw * rudderAuthorityTune * dt;
+  // Apply torque (pitch=X, yaw=Y, roll=Z in local frame). These are
+  // intentionally conservative: a prop plane should enter a bank and let
+  // aerodynamic forces carry the turn, not pivot like a camera rig.
+  plane.angVel.x += pitchIn * 2.35 * authPitch * pitchAuthorityTune * dt;
+  plane.angVel.z += -rollIn * 4.15 * authRoll * rollAuthorityTune * dt;
+  plane.angVel.y += -yawIn * 1.20 * authYaw * rudderAuthorityTune * dt;
+
+  // Arcade rate-command layer: keep controls readable, but cap the target
+  // rates to values a light prop aircraft can plausibly approach.
+  const rateAuthorityPitch = Math.max(plane.onGround ? 0.12 : 0.26, authPitch);
+  const rateAuthorityRoll = Math.max(plane.onGround ? 0.08 : 0.30, authRoll);
+  const rateAuthorityYaw = Math.max(plane.onGround ? 0.16 : 0.16, authYaw);
+  if (Math.abs(pitchIn) > 0.015) {
+    const pitchRateTarget = pitchIn * 1.65 * rateAuthorityPitch * pitchAuthorityTune;
+    plane.angVel.x += (pitchRateTarget - plane.angVel.x) * (1 - Math.exp(-7.5 * dt));
+  }
+  if (Math.abs(rollIn) > 0.015) {
+    const rollRateTarget = -rollIn * 2.35 * rateAuthorityRoll * rollAuthorityTune;
+    plane.angVel.z += (rollRateTarget - plane.angVel.z) * (1 - Math.exp(-8.5 * dt));
+  }
+  if (Math.abs(yawIn) > 0.015) {
+    const yawRateTarget = -yawIn * 0.82 * rateAuthorityYaw * rudderAuthorityTune;
+    plane.angVel.y += (yawRateTarget - plane.angVel.y) * (1 - Math.exp(-6.0 * dt));
+  }
 
   const mousePitchSteer = (INPUT_FLAGS.mouseFlight && !plane.onGround) ? mouseFlightState.steerY : 0;
   const mouseYawSteer = (INPUT_FLAGS.mouseFlight && !plane.onGround) ? mouseFlightState.steerX : 0;
   if (Math.abs(mousePitchSteer) > 0.008) {
-    const mousePitchRateTarget = mousePitchSteer * 3.8 * Math.max(0.72, authPitch) * pitchAuthorityTune;
-    plane.angVel.x += (mousePitchRateTarget - plane.angVel.x) * Math.min(1, dt * 5.2);
+    const mousePitchRateTarget = mousePitchSteer * 1.75 * Math.max(0.32, authPitch) * pitchAuthorityTune;
+    plane.angVel.x += (mousePitchRateTarget - plane.angVel.x) * Math.min(1, dt * 3.4);
   }
   if (Math.abs(mouseYawSteer) > 0.008) {
-    const mouseYawRateTarget = -mouseYawSteer * 4.2 * Math.max(0.68, authYaw) * rudderAuthorityTune;
-    plane.angVel.y += (mouseYawRateTarget - plane.angVel.y) * Math.min(1, dt * 5.0);
+    const mouseYawRateTarget = -mouseYawSteer * 0.95 * Math.max(0.20, authYaw) * rudderAuthorityTune;
+    plane.angVel.y += (mouseYawRateTarget - plane.angVel.y) * Math.min(1, dt * 3.0);
   }
 
   // D13 — Airframe integrity: damaged wings introduce a roll bias and
@@ -8580,12 +9124,12 @@ function updatePhysics(dt) {
   const bankSign = rightWorld.y;            // negative when banked right
   const bankAmount = Math.abs(bankSign);    // 0..1
   if (bankAmount > 0.17 && q > 25) {
-    const coordYaw = bankSign * bankAmount * 0.6 * autoRudderTune;
+    const coordYaw = bankSign * bankAmount * 0.24 * autoRudderTune;
     plane.angVel.y += coordYaw * authYaw * dt;
   }
   // Input-proportional rudder: rolling right (rollIn > 0) → nose right → negative angVel.y
   if (Math.abs(rollIn) > 0.01 && q > 25) {
-    plane.angVel.y += -rollIn * 0.25 * autoRudderTune * authYaw * dt;
+    plane.angVel.y += -rollIn * 0.08 * autoRudderTune * authYaw * dt;
   }
 
   // Self-correcting stability (dihedral, weathervane)
@@ -8603,6 +9147,10 @@ function updatePhysics(dt) {
   plane.angVel.x *= Math.pow(0.22, dt * pitchDampTune);
   plane.angVel.z *= Math.pow(0.05, dt * rollDampTune);
   plane.angVel.y *= Math.pow(0.08, dt * rudderDampTune);
+
+  plane.angVel.x = Math.max(-MAX_PITCH_RATE, Math.min(MAX_PITCH_RATE, plane.angVel.x));
+  plane.angVel.z = Math.max(-MAX_ROLL_RATE, Math.min(MAX_ROLL_RATE, plane.angVel.z));
+  plane.angVel.y = Math.max(-MAX_YAW_RATE, Math.min(MAX_YAW_RATE, plane.angVel.y));
 
   // Hard clamp on rotation rate
   if (plane.angVel.length() > MAX_ANG_VEL) {
@@ -8662,6 +9210,16 @@ function updatePhysics(dt) {
   const topSpeedTuneKts = scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 580;
   const liftMag = LIFT_K * liftTune * v * v * cl * groundEffect;
   const lift = up.clone().multiplyScalar(liftMag);
+  // Arcade-realistic sideslip: the aircraft can skid, but the fuselage
+  // gradually weathervanes back into the airflow. This keeps rudder and
+  // banked turns expressive without the plane feeling like it is sliding
+  // sideways through the canyon.
+  const slipSpeed = localVel.x;
+  const slipDamping = right.clone().multiplyScalar(-slipSpeed * Math.min(1.25, q / 42) * (0.68 + bankAmount * 0.32));
+  const loadFactor = Math.max(0, liftMag / Math.max(0.001, GRAVITY));
+  const turnRateStress = Math.max(0, Math.abs(plane.angVel.y) + Math.abs(plane.angVel.z) * 0.35 - 0.22);
+  const turnEnergyBleed = Math.max(0, loadFactor - 1.05) * Math.max(0, bankAmount - 0.18) * 0.040
+    + turnRateStress * turnRateStress * 0.010;
 
   // Drag: parasitic + induced (∝ CL²) + gear, plus a soft top-speed limiter
   // from the live flight tuning panel.
@@ -8676,6 +9234,9 @@ function updatePhysics(dt) {
   const drag = speed > 0.01
     ? plane.vel.clone().normalize().multiplyScalar(-dragMag)
     : new THREE.Vector3();
+  if (turnEnergyBleed > 0 && speed > 0.01) {
+    drag.addScaledVector(plane.vel.clone().normalize(), -speed * speed * turnEnergyBleed);
+  }
 
   // Thrust
   // Effective throttle includes the flight-idle floor whenever we're
@@ -8698,7 +9259,10 @@ function updatePhysics(dt) {
   // the engine produces only 25% of rated thrust (windmilling).
   const engineFactor = 1 - plane.damage.engine * 0.75;
   const effectiveThrottleWithSurge = effectiveThrottle * engineSurgeState.powerMul * engineFactor;
-  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST * accelTune);
+  const takeoffBoost = plane.onGround
+    ? 1.78
+    : (q < 76 && plane.throttle > 0.74 ? 1.22 : 1.0);
+  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST * accelTune * takeoffBoost);
 
   // Gravity
   const gravity = new THREE.Vector3(0, -GRAVITY, 0);
@@ -8717,6 +9281,7 @@ function updatePhysics(dt) {
   const accel = new THREE.Vector3()
     .add(thrust)
     .add(lift)
+    .add(slipDamping)
     .add(drag)
     .add(gravity);
 
@@ -9061,12 +9626,15 @@ function updateJetVisual() {
     const bladeOpacity = 1 - rpmN * 0.25;
 
     for (const p of plane.props) {
-      p.rotation.z += dRot;
+      const axis = p.userData.__propAxis || 'z';
+      if (axis === 'x') p.rotation.x += dRot;
+      else if (axis === 'y') p.rotation.y += dRot;
+      else p.rotation.z += dRot;
       const disc = p.userData.__disc;
       if (disc) disc.material.opacity = p.userData.__isProceduralProp
         ? 0.15 + Math.min(1, propThrottle) * 0.4    // older procedural curve
-        : discOpacity;                              // extracted prop → flicker
-      if (p.userData.__isExtractedProp) {
+        : discOpacity;                              // extracted / named prop → Dusty-style flicker
+      if (p.userData.__isExtractedProp || p.userData.__isNamedProp) {
         p.traverse(child => {
           if (!child.isMesh || child === p) return;
           // Skip the disc itself
@@ -9208,7 +9776,7 @@ function updateJetVisual() {
 // =============================================================
 //  CAMERA — chase that stays locked behind the plane
 // =============================================================
-const camLocalOffset = new THREE.Vector3(0, 3.0, 14);
+const camLocalOffset = new THREE.Vector3(0, 2.25, 10.4);
 
 // =============================================================
 //  FLIGHT RECORDER / REPLAY
@@ -9665,10 +10233,24 @@ const gamepadState = {
   brake: false,
   gear: false,
   lights: false,
+  model: false,
+  race: false,
   reset: false,
+  source: 'none',
+  profile: 'standard',
+  lastInputAt: 0,
   axesRaw: [],
   buttonsRaw: [],
 };
+const virtualGamepadInput = {
+  enabled: false,
+  index: 0,
+  id: 'Virtual Controller',
+  mapping: 'standard',
+  axes: [0, 0, 0, 0],
+  buttons: [],
+};
+const gamepadAxisNeutral = new Map();
 
 function gamepadAxisValue(value, deadzone = 0.16) {
   const v = Number(value) || 0;
@@ -9676,6 +10258,64 @@ function gamepadAxisValue(value, deadzone = 0.16) {
   const scaled = (Math.abs(v) - deadzone) / Math.max(0.001, 1 - deadzone);
   return Math.sign(v) * Math.max(0, Math.min(1, scaled));
 }
+function gamepadClamp01(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+function gamepadButtonValue(pad, index) {
+  const button = pad && pad.buttons ? pad.buttons[index] : null;
+  if (!button) return 0;
+  return gamepadClamp01(Math.max(Number(button.value) || 0, button.pressed ? 1 : 0));
+}
+function gamepadButtonPressed(pad, index, threshold = 0.45) {
+  return gamepadButtonValue(pad, index) >= threshold;
+}
+function gamepadRawAxis(pad, index) {
+  const value = pad && pad.axes ? Number(pad.axes[index]) : NaN;
+  return Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+}
+function gamepadTriggerAxisValue(pad, axisIndex) {
+  if (!pad || !pad.axes || axisIndex == null || axisIndex >= pad.axes.length) return 0;
+  const raw = gamepadRawAxis(pad, axisIndex);
+  const key = `${pad.index}:${axisIndex}`;
+  if (!gamepadAxisNeutral.has(key)) gamepadAxisNeutral.set(key, raw);
+  const neutral = gamepadAxisNeutral.get(key);
+  let value = raw;
+  if (neutral < -0.35) value = (raw - neutral) / Math.max(0.001, 1 - neutral);
+  else if (neutral > 0.35) value = (neutral - raw) / Math.max(0.001, neutral + 1);
+  return gamepadClamp01(value);
+}
+function makeVirtualGamepadButton(value) {
+  const v = gamepadClamp01(value);
+  return { pressed: v >= 0.45, touched: v > 0.02, value: v };
+}
+function virtualGamepadPad() {
+  return {
+    index: virtualGamepadInput.index,
+    id: virtualGamepadInput.id,
+    mapping: virtualGamepadInput.mapping,
+    axes: virtualGamepadInput.axes.slice(),
+    buttons: virtualGamepadInput.buttons.map(makeVirtualGamepadButton),
+    timestamp: performance.now(),
+  };
+}
+function setVirtualGamepadInput(state = {}) {
+  virtualGamepadInput.enabled = state.enabled !== false;
+  if (state.id) virtualGamepadInput.id = String(state.id);
+  if (state.mapping != null) virtualGamepadInput.mapping = String(state.mapping);
+  if (Array.isArray(state.axes)) virtualGamepadInput.axes = state.axes.map(v => Math.max(-1, Math.min(1, Number(v) || 0)));
+  if (Array.isArray(state.buttons)) virtualGamepadInput.buttons = state.buttons.map(gamepadClamp01);
+  return pollGamepadInput();
+}
+function clearVirtualGamepadInput() {
+  virtualGamepadInput.enabled = false;
+  virtualGamepadInput.axes = [0, 0, 0, 0];
+  virtualGamepadInput.buttons = [];
+  resetGamepadState();
+  syncInputIndicator();
+  return gamepadState;
+}
+window.__setVirtualGamepad = setVirtualGamepadInput;
+window.__clearVirtualGamepad = clearVirtualGamepadInput;
 
 function resetGamepadState() {
   gamepadState.connected = false;
@@ -9692,7 +10332,12 @@ function resetGamepadState() {
   gamepadState.brake = false;
   gamepadState.gear = false;
   gamepadState.lights = false;
+  gamepadState.model = false;
+  gamepadState.race = false;
   gamepadState.reset = false;
+  gamepadState.source = 'none';
+  gamepadState.profile = 'standard';
+  gamepadState.lastInputAt = 0;
   gamepadState.axesRaw = [];
   gamepadState.buttonsRaw = [];
 }
@@ -9703,7 +10348,9 @@ function syncInputIndicator() {
   const ch2 = document.getElementById('ch-line2');
   if (inputInd) {
     if (gamepadState.connected) {
-      const label = /xbox/i.test(gamepadState.id) ? 'XBOX PAD' : 'PAD';
+      const label = /xbox/i.test(gamepadState.id)
+        ? 'XBOX PAD'
+        : (/playstation|dualsense|dualshock|wireless controller/i.test(gamepadState.id) ? 'PS PAD' : 'PAD');
       inputInd.textContent = label;
       inputInd.className = 'hud-chip ok';
     } else {
@@ -9712,26 +10359,28 @@ function syncInputIndicator() {
     }
   }
   if (gamepadState.connected) {
-    if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS YAW · A FIRE';
+    if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE';
     if (ch2) ch2.textContent = plane.fixedGear
-      ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · START RESET'
-      : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · START RESET';
+      ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · BACK RACE · START RESET'
+      : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · BACK RACE · START RESET';
   } else {
     if (ch1) ch1.textContent = 'W/S PITCH · A/D BANK · Q/E RUDDER';
     if (ch2) ch2.textContent = plane.fixedGear
-      ? 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · P OPTIONS · R RESET'
-      : 'SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · P OPTIONS · R RESET';
+      ? 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · F FULLSCREEN · R RESET'
+      : 'SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · F FULLSCREEN · R RESET';
   }
 }
 
 function pollGamepadInput() {
-  if (!INPUT_FLAGS.gamepad || typeof navigator.getGamepads !== 'function') {
+  if (!INPUT_FLAGS.gamepad || (!virtualGamepadInput.enabled && typeof navigator.getGamepads !== 'function')) {
     resetGamepadState();
     combatState.fireHeld = false;
     syncInputIndicator();
     return gamepadState;
   }
-  const pads = Array.from(navigator.getGamepads() || []).filter(Boolean);
+  const pads = virtualGamepadInput.enabled
+    ? [virtualGamepadPad()]
+    : Array.from(navigator.getGamepads() || []).filter(Boolean);
   gamepadState.padCount = pads.length;
   let pad = null;
   if (gamepadState.index >= 0) {
@@ -9749,27 +10398,42 @@ function pollGamepadInput() {
   gamepadState.index = pad.index;
   gamepadState.id = pad.id || `Gamepad ${pad.index}`;
   gamepadState.mapping = pad.mapping || '';
+  gamepadState.source = virtualGamepadInput.enabled ? 'virtual' : 'native';
+  gamepadState.profile = gamepadState.mapping === 'standard' ? 'standard' : 'generic';
   gamepadState.axesRaw = Array.from(pad.axes || []).map(v => Number(v || 0));
   gamepadState.buttonsRaw = Array.from(pad.buttons || []).map(b => Number((b?.value ?? 0) || 0));
 
   const lx = gamepadAxisValue(pad.axes[0] || 0);
   const ly = gamepadAxisValue(pad.axes[1] || 0);
-  const rx = gamepadAxisValue(pad.axes[2] || 0);
-  const lt = Math.max(0, pad.buttons?.[6]?.value ?? 0);
-  const rt = Math.max(0, pad.buttons?.[7]?.value ?? 0);
-  const lb = !!(pad.buttons?.[4]?.pressed);
-  const rb = !!(pad.buttons?.[5]?.pressed);
+  const rx = gamepadRawAxis(pad, 2);
+  const hatX = gamepadAxisValue(gamepadRawAxis(pad, 6), 0.45);
+  const hatY = gamepadAxisValue(gamepadRawAxis(pad, 7), 0.45);
+  const dpadLeft = gamepadButtonPressed(pad, 14) || hatX < -0.5;
+  const dpadRight = gamepadButtonPressed(pad, 15) || hatX > 0.5;
+  const dpadUp = gamepadButtonPressed(pad, 12) || hatY < -0.5;
+  const dpadDown = gamepadButtonPressed(pad, 13) || hatY > 0.5;
+  const lt = Math.max(gamepadButtonValue(pad, 6), gamepadTriggerAxisValue(pad, 4));
+  const rt = Math.max(gamepadButtonValue(pad, 7), gamepadTriggerAxisValue(pad, 5));
+  const lb = gamepadButtonPressed(pad, 4);
+  const rb = gamepadButtonPressed(pad, 5);
 
   gamepadState.pitch = ly;
   gamepadState.roll = lx;
   gamepadState.yaw = gamepadAxisValue(rx + ((rb ? 1 : 0) - (lb ? 1 : 0)) * 0.65, 0.18);
-  gamepadState.throttleUp = rt;
-  gamepadState.throttleDown = lt;
-  gamepadState.fire = !!(pad.buttons?.[0]?.pressed);
-  gamepadState.brake = !!(pad.buttons?.[1]?.pressed || lt > 0.72);
-  gamepadState.gear = !!(pad.buttons?.[2]?.pressed);
-  gamepadState.lights = !!(pad.buttons?.[3]?.pressed);
-  gamepadState.reset = !!(pad.buttons?.[9]?.pressed);
+  gamepadState.throttleUp = Math.max(rt, dpadUp ? 1 : 0);
+  gamepadState.throttleDown = Math.max(lt, dpadDown ? 1 : 0);
+  gamepadState.fire = gamepadButtonPressed(pad, 0);
+  gamepadState.brake = gamepadButtonPressed(pad, 1) || lt > 0.72;
+  gamepadState.gear = gamepadButtonPressed(pad, 2);
+  gamepadState.lights = gamepadButtonPressed(pad, 3);
+  gamepadState.model = dpadRight;
+  gamepadState.race = gamepadButtonPressed(pad, 8);
+  gamepadState.reset = gamepadButtonPressed(pad, 9);
+  if (Math.abs(gamepadState.pitch) > 0.01 || Math.abs(gamepadState.roll) > 0.01 || Math.abs(gamepadState.yaw) > 0.01 ||
+      gamepadState.throttleUp > 0.01 || gamepadState.throttleDown > 0.01 ||
+      gamepadState.fire || gamepadState.brake || gamepadState.gear || gamepadState.lights || gamepadState.model || gamepadState.race || gamepadState.reset) {
+    gamepadState.lastInputAt = performance.now();
+  }
   combatState.fireHeld = gamepadState.fire;
   syncInputIndicator();
   return gamepadState;
@@ -9892,7 +10556,7 @@ function updateCamera(dt) {
     camera.userData.followQuat = followQuat;
   }
   const cameraLagTune = scene.userData.__cameraLag != null ? scene.userData.__cameraLag : 1.0;
-  const quatCatchup = 1 - Math.exp(-((plane.onGround ? 11.0 : 5.4) / cameraLagTune) * dt);
+  const quatCatchup = 1 - Math.exp(-((plane.onGround ? 18.0 : 10.8) / cameraLagTune) * dt);
   followQuat.slerp(plane.quat, quatCatchup);
   const delayedForward = new THREE.Vector3(0, 0, -1).applyQuaternion(followQuat).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
@@ -9959,9 +10623,9 @@ function updateCamera(dt) {
     .addScaledVector(delayedForward, -backDist)
     .addScaledVector(worldUp, height);
 
-  const followK = 8.8 + maneuverReveal * 2.4;
+  const followK = 13.2 + maneuverReveal * 3.6;
   const t = 1 - Math.exp(-followK * dt);
-  const verticalFollowK = 4.4 + maneuverReveal * 1.0;
+  const verticalFollowK = 7.4 + maneuverReveal * 1.6;
   const verticalT = 1 - Math.exp(-verticalFollowK * dt);
   camera.position.x += (desired.x - camera.position.x) * t;
   camera.position.z += (desired.z - camera.position.z) * t;
@@ -9985,7 +10649,11 @@ function updateCamera(dt) {
 
   const blendedUp = worldUp;
   camera.up.copy(blendedUp);
-  camera.fov += (((72 + maneuverReveal * 6.0)) - camera.fov) * Math.min(1, dt * 2.6);
+  const speedKtsForCamera = plane.vel.length() * 1.94;
+  const cameraGroundH = getHeight(plane.pos.x, plane.pos.z);
+  const lowFastFov = clamp01(1 - Math.max(0, plane.pos.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 28) / 88) * 5.5;
+  const speedFov = clamp01((speedKtsForCamera - 36) / 150) * 12.5 + clamp01((speedKtsForCamera - 130) / 230) * 5.5;
+  camera.fov += ((76 + speedFov + lowFastFov + maneuverReveal * 5.2) - camera.fov) * Math.min(1, dt * 4.4);
   camera.updateProjectionMatrix();
 
   camera.lookAt(lookTarget);
@@ -10012,6 +10680,19 @@ const $ammoVal = document.getElementById('ammo-val');
 const $ammoBar = document.getElementById('ammo-bar');
 const $scoreVal = document.getElementById('score-val');
 const $scoreStreak = document.getElementById('score-streak');
+const $courseDirector = document.getElementById('course-director');
+const $courseTitle = document.getElementById('course-title');
+const $courseNext = document.getElementById('course-next');
+const $courseRange = document.getElementById('course-range');
+const $courseTurn = document.getElementById('course-turn');
+const $courseAlt = document.getElementById('course-alt');
+const $courseCue = document.getElementById('course-cue');
+const $racePanel = document.getElementById('mp-race-panel');
+const $raceRoom = document.getElementById('race-room');
+const $raceTimer = document.getElementById('race-timer');
+const $raceStatus = document.getElementById('race-status');
+const $raceBoard = document.getElementById('race-board');
+const $raceInd = document.getElementById('race-ind');
 const $headingChip = document.getElementById('hud-heading-chip');
 const $aeroChip = document.getElementById('hud-aero-chip');
 const $gearChip = document.getElementById('hud-gear-chip');
@@ -10268,8 +10949,8 @@ function collectAirTargetCandidates() {
     trafficIndex += 1;
     targets.push({
       id: `traffic-${trafficIndex}`,
-      label: `BANDIT ${String(trafficIndex).padStart(2, '0')}`,
-      type: inferTargetTypeLabel(rec.file || rec.group.name || 'traffic'),
+      label: rec.callsign || `TRAFFIC ${String(trafficIndex).padStart(2, '0')}`,
+      type: rec.typeLabel || inferTargetTypeLabel(rec.file || rec.group.name || 'traffic'),
       kind: 'traffic',
       object: rec.group,
       destructible: rec.destructible,
@@ -10732,6 +11413,7 @@ if ($inputDebug && !DEBUG_UI) $inputDebug.remove();
 document.getElementById('style-btn').addEventListener('click', toggleStyle);
 document.getElementById('biome-btn').addEventListener('click', cycleBiome);
 document.getElementById('prop-model-btn').addEventListener('click', () => cyclePropModel(1));
+document.getElementById('race-btn').addEventListener('click', toggleMultiplayerRace);
 window.addEventListener('keydown', (e) => {
   const tgt = e.target;
   if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA')) return;
@@ -10919,6 +11601,153 @@ function updateStatusGuidance(speedKts, aoaDeg) {
   statusMsg.textContent = message;
   statusMsg.className = className;
 }
+function getNextPracticeRing() {
+  const course = window.__practiceRingCourse;
+  if (!course || !course.enabled || !course.activeCount) return null;
+  const idx = Math.max(0, Math.min(course.activeCount - 1, course.nextIndex || 0));
+  const ring = course[idx];
+  return ring && ring.visible ? { course, ring, index: idx } : null;
+}
+function updateCourseDirectorHUD() {
+  if (!$courseDirector) return;
+  const next = getNextPracticeRing();
+  if (!running || plane.crashed || !next) {
+    $courseDirector.classList.add('is-hidden');
+    return;
+  }
+  const { course, ring, index } = next;
+  const target = ring.getWorldPosition(new THREE.Vector3());
+  const toTarget = target.clone().sub(plane.pos);
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat).normalize();
+  const forwardDist = toTarget.dot(forward);
+  const lateral = toTarget.dot(right);
+  const vertical = target.y - plane.pos.y;
+  const distanceM = toTarget.length();
+  const turnLabel = Math.abs(lateral) < Math.max(18, distanceM * 0.05)
+    ? 'ALIGN'
+    : (lateral > 0 ? 'RIGHT' : 'LEFT');
+  const altLabel = Math.abs(vertical) < 14
+    ? 'LEVEL'
+    : (vertical > 0 ? 'CLIMB' : 'DESCEND');
+  $courseDirector.classList.remove('is-hidden');
+  if ($courseTitle) $courseTitle.textContent = course.completedRuns > 0 ? `RUN ${course.completedRuns + 1}` : 'PRACTICE';
+  if ($courseNext) $courseNext.textContent = `${index + 1}/${course.activeCount}`;
+  if ($courseRange) $courseRange.textContent = distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)}KM` : `${Math.round(distanceM)}M`;
+  if ($courseTurn) $courseTurn.textContent = turnLabel;
+  if ($courseAlt) $courseAlt.textContent = altLabel;
+  if ($courseCue) {
+    const closure = forwardDist < -20 ? 'TURN BACK' : (distanceM < 90 ? 'COMMIT' : 'FOLLOW THE BLUE LINE');
+    $courseCue.textContent = `${closure} · ${Math.round(Math.abs(lateral))}M ${turnLabel}`;
+  }
+}
+function getLocalRaceEntry() {
+  const race = buildLocalRaceState();
+  return {
+    id: multiplayerState.playerId,
+    local: true,
+    callsign: playerProfileState.callsign || 'YOU',
+    status: race.status,
+    gateIndex: race.gateIndex || 0,
+    gateCount: race.gateCount || 0,
+    lapMs: race.lapMs || 0,
+    countdownMs: race.countdownMs || 0,
+    bestMs: race.bestMs || 0,
+    speedKts: plane.vel.length() * 1.94,
+  };
+}
+function getRemoteRaceEntries() {
+  const entries = [];
+  const now = Date.now();
+  for (const [id, rec] of multiplayerState.remotePlayers) {
+    const race = rec.race || {};
+    entries.push({
+      id,
+      local: false,
+      callsign: rec.callsign || id,
+      status: race.status || 'idle',
+      gateIndex: Number(race.gateIndex) || 0,
+      gateCount: Number(race.gateCount) || 0,
+      lapMs: Number(race.lapMs) || 0,
+      countdownMs: race.status === 'countdown' && race.startedWallAt ? Math.max(0, Number(race.startedWallAt) - now) : (Number(race.countdownMs) || 0),
+      bestMs: Number(race.bestMs) || 0,
+      speedKts: rec.speedKts || 0,
+    });
+  }
+  return entries;
+}
+function raceSortValue(entry) {
+  if (entry.status === 'finished') return 400000 + Math.max(0, entry.gateCount || entry.gateIndex) * 1000 - Math.min(999, (entry.lapMs || 0) / 1000);
+  if (entry.status === 'racing') return 300000 + (entry.gateIndex || 0) * 1000 - Math.min(999, (entry.lapMs || 0) / 1000);
+  if (entry.status === 'countdown') return 200000 - Math.min(999, (entry.countdownMs || 0) / 1000);
+  return entry.bestMs ? 100000 - Math.min(999, entry.bestMs / 1000) : 0;
+}
+function updateMultiplayerRaceHUD() {
+  beginMultiplayerRaceIfDue();
+  const race = buildLocalRaceState();
+  if ($raceInd) {
+    if (race.status === 'countdown') {
+      $raceInd.textContent = `${Math.max(1, Math.ceil(race.countdownMs / 1000))}S`;
+      $raceInd.className = 'warn';
+    } else if (race.status === 'racing') {
+      $raceInd.textContent = `${race.gateIndex}/${race.gateCount || 0}`;
+      $raceInd.className = 'ok';
+    } else if (race.status === 'finished') {
+      $raceInd.textContent = formatRaceTime(race.lapMs, true).toUpperCase();
+      $raceInd.className = 'ok';
+    } else {
+      $raceInd.textContent = 'READY';
+      $raceInd.className = 'ok';
+    }
+  }
+  if (!$racePanel) return;
+  const hasCourse = !!(window.__practiceRingCourse && (window.__practiceRingCourse.activeCount || window.__practiceRingCourse.length));
+  if (!running || plane.crashed || !hasCourse) {
+    $racePanel.classList.add('is-hidden');
+    return;
+  }
+  $racePanel.classList.remove('is-hidden');
+  if ($raceRoom) {
+    const count = multiplayerState.remotePlayers.size + 1;
+    $raceRoom.textContent = MULTIPLAYER_URL ? `${MULTIPLAYER_ROOM} · ${count}UP` : 'SOLO';
+  }
+  if ($raceTimer) {
+    if (race.status === 'countdown') $raceTimer.textContent = `T-${(race.countdownMs / 1000).toFixed(1)}`;
+    else if (race.status === 'racing') $raceTimer.textContent = formatRaceTime(race.lapMs);
+    else if (race.status === 'finished') $raceTimer.textContent = formatRaceTime(race.lapMs);
+    else $raceTimer.textContent = race.bestMs ? `BEST ${formatRaceTime(race.bestMs, true)}` : '--:--.---';
+  }
+  if ($raceStatus) {
+    if (race.status === 'countdown') $raceStatus.textContent = multiplayerRaceState.adoptedStart ? 'SYNCED COUNTDOWN' : 'COUNTDOWN ACTIVE';
+    else if (race.status === 'racing') $raceStatus.textContent = `GATE ${race.gateIndex + 1}/${race.gateCount || 0} · CLEAN LINES PAY`;
+    else if (race.status === 'finished') $raceStatus.textContent = 'FINISHED · PRESS N TO RESTART';
+    else $raceStatus.textContent = MULTIPLAYER_URL ? 'PRESS N TO START GRID' : 'SOLO TIME TRIAL · PRESS N';
+  }
+  if ($raceBoard) {
+    const entries = [getLocalRaceEntry(), ...getRemoteRaceEntries()]
+      .sort((a, b) => raceSortValue(b) - raceSortValue(a) || (a.local ? -1 : 1))
+      .slice(0, 5);
+    $raceBoard.replaceChildren();
+    entries.forEach((entry, idx) => {
+      const row = document.createElement('div');
+      row.className = 'race-row' + (entry.local ? ' local' : '');
+      const rank = document.createElement('span');
+      rank.className = 'race-rank';
+      rank.textContent = `#${idx + 1}`;
+      const name = document.createElement('span');
+      name.className = 'race-name';
+      name.textContent = entry.local ? `${entry.callsign} YOU` : entry.callsign;
+      const progress = document.createElement('span');
+      progress.className = 'race-progress';
+      if (entry.status === 'finished') progress.textContent = formatRaceTime(entry.lapMs, true).toUpperCase();
+      else if (entry.status === 'racing') progress.textContent = `${entry.gateIndex}/${entry.gateCount || 0}`;
+      else if (entry.status === 'countdown') progress.textContent = `T-${Math.max(1, Math.ceil(entry.countdownMs / 1000))}`;
+      else progress.textContent = entry.bestMs ? `B ${formatRaceTime(entry.bestMs, true).toUpperCase()}` : 'READY';
+      row.append(rank, name, progress);
+      $raceBoard.appendChild(row);
+    });
+  }
+}
 function updateHUD(dt = 1 / 60) {
   // Speed — m/s * ~1.94 = knots
   const sp = plane.vel.length() * 1.94;
@@ -11056,6 +11885,8 @@ function updateHUD(dt = 1 / 60) {
   updateStatusGuidance(sp, aoa);
   updateReticleHud(dt);
   updateTargetHud(dt);
+  updateCourseDirectorHUD();
+  updateMultiplayerRaceHUD();
 }
 
 // =============================================================
@@ -11063,6 +11894,16 @@ function updateHUD(dt = 1 / 60) {
 // =============================================================
 let lastTime = 0;
 let running = false;
+const MAX_PHYSICS_STEP = 1 / 90;
+
+function updateLivePhysicsSmooth(dt) {
+  let remaining = Math.max(0, Math.min(0.05, dt));
+  while (remaining > 0.00001) {
+    const stepDt = Math.min(MAX_PHYSICS_STEP, remaining);
+    updatePhysics(stepDt);
+    remaining -= stepDt;
+  }
+}
 
 function animate(now) {
   requestAnimationFrame(animate);
@@ -11092,7 +11933,7 @@ function animate(now) {
   if (replay.playing) {
     replayPreStep(dt);
   } else {
-    updatePhysics(dt);
+    updateLivePhysicsSmooth(dt);
     replayRecord();
   }
   updateJetVisual();
@@ -11260,6 +12101,9 @@ window.addEventListener('resize', () => {
       $crosshair.style.top = `${reticleState.y}px`;
     }
   }
+});
+document.addEventListener('fullscreenchange', () => {
+  window.dispatchEvent(new Event('resize'));
 });
 
 // Apply default style (low-poly) once all HUD refs + scene state exist,
@@ -11513,13 +12357,19 @@ function updateGateScoring(dt) {
     ring.getWorldPosition(ringWorldPos);
     const d = plane.pos.distanceTo(ringWorldPos);
     if (d < ring.userData.gateRadius) {
+      const kind = ring.userData.gateKind || 'ring';
+      const practiceCourse = kind === 'practice' ? window.__practiceRingCourse : null;
+      if (practiceCourse && practiceCourse.enabled !== false) {
+        const activeCount = practiceCourse.activeCount || practiceCourse.length || 0;
+        const nextIndex = Math.max(0, Math.min(activeCount - 1, practiceCourse.nextIndex || 0));
+        if (ring.userData.__courseIndex !== nextIndex) continue;
+      }
       ring.userData.scored = true;
       score.streak += 1;
       score.bestStreak = Math.max(score.bestStreak, score.streak);
 
       // Same-kind chain bonus: passing successive gates of the same
       // type (e.g. climb → climb → climb) multiplies the reward.
-      const kind = ring.userData.gateKind || 'ring';
       if (score.lastKind === kind) {
         score.kindRun += 1;
       } else {
@@ -11548,6 +12398,7 @@ function updateGateScoring(dt) {
         arch: '#ffe69a',
         bridge: '#4ecbff',
         portal: '#7fdcff',
+        practice: '#7fe6ff',
       };
       const gateAccent = accentByKind[kind] || '#ffe0a0';
       if (kind === 'bridge') { stunts.push('BRIDGE RUN'); stuntMul *= 1.8; }
@@ -11567,6 +12418,28 @@ function updateGateScoring(dt) {
       const pts = Math.round(ring.userData.gatePoints * streakMul * kindBonus * stuntMul);
       score.points += pts;
       score.lastHitAt = now;
+      if (practiceCourse) {
+        const activeCount = practiceCourse.activeCount || practiceCourse.length || 0;
+        practiceCourse.nextIndex = Math.min(activeCount, (practiceCourse.nextIndex || 0) + 1);
+        if (typeof recordMultiplayerRaceGate === 'function') {
+          recordMultiplayerRaceGate(practiceCourse.nextIndex, activeCount);
+        }
+        if (practiceCourse.nextIndex >= activeCount && activeCount > 0) {
+          practiceCourse.completedRuns = (practiceCourse.completedRuns || 0) + 1;
+          practiceCourse.nextIndex = 0;
+          const courseBonus = Math.round(360 + activeCount * 70 + Math.min(score.streak, 12) * 25);
+          score.points += courseBonus;
+          for (const courseRing of practiceCourse) {
+            courseRing.userData.scored = false;
+          }
+          if (typeof window.showComboBanner === 'function') {
+            window.showComboBanner('COURSE CLEAR', `+${courseBonus} BONUS · RUN ${practiceCourse.completedRuns}`, gateAccent);
+          }
+          if (typeof flashStatus === 'function') {
+            flashStatus(`PRACTICE COURSE CLEAR · +${courseBonus}`, 'panel ok', 1.6);
+          }
+        }
+      }
       if (typeof recordMissionMoment === 'function') {
         recordMissionMoment({ kind, gateLabel, stunts, points: pts });
       }
@@ -11626,6 +12499,10 @@ function resetGateScoring() {
   score.lastKind = null;
   score.kindRun = 0;
   score.bestStreak = 0;
+  if (window.__practiceRingCourse) {
+    window.__practiceRingCourse.nextIndex = 0;
+    window.__practiceRingCourse.completedRuns = 0;
+  }
   for (const ring of window.__allGates) {
     ring.userData.scored = false;
     if (ring.material && ring.userData.__origEmissive != null) {
@@ -12016,6 +12893,7 @@ function spawnTraffic(file, pathFn, opts) {
   if (typeof THREE.GLTFLoader !== 'function') return;
   const group = new THREE.Group();
   group.name = 'traffic:' + file;
+  group.rotation.order = 'YXZ';
   group.visible = false;
   scene.add(group);
   const rec = {
@@ -12024,6 +12902,9 @@ function spawnTraffic(file, pathFn, opts) {
     phase: opts.phaseOffset || 0,
     speed: opts.speed || 60,          // metres/sec along path
     bankSmoothed: 0,
+    pitchSmoothed: 0,
+    callsign: opts.callsign || '',
+    typeLabel: opts.typeLabel || '',
     child: null,
   };
   traffic.push(rec);
@@ -12115,14 +12996,89 @@ function pathTransit(p1, p2, halfPeriod) {
     return {
       pos: new THREE.Vector3().lerpVectors(p1, p2, u),
       yaw: forward ? yawFwd : yawBack,
+      pitch: 0,
       bank: 0,
     };
   };
 }
+function wrapRadians(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+function pathWaypointLoop(points, opts = {}) {
+  const pts = points.map((p) => p.clone ? p.clone() : new THREE.Vector3(p.x, p.y, p.z));
+  if (pts.length < 2) return () => ({ pos: new THREE.Vector3(), yaw: 0, pitch: 0, bank: 0 });
+  const lookAhead = Math.max(8, opts.lookAhead || 18);
+  const bankScale = opts.bankScale || 1.9;
+  const segLens = [];
+  let total = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const len = Math.max(0.001, a.distanceTo(b));
+    segLens.push(len);
+    total += len;
+  }
+  function sample(distance) {
+    let d = ((distance % total) + total) % total;
+    for (let i = 0; i < segLens.length; i++) {
+      const len = segLens[i];
+      if (d <= len || i === segLens.length - 1) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        const u = len > 0 ? d / len : 0;
+        return { pos: new THREE.Vector3().lerpVectors(a, b, u), segment: i };
+      }
+      d -= len;
+    }
+    return { pos: pts[0].clone(), segment: 0 };
+  }
+  return function(phase) {
+    const prev = sample(phase - lookAhead);
+    const cur = sample(phase);
+    const next = sample(phase + lookAhead);
+    const tangent = next.pos.clone().sub(prev.pos);
+    const horiz = Math.max(0.001, Math.hypot(tangent.x, tangent.z));
+    const yaw = Math.atan2(tangent.x, -tangent.z);
+    const pitch = Math.atan2(tangent.y, horiz);
+    const prevYaw = Math.atan2(cur.pos.x - prev.pos.x, -(cur.pos.z - prev.pos.z));
+    const bank = Math.max(-0.38, Math.min(0.38, -wrapRadians(yaw - prevYaw) * bankScale));
+    return { pos: cur.pos, yaw, pitch, bank };
+  };
+}
+function pathAirfieldCircuit(runwayKey = 'runway36', opts = {}) {
+  const departureSign = runwayKey === 'runway18' ? 1 : -1;
+  const rightSide = departureSign < 0 ? 1 : -1;
+  const patternSide = (opts.side != null ? opts.side : 1) * rightSide;
+  const groundY = AIRFIELD_SURFACE_Y + 2.35;
+  const circuitAlt = opts.circuitAlt || 230;
+  const patternX = opts.patternX || 420;
+  const point = (sideMeters, altitude, forwardMeters) => new THREE.Vector3(
+    patternSide * sideMeters,
+    altitude,
+    departureSign * forwardMeters
+  );
+  return pathWaypointLoop([
+    point(0, groundY, -150),
+    point(0, groundY, -80),
+    point(0, groundY, 20),
+    point(60, groundY + 22, 120),
+    point(180, groundY + 90, 320),
+    point(patternX * 0.72, circuitAlt - 28, 620),
+    point(patternX, circuitAlt, 860),
+    point(patternX, circuitAlt, 180),
+    point(patternX, circuitAlt - 24, -340),
+    point(patternX * 0.62, circuitAlt - 92, -720),
+    point(patternX * 0.18, groundY + 70, -760),
+    point(0, groundY + 24, -520),
+    point(0, groundY, -260),
+  ], { lookAhead: opts.lookAhead || 22, bankScale: 2.05 });
+}
 
 function trafficEnabled() {
   const ambientDensity = scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0;
-  return !MULTIPLAYER_URL && ambientDensity > 0.28;
+  return !MULTIPLAYER_URL && ambientDensity > 0.05;
 }
 
 function updateTraffic(dt) {
@@ -12139,58 +13095,45 @@ function updateTraffic(dt) {
     if (!t.group) continue; // __traffic_safety__ skip entries missing group (async load race)
     t.group.visible = !!(t.destructible ? t.destructible.alive : true);
     t.phase += dt * t.speed;
-    const { pos, yaw, bank } = t.pathFn(t.phase);
+    const { pos, yaw, pitch = 0, bank } = t.pathFn(t.phase);
     t.group.position.copy(pos);
-    t.group.rotation.set(0, yaw, 0);
-    // Smooth bank so fig-8 direction flips read as roll rather than snap
+    t.pitchSmoothed += (pitch - t.pitchSmoothed) * Math.min(1, dt * 2.2);
+    t.group.rotation.set(t.pitchSmoothed, yaw, 0);
+    // Smooth bank so traffic follows curved legs with a readable roll.
     if (t.child) {
-      t.bankSmoothed += (bank - t.bankSmoothed) * Math.min(1, dt * 3);
+      t.bankSmoothed += (bank - t.bankSmoothed) * Math.min(1, dt * 2.6);
       t.child.rotation.z = t.bankSmoothed;
     }
   }
 }
 
-// ---- Populate: layered hostile airspace at varied altitudes and patrol types.
-// __airspace_density_burst__ — more low/mid-altitude traffic so the player has
-// several reachable aircraft to hunt instead of only a few distant fly-bys.
+// ---- Populate: realistic prop traffic following runway circuits instead of abstract
+// orbit/transit/figure-8 patrols. These use proper departure/final direction
+// along the real runway and loop through takeoff, climb, downwind, base, and final.
 spawnTraffic(
-  'models/low_poly_plane.glb',
-  pathOrbit(1400, 260, -1800, 1100, false),
-  { speed: 72, targetSize: 9, phaseOffset: 0, health: 2, rewardPoints: 160 }
+  'models/colombian_emb_314_tucano.glb',
+  pathAirfieldCircuit('runway36', { circuitAlt: 240, patternX: 420 }),
+  { speed: 72, targetSize: 11.5, phaseOffset: 0, health: 3, rewardPoints: 220, rewardAmmo: 20, callsign: 'TUCANO 11', typeLabel: 'A-29 TUCANO' }
 );
 spawnTraffic(
-  'models/low_poly_f14_tomcat.glb',
-  pathTransit(
-    new THREE.Vector3(-3500, 520, -3200),
-    new THREE.Vector3(3500, 520, 3200), 90),
-  { speed: 140, targetSize: 12, phaseOffset: 140, health: 3, rewardPoints: 260, rewardAmmo: 24 }
+  'models/yak-9.glb',
+  pathAirfieldCircuit('runway18', { circuitAlt: 250, patternX: 440 }),
+  { speed: 78, targetSize: 11.8, phaseOffset: 320, health: 3, rewardPoints: 250, rewardAmmo: 22, callsign: 'YAK 21', typeLabel: 'YAK-9' }
 );
 spawnTraffic(
-  'models/low_poly_a-10_warthog.glb',
-  pathFigure8(-1600, 220, 1200, 900),
-  { speed: 95, targetSize: 11, phaseOffset: 280, health: 3, rewardPoints: 220 }
+  'models/corsair_f4u-1_airplane.glb',
+  pathAirfieldCircuit('runway36', { circuitAlt: 270, patternX: 500, lookAhead: 26 }),
+  { speed: 80, targetSize: 12.6, phaseOffset: 860, health: 4, rewardPoints: 300, rewardAmmo: 28, callsign: 'CORSAIR 31', typeLabel: 'F4U-1' }
 );
 spawnTraffic(
-  'models/low_poly_plane.glb',
-  pathOrbit(280, 190, -920, 680, true),
-  { speed: 78, targetSize: 9.2, phaseOffset: 60, health: 2, rewardPoints: 170 }
+  'models/italian_macchi_c.202_folgore.glb',
+  pathAirfieldCircuit('runway18', { circuitAlt: 225, patternX: 390 }),
+  { speed: 74, targetSize: 11.4, phaseOffset: 1180, health: 3, rewardPoints: 240, callsign: 'FOLGORE 41', typeLabel: 'C.202' }
 );
 spawnTraffic(
-  'models/low_poly_plane.glb',
-  pathTransit(
-    new THREE.Vector3(-2200, 240, 820),
-    new THREE.Vector3(2200, 240, -420), 72),
-  { speed: 108, targetSize: 9.4, phaseOffset: 220, health: 2, rewardPoints: 170 }
-);
-spawnTraffic(
-  'models/low_poly_a-10_warthog.glb',
-  pathFigure8(920, 280, -260, 620),
-  { speed: 112, targetSize: 11.4, phaseOffset: 420, health: 3, rewardPoints: 240 }
-);
-spawnTraffic(
-  'models/low_poly_f14_tomcat.glb',
-  pathOrbit(-650, 430, -2550, 1600, true),
-  { speed: 155, targetSize: 12.8, phaseOffset: 560, health: 4, rewardPoints: 300, rewardAmmo: 30 }
+  'models/p-100_avenger_-_free.glb',
+  pathAirfieldCircuit('runway36', { circuitAlt: 210, patternX: 360 }),
+  { speed: 64, targetSize: 11.9, phaseOffset: 1640, health: 3, rewardPoints: 230, rewardAmmo: 20, callsign: 'AVENGER 51', typeLabel: 'P-100' }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
@@ -12412,6 +13355,20 @@ function isPracticeRingThemeKey(key) {
 function getPracticeRingTheme(key) {
   return isPracticeRingThemeKey(key) ? PRACTICE_RING_THEMES[key] : PRACTICE_RING_THEMES.cyan;
 }
+function updateCourseLineSegment(line, start, end, active, theme) {
+  if (!line) return;
+  line.visible = !!active;
+  if (!active) return;
+  const pos = line.geometry.attributes.position;
+  pos.setXYZ(0, start.x, start.y, start.z);
+  pos.setXYZ(1, end.x, end.y, end.z);
+  pos.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+  if (line.material) {
+    line.material.color.setHex(theme.emissive);
+    line.material.opacity = 0.18 + Math.min(1, line.userData.__segmentIndex / 5) * 0.05;
+  }
+}
 function applyPracticeRingCourseTuning() {
   const course = window.__practiceRingCourse;
   if (!course || !course.length || !course.basePoints || !course.anchorPoint) return;
@@ -12459,6 +13416,11 @@ function applyPracticeRingCourseTuning() {
       ring.material.opacity = active ? Math.max(0.12, Math.min(0.98, (ring.userData.__baseOpacity || 0.92) * opacityTune)) : 0;
     }
   }
+  if (course.pathLines) {
+    for (let i = 0; i < course.pathLines.length; i++) {
+      updateCourseLineSegment(course.pathLines[i], points[i], points[i + 1], enabled && i < activeCount - 1, theme);
+    }
+  }
   course.activeCount = activeCount;
   course.theme = themeKey;
   course.scale = scale;
@@ -12493,7 +13455,17 @@ function applyPracticeRingCourseTuning() {
   course.basePoints = points.map(p => p.clone());
   course.anchorPoint = points[0].clone();
   course.baseGateRadius = 26;
+  course.nextIndex = 0;
+  course.completedRuns = 0;
+  course.pathLines = [];
   window.__practiceRingCourse = course;
+  const routeMat = new THREE.LineBasicMaterial({
+    color: theme.emissive,
+    transparent: true,
+    opacity: 0.22,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
   for (let i = 0; i < points.length; i++) {
     const ring = new THREE.Mesh(ringGeo, ringMat.clone());
     const pos = points[i];
@@ -12516,6 +13488,14 @@ function applyPracticeRingCourseTuning() {
     registerGate(ring, { radius: 26, points: 160, kind: 'practice', label: ring.userData.label });
     course.push(ring);
   }
+  for (let i = 0; i < points.length - 1; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([points[i], points[i + 1]]);
+    const line = new THREE.Line(geo, routeMat.clone());
+    line.userData.__segmentIndex = i;
+    line.renderOrder = 3;
+    scene.add(line);
+    course.pathLines.push(line);
+  }
   applyPracticeRingCourseTuning();
 })();
 
@@ -12524,10 +13504,20 @@ function updatePracticeRingCourse(dt) {
   if (!rings) return;
   const bob = Math.max(0, Math.min(1.8, rings.bob != null ? rings.bob : 1.0));
   const spin = Math.max(0, Math.min(1.8, rings.spin != null ? rings.spin : 1.0));
+  const nextIndex = Math.max(0, Math.min(rings.activeCount || rings.length, rings.nextIndex || 0));
   for (const ring of rings) {
     ring.userData.phase += dt;
     ring.position.y = ring.userData.baseY + Math.sin(ring.userData.phase * 1.6) * 1.8 * bob;
     if (!ring.visible) continue;
+    const isNext = ring.userData.__courseIndex === nextIndex;
+    const targetPulse = isNext ? 1.0 : 0.0;
+    ring.userData.__nextPulse = (ring.userData.__nextPulse || 0) + (targetPulse - (ring.userData.__nextPulse || 0)) * Math.min(1, dt * 5);
+    if (ring.material) {
+      const pulse = ring.userData.__nextPulse || 0;
+      const baseIntensity = ring.userData.__baseEmissiveInt || 0.65;
+      ring.material.emissiveIntensity = baseIntensity * (0.6 + (rings.glow || 1) * 0.55 + Math.sin(ring.userData.phase * 5.2) * 0.08 * pulse) + pulse * 0.9;
+      ring.material.opacity = Math.min(0.98, (ring.userData.__baseOpacity || 0.92) * (rings.opacity || 1) + pulse * 0.05);
+    }
     ring.rotation.z += dt * (ring.userData.spinRate || 0.35) * spin;
   }
 }
@@ -12708,49 +13698,32 @@ function updatePracticeRingCourse(dt) {
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================
 (function setupGraphicsPanel() {
-  const LEGACY_LS_KEY = 'gfx-settings-v2';
-  const LS_KEY = 'gfx-settings-v3';
-  const LEGACY_TUNING_FIELDS = [
-    'flightProfile', 'flightAccel', 'topSpeedKts', 'liftAssist', 'idlePower',
-    'pitchAuthority', 'rollAuthority', 'rudderAuthority', 'autoRudder',
-    'brakeStrength', 'pitchDamping', 'rollDamping', 'rudderDamping',
-    'stallSoftness', 'maneuverAssist', 'selfLevel', 'weathervaneYaw',
-    'gearDrag', 'groundEffectStrength', 'cameraClimbReveal', 'cameraDiveReveal',
-    'fps'
-  ];
+  const LEGACY_LS_KEYS = ['gfx-settings-v2', 'gfx-settings-v3', 'gfx-settings-v4'];
+  const LS_KEY = 'gfx-settings-v5';
   const DEFAULTS = {
     fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
     dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
     waterReflectivity: 1.28, waterFresnel: 1.12, waterGlint: 1.18, waterOpacity: 0.92,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 6, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
-    flightProfile: 'custom',
-    controlPreset: 'balanced',
-    flightAccel: 1.0, topSpeedKts: 580, liftAssist: 1.0, idlePower: 1.0, pitchAuthority: 1.0, rollAuthority: 1.0, rudderAuthority: 1.0, autoRudder: 1.0,
-    brakeStrength: 1.0, pitchDamping: 1.0, rollDamping: 1.0, rudderDamping: 1.0, stallSoftness: 1.0, maneuverAssist: 1.0, selfLevel: 1.0, weathervaneYaw: 1.0, gearDrag: 1.0, groundEffectStrength: 1.0,
-    cameraClimbReveal: 1.0, cameraDiveReveal: 1.0, cameraLag: 1.0,
+    flightProfile: 'trainer',
+    controlPreset: 'casual',
+    flightAccel: 0.96, topSpeedKts: 540, liftAssist: 1.06, idlePower: 1.0, pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
+    brakeStrength: 1.10, pitchDamping: 1.14, rollDamping: 1.18, rudderDamping: 1.10, stallSoftness: 1.24, maneuverAssist: 1.18, selfLevel: 1.36, weathervaneYaw: 1.18, gearDrag: 1.02, groundEffectStrength: 1.08,
+    cameraClimbReveal: 0.95, cameraDiveReveal: 1.0, cameraLag: 0.78,
     fps: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.42,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.38 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.5 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.66 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 0.84 },
+    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.52 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
-  let migratedLegacySettings = false;
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     if (saved && typeof saved === 'object') {
       Object.assign(gfx, saved);
-    } else {
-      const legacy = JSON.parse(localStorage.getItem(LEGACY_LS_KEY) || 'null');
-      if (legacy && typeof legacy === 'object') {
-        for (const field of LEGACY_TUNING_FIELDS) {
-          if (legacy[field] != null) gfx[field] = legacy[field];
-        }
-        migratedLegacySettings = true;
-      }
     }
   } catch {}
   if (gfx.motionBlurAmount == null) {
@@ -12775,6 +13748,11 @@ function updatePracticeRingCourse(dt) {
   window.__gfxParticleScale = () => gfx.particleScale;
 
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(gfx)); } catch {} };
+  const clearLegacySettings = () => {
+    try {
+      for (const key of LEGACY_LS_KEYS) localStorage.removeItem(key);
+    } catch {}
+  };
 
   const FLIGHT_PROFILE_FIELDS = new Set([
     'flightAccel', 'topSpeedKts', 'liftAssist', 'idlePower',
@@ -13029,7 +14007,7 @@ function updatePracticeRingCourse(dt) {
     scene.userData.__ambientFxDensity = Math.max(0, Math.min(1.2, gfx.ambientFxDensity || 1.0));
   }
   function applyFlightTuning() {
-    scene.userData.__flightAccel = Math.max(0.5, Math.min(1.6, gfx.flightAccel || 1.0));
+    scene.userData.__flightAccel = Math.max(0.7, Math.min(1.9, gfx.flightAccel || 1.0));
     scene.userData.__flightTopSpeedKts = Math.max(220, Math.min(620, gfx.topSpeedKts || 580));
     scene.userData.__flightLift = Math.max(0.7, Math.min(1.4, gfx.liftAssist || 1.0));
     scene.userData.__flightIdlePower = Math.max(0, Math.min(1.6, gfx.idlePower != null ? gfx.idlePower : 1.0));
@@ -13049,7 +14027,7 @@ function updatePracticeRingCourse(dt) {
     scene.userData.__flightGroundEffect = Math.max(0, Math.min(2.0, gfx.groundEffectStrength != null ? gfx.groundEffectStrength : 1.0));
     scene.userData.__cameraClimbReveal = Math.max(0.4, Math.min(2.2, gfx.cameraClimbReveal != null ? gfx.cameraClimbReveal : 1.0));
     scene.userData.__cameraDiveReveal = Math.max(0.4, Math.min(2.2, gfx.cameraDiveReveal != null ? gfx.cameraDiveReveal : 1.0));
-    scene.userData.__cameraLag = Math.max(0.45, Math.min(1.8, gfx.cameraLag != null ? gfx.cameraLag : 1.0));
+    scene.userData.__cameraLag = Math.max(0.32, Math.min(1.8, gfx.cameraLag != null ? gfx.cameraLag : 1.0));
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
@@ -13234,12 +14212,33 @@ function updatePracticeRingCourse(dt) {
     if (CONTROL_PRESET_FIELDS.has(id) && gfx.controlPreset !== 'custom') gfx.controlPreset = 'custom';
     if (PRACTICE_RING_FIELDS.has(id) && gfx.practiceRingPreset !== 'custom') gfx.practiceRingPreset = 'custom';
   };
+  const resetGraphicsSettings = () => {
+    for (const key of Object.keys(gfx)) delete gfx[key];
+    Object.assign(gfx, DEFAULTS);
+    gfx.practiceRingPreset = resolvePracticeRingPreset(gfx);
+    clearLegacySettings();
+    rebuild();
+    applyAll();
+    save();
+    if (typeof flashStatus === 'function') {
+      flashStatus('SETTINGS RESET - CALMER DEFAULTS LOADED', 'panel ok', 1.5);
+    }
+  };
+  window.__gfxReset = resetGraphicsSettings;
 
   const rebuild = () => {
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
     panel.appendChild(el('div', { class: 'options-title' }, 'OPTIONS [P]'));
     panel.appendChild(el('div', { class: 'options-kicker' }, 'Release-first options // presets first, advanced sections collapsed by default // ESC or backdrop to return to flight'));
+
+    const resetBtn = el('button', {
+      type: 'button',
+      class: 'preset-card',
+      style: 'width:100%;text-align:left;cursor:pointer;margin:8px 0 10px;border-color:rgba(255,204,102,0.30);background:rgba(255,204,102,0.08);'
+    }, el('strong', {}, 'RESET SETTINGS'), el('span', {}, 'clear saved tuning / calmer fresh-test defaults'));
+    resetBtn.addEventListener('click', resetGraphicsSettings);
+    panel.appendChild(resetBtn);
 
     panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'QUICK PRESETS'));
     const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
@@ -13336,7 +14335,7 @@ function updatePracticeRingCourse(dt) {
       flightProfileGrid.appendChild(btn);
     });
     panel.appendChild(flightProfileGrid);
-    panel.appendChild(makeSliderRow('flightAccel', 0.5, 1.6, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
+    panel.appendChild(makeSliderRow('flightAccel', 0.7, 1.9, 0.05, 'ACCELERATION', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('liftAssist', 0.7, 1.4, 0.05, 'LIFT / PULL', (v) => `${Math.round(v * 100)}%`));
     panel.appendChild(makeSliderRow('topSpeedKts', 220, 620, 10, 'TOP SPEED', (v) => `${Math.round(v)} KTS`));
 
@@ -13361,7 +14360,7 @@ function updatePracticeRingCourse(dt) {
     const advancedCamera = makeDetailsSection('ADVANCED CHASE CAMERA', 'Only needed if you want to tune climb/dive reveal or the amount of delayed chase lag.', false);
     advancedCamera.body.appendChild(makeSliderRow('cameraClimbReveal', 0.4, 2.2, 0.05, 'CAM CLIMB REVEAL', (v) => `${Math.round(v * 100)}%`));
     advancedCamera.body.appendChild(makeSliderRow('cameraDiveReveal', 0.4, 2.2, 0.05, 'CAM DIVE REVEAL', (v) => `${Math.round(v * 100)}%`));
-    advancedCamera.body.appendChild(makeSliderRow('cameraLag', 0.45, 1.8, 0.05, 'CHASE LAG', (v) => `${v.toFixed(2)}×`));
+    advancedCamera.body.appendChild(makeSliderRow('cameraLag', 0.32, 1.8, 0.05, 'CHASE LAG', (v) => `${v.toFixed(2)}×`));
     panel.appendChild(advancedCamera.wrap);
 
     const advancedVisuals = makeDetailsSection('ADVANCED VISUALS & PERFORMANCE', 'Release-facing control starts with the quick presets above. Open this only when you need detailed image, world, lighting, shadow, or perf tuning.', false);
@@ -13464,7 +14463,8 @@ function updatePracticeRingCourse(dt) {
   });
 
   applyAll();
-  if (migratedLegacySettings) save();
+  clearLegacySettings();
+  save();
   window.__gfxTick = tickFps;
 })();
 bootLog.step('graphics panel', !!document.getElementById('graphics-panel'),
@@ -13569,6 +14569,10 @@ window.__ap = {
       flight_idle_power: scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0,
       flight_profile: (window.gfx && window.gfx.flightProfile) ? window.gfx.flightProfile : 'custom',
       control_preset: (window.gfx && window.gfx.controlPreset) ? window.gfx.controlPreset : 'balanced',
+      pitch_rate_deg_s: plane.angVel.x * 180 / Math.PI,
+      yaw_rate_deg_s: plane.angVel.y * 180 / Math.PI,
+      roll_rate_deg_s: plane.angVel.z * 180 / Math.PI,
+      angular_rate_deg_s: plane.angVel.length() * 180 / Math.PI,
       flight_pitch_authority: scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0,
       flight_roll_authority: scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0,
       flight_rudder_authority: scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0,
@@ -13623,6 +14627,11 @@ window.__ap = {
       aero_flex: { wing: aeroFlexState.wingBend, aileron: aeroFlexState.aileron, elevator: aeroFlexState.elevator, rudder: aeroFlexState.rudder },
       multiplayer_connected: !!multiplayerState.connected,
       remote_players: multiplayerState.remotePlayers.size,
+      multiplayer_race_status: multiplayerRaceState.status,
+      multiplayer_race_gate: multiplayerRaceState.localGateIndex,
+      multiplayer_race_gate_count: multiplayerRaceState.gateCount,
+      multiplayer_race_lap_ms: buildLocalRaceState().lapMs,
+      multiplayer_race_best_ms: multiplayerRaceState.bestMs,
       traffic_planes: trafficEnabled() ? traffic.length : 0,
       traffic_loaded: trafficEnabled() ? traffic.filter(t => t.loaded).length : 0,
       traffic_alive: trafficEnabled() ? destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length : 0,
@@ -13663,15 +14672,23 @@ window.__ap = {
       gamepad_count: gamepadState.padCount || 0,
       gamepad_id: gamepadState.id || '',
       gamepad_mapping: gamepadState.mapping || '',
+      gamepad_source: gamepadState.source || 'none',
+      gamepad_profile: gamepadState.profile || 'standard',
       gamepad_pitch: gamepadState.pitch,
       gamepad_roll: gamepadState.roll,
       gamepad_yaw: gamepadState.yaw,
-      gamepad_axes: (gamepadState.axesRaw || []).slice(0, 6),
-      gamepad_buttons: (gamepadState.buttonsRaw || []).slice(0, 10),
+      gamepad_axes: (gamepadState.axesRaw || []).slice(0, 8),
+      gamepad_buttons: (gamepadState.buttonsRaw || []).slice(0, 16),
       gamepad_throttle_up: gamepadState.throttleUp,
       gamepad_throttle_down: gamepadState.throttleDown,
       gamepad_fire: !!gamepadState.fire,
       gamepad_brake: !!gamepadState.brake,
+      gamepad_gear: !!gamepadState.gear,
+      gamepad_lights: !!gamepadState.lights,
+      gamepad_model: !!gamepadState.model,
+      gamepad_race: !!gamepadState.race,
+      gamepad_reset: !!gamepadState.reset,
+      gamepad_last_input_age_ms: gamepadState.lastInputAt ? Math.max(0, performance.now() - gamepadState.lastInputAt) : null,
       target_boxes: targetHudState.visibleCount || 0,
       target_lock: targetHudState.activeId || '',
       target_lock_label: targetHudState.activeLabel || '',
@@ -13733,6 +14750,13 @@ window.__ap = {
     applyMultiplayerUrl(url);
     syncMultiplayerSetupUI();
   },
+  startRace() {
+    startMultiplayerRaceCountdown();
+    return buildLocalRaceState();
+  },
+  raceState() {
+    return buildLocalRaceState();
+  },
   setCallsign(name) {
     setPlayerCallsign(name);
     syncMultiplayerSetupUI();
@@ -13790,6 +14814,138 @@ window.__ap = {
     keys[code] = false;
     window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }));
   },
+  setGamepad(state) {
+    return setVirtualGamepadInput(state);
+  },
+  clearGamepad() {
+    return clearVirtualGamepadInput();
+  },
+};
+window.__mpRace = {
+  start: () => {
+    startMultiplayerRaceCountdown();
+    return buildLocalRaceState();
+  },
+  state: () => buildLocalRaceState(),
+  entries: () => [getLocalRaceEntry(), ...getRemoteRaceEntries()]
+    .sort((a, b) => raceSortValue(b) - raceSortValue(a) || (a.local ? -1 : 1)),
+};
+
+function getCourseDirectorSnapshot() {
+  const next = getNextPracticeRing();
+  if (!next) return null;
+  const target = next.ring.getWorldPosition(new THREE.Vector3());
+  return {
+    next_index: next.index + 1,
+    active_count: next.course.activeCount || next.course.length,
+    distance_m: plane.pos.distanceTo(target),
+    target: { x: target.x, y: target.y, z: target.z },
+    completed_runs: next.course.completedRuns || 0,
+  };
+}
+
+window.render_game_to_text = () => {
+  const telemetry = window.__ap && typeof window.__ap.telemetry === 'function' ? window.__ap.telemetry() : {};
+  return JSON.stringify({
+    coordinate_system: 'Three.js world; +Y up, aircraft starts near origin, forward runway departure is mostly -Z',
+    mode: running ? (plane.crashed ? 'crashed' : 'flying') : 'paused',
+    flight_phase: flightPhaseState.label,
+    player: {
+      pos: { x: plane.pos.x, y: plane.pos.y, z: plane.pos.z },
+      vel: { x: plane.vel.x, y: plane.vel.y, z: plane.vel.z },
+      speed_kts: telemetry.spd_kts,
+      altitude_ft: telemetry.alt_ft,
+      agl_ft: telemetry.agl_ft,
+      heading_deg: telemetry.hdg_deg,
+      pitch_deg: telemetry.pitch_deg,
+      roll_deg: telemetry.roll_deg,
+      aoa_deg: telemetry.aoa_deg,
+      throttle: plane.throttle,
+      gear: plane.gear,
+      health: plane.health,
+      on_ground: plane.onGround,
+    },
+    controls: {
+      pitch: controlState.pitch,
+      roll: controlState.roll,
+      yaw: controlState.yaw,
+      throttle_target: plane.throttleTarget,
+      angular_rate_deg_s: telemetry.angular_rate_deg_s,
+      pitch_rate_deg_s: telemetry.pitch_rate_deg_s,
+      roll_rate_deg_s: telemetry.roll_rate_deg_s,
+      yaw_rate_deg_s: telemetry.yaw_rate_deg_s,
+    },
+    score: window.__gameScore ? {
+      points: window.__gameScore.points,
+      streak: window.__gameScore.streak,
+      best_streak: window.__gameScore.bestStreak,
+    } : null,
+    course: getCourseDirectorSnapshot(),
+    multiplayer_race: {
+      local: buildLocalRaceState(),
+      remote_count: multiplayerState.remotePlayers.size,
+      leaderboard: [getLocalRaceEntry(), ...getRemoteRaceEntries()]
+        .sort((a, b) => raceSortValue(b) - raceSortValue(a) || (a.local ? -1 : 1))
+        .slice(0, 5)
+        .map(entry => ({
+          callsign: entry.callsign,
+          local: entry.local,
+          status: entry.status,
+          gate: entry.gateIndex,
+          gate_count: entry.gateCount,
+          lap_ms: entry.lapMs,
+        })),
+    },
+    combat: {
+      ammo: combatState.ammo,
+      targets_alive: destructibleTargets.filter(t => t.alive && t.object && t.object.visible !== false).length,
+      lock: targetHudState.activeLabel || '',
+      lock_amount: targetHudState.lockAmount || 0,
+    },
+  });
+};
+
+window.advanceTime = (ms = 16.7) => {
+  const total = Math.max(0, Number(ms) || 0);
+  const steps = Math.max(1, Math.ceil(total / (1000 / 60)));
+  const stepDt = total > 0 ? (total / steps) / 1000 : 1 / 60;
+  if (!running && typeof beginFlight === 'function') beginFlight({ enableAudio: false, focusCanvas: false });
+  for (let i = 0; i < steps; i++) {
+    pollGamepadInput();
+    updateInputLatches(stepDt);
+    if (!replay.playing) {
+      updateLivePhysicsSmooth(stepDt);
+      replayRecord();
+    }
+    updateJetVisual();
+    updateChunks(plane.pos.x, plane.pos.z);
+    updateFarChunks(plane.pos.x, plane.pos.z);
+    processChunkBuildQueues(2, 1);
+    updateCamera(stepDt);
+    updateAtmospheric(stepDt);
+    updateShadow();
+    updateSunShadowRig();
+    updateHeat(stepDt);
+    updateTraffic(stepDt);
+    updatePracticeRingCourse(stepDt);
+    updateWater(stepDt, plane.pos.x, plane.pos.z);
+    updateMissionDebrief(stepDt, plane.vel.length() * 1.94);
+    updateLandingCompleteFlow(plane.vel.length() * 1.94);
+    updateHUD(stepDt);
+    updateCombat(stepDt);
+    if (typeof updateGateScoring === 'function') updateGateScoring(stepDt);
+    if (window.__damageDecalUpdate) window.__damageDecalUpdate(stepDt);
+    if (window.__gfxTick) window.__gfxTick();
+  }
+  sky.position.copy(camera.position);
+  sunGrp.position.copy(camera.position).addScaledVector(sunDir, 4500);
+  moonGrp.position.copy(camera.position).addScaledVector(sunDir, -4300);
+  starField.position.copy(camera.position);
+  updateLensFlare();
+  updateClouds(stepDt, plane.pos.x, plane.pos.z);
+  updateDepthOfField();
+  updateMotionBlurPostFX();
+  renderScene();
 };
 
 // — Autopilot launcher button (visible to humans; the AI treats it as
