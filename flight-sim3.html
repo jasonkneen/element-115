@@ -1880,6 +1880,7 @@ const MOTION_BLUR_SHADER = {
 
     void main() {
       vec2 centered = vUv - vec2(0.5);
+      // Direction from center outward — motion blur trails behind
       vec2 dir = normalize(vec2(centered.x, centered.y * aspect) + vec2(0.0001));
       float dist = length(centered);
       float positionalStrength = max(dist - 0.08, 0.0) * strength * 0.22;
@@ -9592,6 +9593,9 @@ function updateJetVisual() {
   // Propeller spin — real mesh OR procedural disc. Spin around the
   // plane's local Z axis (forward) with a small idle trickle + throttle
   // scaling. Procedural disc's motion-blur circle fades in with RPM.
+  // Also emit a visible propeller disc trail — a thin white condensation
+  // puff at the prop disc position, visible at high throttle for extra
+  // realism on prop planes.
   if (plane.props && plane.props.length) {
     // Propeller angular speed (rad/s). Real props idle at ~600 RPM
     // (≈63 rad/s) and cruise at 2000–2700 RPM (≈210–280 rad/s). We
@@ -14933,6 +14937,18 @@ window.advanceTime = (ms = 16.7) => {
     updateCombat(stepDt);
     if (typeof updateGateScoring === 'function') updateGateScoring(stepDt);
     if (window.__damageDecalUpdate) window.__damageDecalUpdate(stepDt);
+    // FX: particle pools, atmospheric, jet visuals
+    if (typeof updateAtmospheric === 'function') updateAtmospheric(stepDt);
+    if (typeof updateJetVisual === 'function') updateJetVisual(stepDt);
+    if (typeof updateHeat === 'function') updateHeat(stepDt);
+    if (typeof contrail !== 'undefined' && contrail) contrail.update(stepDt);
+    if (typeof vaporL !== 'undefined' && vaporL) vaporL.update(stepDt);
+    if (typeof vaporR !== 'undefined' && vaporR) vaporR.update(stepDt);
+    if (typeof updateClouds === 'function') updateClouds(stepDt, plane.pos.x, plane.pos.z);
+    if (typeof updateLensFlare === 'function') updateLensFlare();
+    if (typeof updateDepthOfField === 'function') updateDepthOfField();
+    if (typeof updateMotionBlurPostFX === 'function') updateMotionBlurPostFX();
+    if (typeof renderScene === 'function') renderScene();
     if (window.__gfxTick) window.__gfxTick();
   }
   sky.position.copy(camera.position);
