@@ -1,5 +1,8 @@
 # Large model files
 models/*.glb
+# Required deploy models are small enough for Git and needed by Netlify builds.
+!models/disney_planes_-_dusty_turbo.glb
+!models/stunt_plane.glb
 archive/models-unused/
 archive/backups/
 
@@ -21,6 +24,9 @@ build-log.json
 
 # Bun
 node_modules/
+
+# Generated deploy package
+/dist/
 
 # Tool state
 .grok/

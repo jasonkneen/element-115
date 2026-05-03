@@ -10,6 +10,9 @@
     "mp": "bun multiplayer-server.mjs",
     "dev": "bun --watch tweaks-server.mjs",
     "start": "concurrently -n web,mp -c cyan,magenta \"bun tweaks-server.mjs\" \"bun multiplayer-server.mjs\"",
+    "build": "bun tools/build-game.mjs",
+    "preview:dist": "bun tools/serve-dist.mjs",
+    "clean:dist": "rm -rf dist",
     "autopilot": "bun autopilot.mjs",
     "designer": "bun world-designer.mjs",
     "evolve": "bun self-evolve.mjs"
