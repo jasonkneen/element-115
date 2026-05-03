@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <title>Canyon Flight Sim</title>
 <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='24' font-size='24'>✈</text></svg>">
 <style>
@@ -15,12 +15,31 @@
     --game-border: rgba(255, 215, 150, 0.22);
     --game-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
     --game-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+  }
+  html {
+    width: 100%; height: 100%; overflow: hidden; background: #1a0f0a;
+    overscroll-behavior: none;
   }
   body {
-    margin: 0; overflow: hidden; background: #1a0f0a;
+    margin: 0; width: 100%; height: 100%; min-height: 100dvh;
+    overflow: hidden; background: #1a0f0a;
     font-family: 'SF Mono', 'Courier New', monospace; color: #ffcc66;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
-  canvas { display: block; cursor: default; }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100dvh;
+    cursor: default;
+    touch-action: none;
+  }
   #hud {
     position: fixed; inset: 0; pointer-events: none;
     font-size: 12px; text-shadow: 0 0 4px #000, 0 0 2px #000;
@@ -58,12 +77,12 @@
     padding: 7px 10px 8px;
   }
   #instruments {
-    top: 10px;
+    top: calc(10px + var(--safe-top));
     bottom: auto;
   }
   #throttle-wrap {
     top: auto;
-    bottom: 12px;
+    bottom: calc(12px + var(--safe-bottom));
   }
   #instruments::before,
   #throttle-wrap::before {
@@ -307,7 +326,7 @@
   #controls-help {
     left: 50%;
     transform: translateX(-50%);
-    bottom: 74px;
+    bottom: calc(74px + var(--safe-bottom));
     width: min(920px, calc(100vw - 220px));
     display: flex;
     flex-wrap: nowrap;
@@ -354,7 +373,7 @@
     display: none;
   }
   #status-msg {
-    top: 66px;
+    top: calc(66px + var(--safe-top));
     left: 50%;
     right: auto;
     bottom: auto;
@@ -927,25 +946,318 @@
     .hud-compact-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .hud-bottom-surface { grid-template-columns: 1fr; }
     .hud-control-grid { justify-content: flex-start; }
-    #controls-help { width: min(calc(100vw - 24px), 980px); bottom: 82px; }
+    #controls-help { width: min(calc(100vw - 24px), 980px); bottom: calc(82px + var(--safe-bottom)); }
   }
-  @media (max-width: 720px) {
-    #title.flight-briefing-card { padding: 22px 20px 20px; }
+  @media (max-width: 920px), (max-height: 520px) {
+    #course-director,
+    #mp-race-panel { display: none; }
+  }
+  @media (max-width: 720px), (pointer: coarse) and (max-width: 920px) {
+    #hud { font-size: 10px; letter-spacing: 0.055em; }
+    #title.flight-briefing-card {
+      width: calc(100vw - 20px - var(--safe-left) - var(--safe-right));
+      max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+      padding: 20px 18px 18px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
     #title .start-steps,
     #title .multiplayer-setup-grid { grid-template-columns: 1fr; }
     #title .plane-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #title .cta { width: 100%; justify-content: center; text-align: center; }
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
     #instruments,
-    #throttle-wrap { width: calc(100vw - 16px); padding: 6px 8px; }
-    .hud-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    #status-msg { top: 108px; max-width: calc(100vw - 16px); }
-    #course-director,
-    #mp-race-panel { display: none; }
-    #controls-help { width: calc(100vw - 16px); bottom: 94px; border-radius: 16px; flex-wrap: wrap; }
-    #controls-help.collapsed { min-width: 0; width: auto; }
-    #controls-help > div { flex: 1 1 calc(50% - 4px); white-space: normal; }
+    #throttle-wrap {
+      width: calc(100vw - 12px - var(--safe-left) - var(--safe-right));
+      padding: 5px 6px;
+      border-radius: 16px;
+    }
+    #instruments { top: calc(6px + var(--safe-top)); }
+    #throttle-wrap { bottom: calc(6px + var(--safe-bottom)); }
+    .hud-compact-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(58px, 0.72fr) minmax(58px, 0.72fr);
+      gap: 4px;
+      margin-top: 0;
+    }
+    #hud-aero-chip,
+    #hud-gear-chip,
+    #hud-ammo-chip,
+    #hud-score-chip { display: none; }
+    .hud-stat-chip {
+      padding: 6px 6px 5px;
+      border-radius: 11px;
+      gap: 1px;
+    }
+    .hud-stat-line,
+    .hud-track-head,
+    .hud-inline-readout,
+    .hud-stack-line { gap: 3px; }
+    .hud-label,
+    .hud-inline-state,
+    #throttle-wrap .deck-meta-row,
+    #controls-help,
+    #controls-help > div,
+    #throttle-wrap .hud-action,
+    #status-msg {
+      font-size: 7px;
+      letter-spacing: 0.11em;
+    }
+    #instruments .big,
+    #throttle-wrap .big,
+    .hud-value { font-size: 18px; }
+    .top-stat-emphasis .hud-value,
+    #instruments .hud-primary-chip .hud-value,
+    #throttle-wrap .hud-primary-chip .hud-value,
+    .hud-primary-chip .hud-value,
+    .hud-engine-chip.hud-primary-chip .hud-value {
+      font-size: clamp(24px, 7vw, 30px);
+      line-height: 0.82;
+    }
+    .hud-primary-chip .hud-unit,
+    .hud-unit,
+    .hud-subtle { font-size: 9px; }
+    .hud-subtle > span { font-size: 14px; }
+    .hud-bottom-surface {
+      grid-template-columns: minmax(76px, 0.62fr) minmax(0, 1fr) auto;
+      gap: 5px;
+      margin-top: 0;
+      align-items: center;
+    }
+    .hud-engine-strip { gap: 4px; }
+    .hud-engine-chip { padding: 5px 7px; border-radius: 12px; }
+    #ab-status { display: none; }
+    .hud-meta-strip {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+    }
+    .hud-meta-strip .deck-meta-row:nth-child(1),
+    .hud-meta-strip .deck-meta-row:nth-child(3) { display: none; }
+    #throttle-wrap .deck-meta-row {
+      justify-content: center;
+      padding: 5px 6px;
+      border-radius: 10px;
+      gap: 4px;
+      min-width: 0;
+    }
+    #throttle-wrap .hud-chip {
+      font-size: 7px;
+      padding: 2px 5px;
+      letter-spacing: 0.10em;
+    }
+    .hud-action-tray summary {
+      min-height: 32px;
+      padding: 8px 9px;
+      font-size: 7px;
+      letter-spacing: 0.11em;
+    }
+    #throttle-wrap .hud-action {
+      min-height: 34px;
+      padding: 7px 8px;
+      text-align: center;
+      white-space: normal;
+    }
+    #hud-control-grid {
+      position: fixed;
+      left: calc(8px + var(--safe-left));
+      right: calc(8px + var(--safe-right));
+      bottom: calc(62px + var(--safe-bottom));
+      width: auto;
+      max-height: min(42vh, 260px);
+      overflow: auto;
+      justify-content: stretch;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      z-index: 9998;
+    }
+    .hud-action-tray[open] #hud-control-grid { display: grid; }
+    #controls-help { display: none; }
+    #status-msg {
+      top: calc(66px + var(--safe-top));
+      max-width: calc(100vw - 12px - var(--safe-left) - var(--safe-right));
+      padding: 5px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+    #crosshair { width: 44px; height: 44px; }
+    #crosshair::before { left: -10px; right: -10px; }
+    #crosshair::after { top: -10px; bottom: -10px; }
+    #graphics-overlay.fullscreen-options-shell {
+      background: radial-gradient(circle at top, rgba(44,55,76,0.18), rgba(6,8,12,0.94) 62%);
+    }
+    #graphics-panel.game-options-panel.fullscreen-options-shell-card {
+      left: calc(6px + var(--safe-left)) !important;
+      right: calc(6px + var(--safe-right)) !important;
+      top: calc(6px + var(--safe-top)) !important;
+      bottom: calc(6px + var(--safe-bottom)) !important;
+      transform: none !important;
+      width: auto !important;
+      height: auto !important;
+      max-width: none !important;
+      max-height: none !important;
+      padding: 12px !important;
+      border-radius: 20px !important;
+      overflow: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    #graphics-panel.game-options-panel .options-title { font-size: 22px; }
+    #graphics-panel.game-options-panel .options-kicker { font-size: 8px; line-height: 1.35; }
+    #graphics-panel.game-options-panel .preset-card { min-height: 48px; padding: 8px 9px; }
+    #graphics-panel.game-options-panel [style*="grid-template-columns:repeat(4"],
+    #graphics-panel.game-options-panel [style*="grid-template-columns: repeat(4"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    #graphics-panel input[type="range"] { height: 10px; }
+    #graphics-panel input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; border-radius: 50%; }
+    #graphics-panel input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; }
+    #graphics-panel button,
+    #throttle-wrap button,
+    #title button {
+      min-height: 36px;
+      -webkit-tap-highlight-color: transparent;
+    }
+  }
+  @media (max-width: 720px) and (orientation: portrait) {
+    #instruments {
+      padding: 6px;
+      border-radius: 18px;
+    }
+    .hud-compact-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
+    .hud-stat-chip {
+      min-height: 42px;
+      padding: 7px 8px 6px;
+    }
+    .top-stat-emphasis .hud-value,
+    #instruments .hud-primary-chip .hud-value,
+    #throttle-wrap .hud-primary-chip .hud-value,
+    .hud-primary-chip .hud-value,
+    .hud-engine-chip.hud-primary-chip .hud-value {
+      font-size: clamp(28px, 9vw, 34px);
+      line-height: 0.82;
+    }
+    #status-msg { top: calc(118px + var(--safe-top)); }
+    #throttle-wrap {
+      bottom: calc(8px + var(--safe-bottom));
+      padding: 6px;
+      border-radius: 18px;
+    }
+    .hud-bottom-surface {
+      grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1fr) auto;
+      gap: 5px;
+    }
+    #hud-control-grid {
+      bottom: calc(70px + var(--safe-bottom));
+      max-height: min(36vh, 280px);
+    }
+    #graphics-panel.game-options-panel [style*="grid-template-columns:repeat(2"],
+    #graphics-panel.game-options-panel [style*="grid-template-columns: repeat(2"],
+    #graphics-panel.game-options-panel .orientation-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+  }
+  @media (max-height: 520px) and (orientation: landscape) {
+    #hud { font-size: 9px; letter-spacing: 0.04em; }
+    #instruments,
+    #throttle-wrap {
+      width: calc(100vw - 10px - var(--safe-left) - var(--safe-right));
+      padding: 3px 5px;
+      border-radius: 13px;
+    }
+    #instruments { top: calc(3px + var(--safe-top)); }
+    #throttle-wrap { bottom: calc(3px + var(--safe-bottom)); }
+    .hud-compact-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 3px;
+      margin-top: 0;
+    }
+    .hud-stat-chip {
+      min-height: 34px;
+      padding: 4px 6px;
+      border-radius: 9px;
+    }
+    .hud-label,
+    .hud-inline-state,
+    #throttle-wrap .deck-meta-row,
+    #controls-help,
+    #controls-help > div,
+    #throttle-wrap .hud-action,
+    #status-msg {
+      font-size: 6px;
+      letter-spacing: 0.09em;
+    }
+    .hud-value,
+    #instruments .big,
+    #throttle-wrap .big { font-size: 15px; }
+    .top-stat-emphasis .hud-value,
+    #instruments .hud-primary-chip .hud-value,
+    #throttle-wrap .hud-primary-chip .hud-value,
+    .hud-primary-chip .hud-value,
+    .hud-engine-chip.hud-primary-chip .hud-value {
+      font-size: clamp(18px, 6vh, 22px);
+      line-height: 0.84;
+    }
+    .hud-primary-chip .hud-unit,
+    .hud-unit,
+    .hud-subtle { font-size: 7px; }
+    .hud-subtle > span { font-size: 12px; }
+    .hud-mini-track { height: 2px; margin: 2px 0 0; }
+    .hud-bottom-surface {
+      grid-template-columns: minmax(72px, 0.44fr) auto;
+      gap: 4px;
+      margin-top: 0;
+    }
+    .hud-engine-chip {
+      padding: 4px 6px;
+      border-radius: 10px;
+    }
+    .hud-meta-strip { display: none; }
+    .hud-action-tray summary {
+      min-height: 28px;
+      padding: 6px 8px;
+      font-size: 6px;
+      letter-spacing: 0.09em;
+    }
+    #throttle-wrap .hud-action {
+      min-height: 30px;
+      padding: 6px 7px;
+    }
+    #status-msg { display: none; }
+    #hud-control-grid {
+      bottom: calc(42px + var(--safe-bottom));
+      max-height: min(40vh, 148px);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 5px;
+      padding: 6px;
+    }
+    #graphics-panel.game-options-panel.fullscreen-options-shell-card {
+      padding: 10px !important;
+      border-radius: 16px !important;
+    }
+    #graphics-panel.game-options-panel .options-title { font-size: 18px; }
+    #graphics-panel.game-options-panel .options-kicker { font-size: 7px; }
+    #graphics-panel.game-options-panel .preset-card { min-height: 46px; padding: 7px 8px; }
+    #graphics-panel.game-options-panel .quick-preset-grid,
+    #graphics-panel.game-options-panel .control-preset-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    #graphics-panel.game-options-panel .airframe-grid,
+    #graphics-panel.game-options-panel .flight-profile-grid,
+    #graphics-panel.game-options-panel .practice-ring-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+  }
+  @media (min-width: 800px) and (max-height: 520px) and (orientation: landscape) {
+    #graphics-panel.game-options-panel .airframe-grid,
+    #graphics-panel.game-options-panel .flight-profile-grid,
+    #graphics-panel.game-options-panel .practice-ring-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
   }
   .hide { opacity: 0; pointer-events: none; display: none !important; }
   body.preflight #crosshair,
@@ -1144,6 +1456,7 @@
         <summary class="hud-action" id="hud-actions-summary">SYSTEMS [TAB] <span id="hud-actions-state" class="ok">SHOW</span></summary>
         <div class="hud-control-grid" id="hud-control-grid">
           <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
+          <button type="button" class="hud-action" id="options-btn">OPTIONS [P] <span id="options-ind" class="ok">OPEN</span></button>
           <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
           <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
           <button type="button" class="hud-action" id="biome-btn">BIOME [Y] <span id="biome-ind" class="ok">GRASSLAND</span></button>
@@ -5615,6 +5928,8 @@ function updateMultiplayer(dt) {
       // remote writers). On deploy, the static plane-tweaks.json
       // is fetched on boot and applied when no URL hash overrides.
       const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+      const isBuiltStaticGame = /(?:^|\/)game\.html$/i.test(location.pathname);
+      const tweakReadEndpoint = (hostIsLocal && !isBuiltStaticGame) ? '/api/tweaks' : 'plane-tweaks.json';
       const hadUrlTweaks = ['s','rx','ry','rz','dx','dy','dz']
         .some(k => params.has(k));
 
@@ -5647,7 +5962,7 @@ function updateMultiplayer(dt) {
       // Fetch saved tweak (if any); apply only when URL hash is clean.
       // Legacy tweaks were keyed by bare filename; current keys include
       // the 'models/' prefix. Accept either form so old saves still apply.
-      fetch('/api/tweaks')
+      fetch(tweakReadEndpoint, { cache: 'no-cache' })
         .then(r => r.ok ? r.json() : {})
         .then(all => {
           if (!all || typeof all !== 'object') return;
@@ -12166,6 +12481,18 @@ window.addEventListener('resize', () => {
     }
   }
 });
+if (window.visualViewport) {
+  let visualViewportResizeRaf = 0;
+  const requestVisualViewportResize = () => {
+    if (visualViewportResizeRaf) cancelAnimationFrame(visualViewportResizeRaf);
+    visualViewportResizeRaf = requestAnimationFrame(() => {
+      visualViewportResizeRaf = 0;
+      window.dispatchEvent(new Event('resize'));
+    });
+  };
+  window.visualViewport.addEventListener('resize', requestVisualViewportResize);
+  window.visualViewport.addEventListener('scroll', requestVisualViewportResize);
+}
 document.addEventListener('fullscreenchange', () => {
   window.dispatchEvent(new Event('resize'));
 });
@@ -14473,7 +14800,7 @@ function updatePracticeRingCourse(dt) {
     panel.appendChild(resetBtn);
 
     panel.appendChild(el('div', { style: headerStyle + 'margin-top:0;border-top:0;padding-top:0;' }, 'QUICK PRESETS'));
-    const presetRow = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
+    const presetRow = el('div', { class: 'orientation-grid quick-preset-grid', style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px;' });
     const presetMeta = {
       low: ['LOW', 'lean / cooler'],
       med: ['MED', 'balanced'],
@@ -14496,7 +14823,7 @@ function updatePracticeRingCourse(dt) {
     panel.appendChild(el('div', { style: headerStyle }, 'AIRFRAME'));
     panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Prop planes only. Click a card to load it, or press M in flight to cycle.'));
     const activePreset = getActivePropPreset();
-    const planeGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    const planeGrid = el('div', { class: 'orientation-grid airframe-grid', style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     PROP_MODEL_PRESETS.forEach((preset) => {
       const active = preset.key === activePreset.key;
       const btn = el('button', {
@@ -14538,7 +14865,7 @@ function updatePracticeRingCourse(dt) {
     panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, activeControlMeta
       ? `Control feel: ${activeControlMeta.title} · ${activeControlMeta.note}`
       : 'Control feel: CUSTOM · advanced tuning is overriding the presets'));
-    const controlPresetGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    const controlPresetGrid = el('div', { class: 'orientation-grid control-preset-grid', style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     ['casual','balanced','responsive','direct'].forEach((key) => {
       const preset = CONTROL_PRESETS[key];
       const active = gfx.controlPreset === key;
@@ -14555,7 +14882,7 @@ function updatePracticeRingCourse(dt) {
     const recommendedFlightProfile = recommendedFlightProfileForPlane(activePreset);
     const recommendedMeta = FLIGHT_PROFILES[recommendedFlightProfile];
     panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, `Airframe role for ${activePreset.name || activePreset.label}: ${recommendedMeta.title} · ${recommendedMeta.note}`));
-    const flightProfileGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    const flightProfileGrid = el('div', { class: 'orientation-grid flight-profile-grid', style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     ['trainer','stunt','bush','racer'].forEach((key) => {
       const preset = FLIGHT_PROFILES[key];
       const active = gfx.flightProfile === key;
@@ -14623,7 +14950,7 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(el('div', { style: 'font-size:9px;opacity:0.52;margin:-2px 0 8px;line-height:1.45;' }, activePracticeRingMeta
       ? `Course preset: ${activePracticeRingMeta.title} · ${activePracticeRingMeta.note}`
       : 'Course preset: CUSTOM · manual ring tuning is overriding the presets'));
-    const practiceRingPresetGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
+    const practiceRingPresetGrid = el('div', { class: 'orientation-grid practice-ring-grid', style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     ['training','sport','dense','showcase'].forEach((key) => {
       const preset = PRACTICE_RING_PRESETS[key];
       const active = gfx.practiceRingPreset === key;
@@ -14678,6 +15005,19 @@ function updatePracticeRingCourse(dt) {
     if (graphicsOverlay.style.display === 'block') closeOptions();
     else openOptions();
   };
+  window.__toggleOptionsPanel = toggleOptions;
+  const optionsBtn = document.getElementById('options-btn');
+  if (optionsBtn) {
+    optionsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleOptions();
+      if ($hudActionsTray) {
+        $hudActionsTray.open = false;
+        syncHudActionsTray();
+      }
+    });
+  }
 
   graphicsOverlay.addEventListener('pointerdown', (e) => {
     if (e.target === graphicsOverlay) closeOptions();

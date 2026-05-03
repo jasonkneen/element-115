@@ -15,6 +15,7 @@ const outReadmePath = path.join(distDir, 'README.txt');
 const args = new Set(process.argv.slice(2));
 const clean = !args.has('--no-clean');
 const chunkSize = 24_000;
+const deploySupportFiles = ['plane-tweaks.json'];
 
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
@@ -95,6 +96,19 @@ async function main() {
       await stat(src);
     } catch {
       throw new Error(`Build asset is referenced but missing: ${rel}`);
+    }
+    await mkdir(path.dirname(dest), { recursive: true });
+    await cp(src, dest, { force: true, recursive: false });
+    copiedAssets.push(await fileInfo(dest, rel));
+  }
+
+  for (const rel of deploySupportFiles) {
+    const src = path.join(root, rel);
+    const dest = path.join(distDir, rel);
+    try {
+      await stat(src);
+    } catch {
+      continue;
     }
     await mkdir(path.dirname(dest), { recursive: true });
     await cp(src, dest, { force: true, recursive: false });
