@@ -6833,6 +6833,10 @@ function updateCombat(dt) {
       const targetPos = getTargetWorldPosition(target, _combatTmpC);
       const dist = plane.pos.distanceTo(targetPos);
       if (dist > target.radius + playerRadius) continue;
+      // Ambient traffic can cross the runway while the player is still parked.
+      // Do not count that as a free kill or damage event; only armed/moving
+      // player collisions should destroy air targets.
+      if (target.kind === 'traffic' && plane.onGround && playerSpeed < 18) continue;
       // Relative speed: assume static for non-traffic; for traffic we
       // have .object position but no velocity — estimate zero (low
       // path speed relative to player at combat range).
@@ -12889,10 +12893,110 @@ function resetGateScoring() {
 //  × dt each frame). Self-contained — no physics, no collision, no HUD
 //  presence. Purely ambient.
 const traffic = [];
+const TRAFFIC_UFO_TARGET_FILE = 'procedural:ufo-saucer';
+
+function createSaucerTargetModel(opts = {}) {
+  const root = new THREE.Group();
+  root.name = 'orientation-safe UFO target';
+  root.rotation.order = 'YXZ';
+  root.userData.__isUfoTarget = true;
+  root.userData.__trafficTargetType = 'ufo-saucer';
+  root.userData.spinRate = opts.spinRate || 1.25;
+  root.userData.beaconLights = [];
+
+  const hullMat = new THREE.MeshStandardMaterial({
+    color: 0x7f92a8,
+    emissive: 0x10243d,
+    emissiveIntensity: 0.18,
+    roughness: 0.38,
+    metalness: 0.74,
+  });
+  const rimMat = new THREE.MeshStandardMaterial({
+    color: 0xb9cadb,
+    emissive: 0x234d70,
+    emissiveIntensity: 0.22,
+    roughness: 0.32,
+    metalness: 0.82,
+  });
+  const canopyMat = new THREE.MeshStandardMaterial({
+    color: 0x9fe8ff,
+    emissive: 0x256d8c,
+    emissiveIntensity: 0.55,
+    roughness: 0.18,
+    metalness: 0.12,
+    transparent: true,
+    opacity: 0.78,
+  });
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x60f6ff,
+    transparent: true,
+    opacity: 0.38,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+  const beaconMatA = new THREE.MeshBasicMaterial({
+    color: 0x80f7ff,
+    transparent: true,
+    opacity: 0.82,
+    toneMapped: false,
+  });
+  const beaconMatB = new THREE.MeshBasicMaterial({
+    color: 0xffb86a,
+    transparent: true,
+    opacity: 0.72,
+    toneMapped: false,
+  });
+
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.8, 0.82, 56, 1), hullMat);
+  hull.name = 'ufo symmetric saucer hull';
+  root.add(hull);
+
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(5.25, 0.22, 10, 72), rimMat);
+  rim.name = 'ufo circular rim';
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = -0.02;
+  root.add(rim);
+
+  const topDome = new THREE.Mesh(new THREE.SphereGeometry(2.85, 36, 14), canopyMat);
+  topDome.name = 'ufo centered canopy dome';
+  topDome.scale.set(1, 0.34, 1);
+  topDome.position.y = 0.48;
+  root.add(topDome);
+
+  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat.clone());
+  lowerGlow.name = 'ufo underside glow';
+  lowerGlow.position.y = -0.48;
+  root.add(lowerGlow);
+
+  const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), glowMat.clone());
+  ringGlow.name = 'ufo equator glow';
+  ringGlow.rotation.x = Math.PI / 2;
+  ringGlow.position.y = 0.18;
+  root.add(ringGlow);
+
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const mat = (i % 2 === 0 ? beaconMatA : beaconMatB).clone();
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
+    beacon.name = 'ufo symmetric rim beacon';
+    beacon.position.set(Math.cos(a) * 5.15, 0.02, Math.sin(a) * 5.15);
+    beacon.userData.phase = i / 12;
+    root.userData.beaconLights.push(beacon);
+    root.add(beacon);
+  }
+
+  root.traverse(o => {
+    o.userData.__isUfoTarget = true;
+    o.userData.__trafficTargetType = 'ufo-saucer';
+  });
+  return root;
+}
 
 function spawnTraffic(file, pathFn, opts) {
   opts = opts || {};
-  if (typeof THREE.GLTFLoader !== 'function') return;
+  const isProceduralUfo = file === TRAFFIC_UFO_TARGET_FILE;
+  if (!isProceduralUfo && typeof THREE.GLTFLoader !== 'function') return;
   const group = new THREE.Group();
   group.name = 'traffic:' + file;
   group.rotation.order = 'YXZ';
@@ -12901,6 +13005,7 @@ function spawnTraffic(file, pathFn, opts) {
   const rec = {
     group, pathFn, loaded: false,
     file,
+    targetKind: isProceduralUfo ? 'ufo-saucer' : 'aircraft',
     phase: opts.phaseOffset || 0,
     speed: opts.speed || 60,          // metres/sec along path
     bankSmoothed: 0,
@@ -12911,8 +13016,7 @@ function spawnTraffic(file, pathFn, opts) {
   };
   traffic.push(rec);
 
-  new THREE.GLTFLoader().load(file, (gltf) => {
-    const model = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+  const attachTrafficModel = (model, sourceName = file) => {
     if (!model) return;
     const box = new THREE.Box3().setFromObject(model);
     const size = new THREE.Vector3(); box.getSize(size);
@@ -12921,16 +13025,23 @@ function spawnTraffic(file, pathFn, opts) {
     const s = (opts.targetSize || 10) / maxDim;
     model.scale.setScalar(s);
     model.position.set(-center.x * s, -center.y * s, -center.z * s);
-    // Most Sketchfab models face +Z; we want -Z (sim forward).
-    model.rotation.y = (opts.modelRotY != null) ? opts.modelRotY : Math.PI;
-    // Ensure they don't get caught by the GLB-plane traversal that was
-    // meant for the player plane — mark them distinctly.
-    model.userData.__isTrafficPlane = true;
-    model.traverse(o => { o.userData.__isTrafficPlane = true; });
+    // Most Sketchfab models face +Z; we want -Z (sim forward). The UFO is
+    // rotationally symmetric, so leave its local yaw free for idle spin.
+    if (!model.userData.__isUfoTarget) {
+      model.rotation.y = (opts.modelRotY != null) ? opts.modelRotY : Math.PI;
+    }
+    // Ensure traffic targets don't get caught by the GLB-plane traversal that
+    // was meant for the player plane — mark them distinctly.
+    model.userData.__isTrafficPlane = !model.userData.__isUfoTarget;
+    model.userData.__isTrafficTarget = true;
+    model.traverse(o => {
+      o.userData.__isTrafficPlane = !model.userData.__isUfoTarget;
+      o.userData.__isTrafficTarget = true;
+    });
     applyShadowFlags(model);
     group.add(model);
     rec.destructible = registerDestructible(group, {
-      radius: Math.max(4, (opts.targetSize || 10) * 0.6),
+      radius: Math.max(4, (opts.targetSize || 10) * (opts.radiusMul || 0.6)),
       kind: 'traffic',
       health: opts.health || 3,
     });
@@ -12940,10 +13051,18 @@ function spawnTraffic(file, pathFn, opts) {
     rec.child = model;
     rec.loaded = true;
     group.visible = trafficEnabled() && rec.destructible.alive;
-    console.log('[traffic] loaded', file.split('/').pop(), '×' + s.toFixed(3));
-  }, undefined, (err) => {
-    console.warn('[traffic] failed to load', file, err && err.message);
-  });
+    console.log('[traffic] loaded', String(sourceName).split('/').pop(), '×' + s.toFixed(3));
+  };
+
+  if (isProceduralUfo) {
+    attachTrafficModel(createSaucerTargetModel(opts), 'UFO saucer target');
+  } else {
+    new THREE.GLTFLoader().load(file, (gltf) => {
+      attachTrafficModel(gltf.scene || (gltf.scenes && gltf.scenes[0]));
+    }, undefined, (err) => {
+      console.warn('[traffic] failed to load', file, err && err.message);
+    });
+  }
   return rec;
 }
 
@@ -13101,41 +13220,56 @@ function updateTraffic(dt) {
     t.group.position.copy(pos);
     t.pitchSmoothed += (pitch - t.pitchSmoothed) * Math.min(1, dt * 2.2);
     t.group.rotation.set(t.pitchSmoothed, yaw, 0);
-    // Smooth bank so traffic follows curved legs with a readable roll.
+    // Smooth bank so traffic follows curved legs with a readable roll. UFO
+    // targets keep a circular, orientation-safe silhouette and add subtle
+    // local spin/pulsing instead of relying on a forward-facing model.
     if (t.child) {
       t.bankSmoothed += (bank - t.bankSmoothed) * Math.min(1, dt * 2.6);
-      t.child.rotation.z = t.bankSmoothed;
+      if (t.child.userData.__isUfoTarget) {
+        t.child.rotation.y += dt * (t.child.userData.spinRate || 1.25);
+        t.child.rotation.z = t.bankSmoothed * 0.55;
+        const lights = t.child.userData.beaconLights || [];
+        const pulseT = performance.now() * 0.004;
+        for (let i = 0; i < lights.length; i++) {
+          const beacon = lights[i];
+          const pulse = 0.62 + Math.max(0, Math.sin(pulseT + (beacon.userData.phase || 0) * Math.PI * 2)) * 0.45;
+          beacon.material.opacity = Math.min(1, pulse);
+          beacon.scale.setScalar(0.82 + pulse * 0.42);
+        }
+      } else {
+        t.child.rotation.z = t.bankSmoothed;
+      }
     }
   }
 }
 
-// ---- Populate: realistic prop traffic following runway circuits instead of abstract
-// orbit/transit/figure-8 patrols. These use proper departure/final direction
-// along the real runway and loop through takeoff, climb, downwind, base, and final.
+// ---- Populate: orientation-safe UFO drone traffic following runway circuits.
+// These replace ambient shoot-down prop planes: the circular saucer silhouette
+// stays readable even if yaw/bank/asset-facing assumptions are wrong.
 spawnTraffic(
-  'models/colombian_emb_314_tucano.glb',
+  TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 240, patternX: 420 }),
-  { speed: 72, targetSize: 11.5, phaseOffset: 0, health: 3, rewardPoints: 220, rewardAmmo: 20, callsign: 'TUCANO 11', typeLabel: 'A-29 TUCANO' }
+  { speed: 72, targetSize: 11.5, radiusMul: 0.72, phaseOffset: 0, health: 3, rewardPoints: 220, rewardAmmo: 20, callsign: 'UFO 11', typeLabel: 'SAUCER DRONE' }
 );
 spawnTraffic(
-  'models/yak-9.glb',
+  TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway18', { circuitAlt: 250, patternX: 440 }),
-  { speed: 78, targetSize: 11.8, phaseOffset: 320, health: 3, rewardPoints: 250, rewardAmmo: 22, callsign: 'YAK 21', typeLabel: 'YAK-9' }
+  { speed: 78, targetSize: 11.8, radiusMul: 0.72, phaseOffset: 320, health: 3, rewardPoints: 250, rewardAmmo: 22, callsign: 'UFO 21', typeLabel: 'SAUCER DRONE' }
 );
 spawnTraffic(
-  'models/corsair_f4u-1_airplane.glb',
+  TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 270, patternX: 500, lookAhead: 26 }),
-  { speed: 80, targetSize: 12.6, phaseOffset: 860, health: 4, rewardPoints: 300, rewardAmmo: 28, callsign: 'CORSAIR 31', typeLabel: 'F4U-1' }
+  { speed: 80, targetSize: 12.6, radiusMul: 0.72, phaseOffset: 860, health: 4, rewardPoints: 300, rewardAmmo: 28, callsign: 'UFO 31', typeLabel: 'HEAVY SAUCER' }
 );
 spawnTraffic(
-  'models/italian_macchi_c.202_folgore.glb',
+  TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway18', { circuitAlt: 225, patternX: 390 }),
-  { speed: 74, targetSize: 11.4, phaseOffset: 1180, health: 3, rewardPoints: 240, callsign: 'FOLGORE 41', typeLabel: 'C.202' }
+  { speed: 74, targetSize: 11.4, radiusMul: 0.72, phaseOffset: 1180, health: 3, rewardPoints: 240, callsign: 'UFO 41', typeLabel: 'SAUCER DRONE' }
 );
 spawnTraffic(
-  'models/p-100_avenger_-_free.glb',
+  TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 210, patternX: 360 }),
-  { speed: 64, targetSize: 11.9, phaseOffset: 1640, health: 3, rewardPoints: 230, rewardAmmo: 20, callsign: 'AVENGER 51', typeLabel: 'P-100' }
+  { speed: 64, targetSize: 11.9, radiusMul: 0.72, phaseOffset: 1640, health: 3, rewardPoints: 230, rewardAmmo: 20, callsign: 'UFO 51', typeLabel: 'SAUCER DRONE' }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
@@ -14637,6 +14771,7 @@ window.__ap = {
       traffic_planes: trafficEnabled() ? traffic.length : 0,
       traffic_loaded: trafficEnabled() ? traffic.filter(t => t.loaded).length : 0,
       traffic_alive: trafficEnabled() ? destructibleTargets.filter(t => t.alive && t.kind === 'traffic').length : 0,
+      traffic_target_types: trafficEnabled() ? traffic.map(t => t.targetKind || (t.child && t.child.userData.__isUfoTarget ? 'ufo-saucer' : 'aircraft')) : [],
       pending_chunk_builds: pendingChunkBuilds.length,
       pending_far_chunk_builds: pendingFarChunkBuilds.length,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
