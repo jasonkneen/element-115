@@ -1316,17 +1316,10 @@ function persistPlayerProfile() {
 }
 const PROP_MODEL_PRESETS = [
   { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
-  { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIPSLINGER', type: 'Racing Prop', badge: 'NEW', file: 'models/ripslinger.glb' },
-  { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Tucano', hudLabel: 'TUCANO', type: 'Trainer Prop', badge: 'NEW', file: 'models/colombian_emb_314_tucano.glb' },
-  { key: 'avenger', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'AVENGER', type: 'Warbird Prop', badge: 'NEW', file: 'models/p-100_avenger_-_free.glb' },
-  { key: 'folgore', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird Prop', badge: 'NEW', file: 'models/italian_macchi_c.202_folgore.glb' },
-  { key: 'corsair', label: 'F4U-1 CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Carrier Prop', badge: 'NEW', file: 'models/corsair_f4u-1_airplane.glb' },
-  { key: 'yak9', label: 'YAK-9', name: 'Yak-9', hudLabel: 'YAK-9', type: 'Warbird Prop', badge: 'HEAVY', file: 'models/yak-9.glb' },
   { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/stunt_plane.glb', variant: '1' },
   { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
   { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/stunt_plane.glb', variant: '3' },
   { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
-  { key: 'lowprop', label: 'LOW-POLY PROP', name: 'Low-Poly Prop', hudLabel: 'LOW-POLY', type: 'Fallback Prop', badge: 'LITE', file: 'models/low_poly_plane.glb' },
 ];
 const REMOVED_PROP_MODEL_FILES = new Set([
   'models/claude_scruggs.glb',
@@ -1825,9 +1818,35 @@ function updateWater(dt, px, pz) {
   waterMesh.position.z = Math.round(pz / step) * step;
 }
 
+const CAMERA_REFERENCE_ASPECT = 16 / 9;
+const CAMERA_BASE_FOV = 60;
+const CAMERA_MAX_FOV = 68;
+const CAMERA_MIN_FOV = 44;
+
+function aspectCorrectedCameraFov(rawVerticalFov, aspect) {
+  const fov = Math.max(CAMERA_MIN_FOV, Math.min(CAMERA_MAX_FOV, rawVerticalFov));
+  const safeAspect = Math.max(0.25, aspect || CAMERA_REFERENCE_ASPECT);
+  if (safeAspect <= CAMERA_REFERENCE_ASPECT) return fov;
+  const halfTan = Math.tan(THREE.MathUtils.degToRad(fov) * 0.5);
+  return THREE.MathUtils.radToDeg(2 * Math.atan((halfTan * CAMERA_REFERENCE_ASPECT) / safeAspect));
+}
+
+function applyCameraLensFov(rawVerticalFov, blend = 1) {
+  const prevLensFov = camera.userData.lensFov == null ? CAMERA_BASE_FOV : camera.userData.lensFov;
+  const targetLensFov = Math.max(CAMERA_MIN_FOV, Math.min(CAMERA_MAX_FOV, rawVerticalFov));
+  const nextLensFov = prevLensFov + (targetLensFov - prevLensFov) * Math.max(0, Math.min(1, blend));
+  camera.userData.lensFov = nextLensFov;
+  camera.fov = aspectCorrectedCameraFov(nextLensFov, camera.aspect);
+  camera.updateProjectionMatrix();
+}
+
 const camera = new THREE.PerspectiveCamera(
-  72, window.innerWidth / window.innerHeight, 0.8, 14000
+  aspectCorrectedCameraFov(CAMERA_BASE_FOV, window.innerWidth / window.innerHeight),
+  window.innerWidth / window.innerHeight,
+  0.8,
+  14000
 );
+camera.userData.lensFov = CAMERA_BASE_FOV;
 
 const renderer = new THREE.WebGLRenderer({
   antialias: false, powerPreference: 'high-performance'
@@ -1883,14 +1902,15 @@ const MOTION_BLUR_SHADER = {
       // Direction from center outward — motion blur trails behind
       vec2 dir = normalize(vec2(centered.x, centered.y * aspect) + vec2(0.0001));
       float dist = length(centered);
-      float positionalStrength = max(dist - 0.08, 0.0) * strength * 0.22;
+      float edgeFalloff = smoothstep(0.16, 0.72, dist);
+      float positionalStrength = edgeFalloff * strength * 0.018;
       vec4 accum = vec4(0.0);
       float total = 0.0;
       for (int i = 0; i < 6; i++) {
         float stepF = (float(i) + rand2(vUv * 8.0)) * 0.22;
         vec2 offset = dir * positionalStrength * stepF;
-        accum += texture2D(tDiffuse, vUv + offset);
-        accum += texture2D(tDiffuse, vUv - offset);
+        accum += texture2D(tDiffuse, clamp(vUv + offset, vec2(0.001), vec2(0.999)));
+        accum += texture2D(tDiffuse, clamp(vUv - offset, vec2(0.001), vec2(0.999)));
         total += 2.0;
       }
       vec4 base = texture2D(tDiffuse, vUv);
@@ -2296,7 +2316,7 @@ const RENDER_RADIUS = 3;          // 7×7 high-detail chunks
 const FAR_CHUNK_SIZE = 1800;      // 3× high-detail size
 const FAR_CHUNK_RES = 36;         // low-res
 const FAR_RADIUS = 4;             // 9×9 far chunks → covers ~16.2 km
-const ROCKS_PER_CHUNK = 90;
+const ROCKS_PER_CHUNK = 160;
 const chunks = new Map();
 const farChunks = new Map();
 const pendingChunkBuilds = [];
@@ -2587,7 +2607,7 @@ function makeChunk(cx, cz) {
     added++;
   }
   const clutterDensity = (typeof window !== 'undefined' && window.gfx && window.gfx.floraDensity != null)
-    ? Math.max(0.2, Math.min(1.2, window.gfx.floraDensity))
+    ? Math.max(0.2, Math.min(1.6, window.gfx.floraDensity))
     : 0.78;
   rocks.count = Math.max(0, Math.min(added, Math.round(added * clutterDensity)));
   rocks.instanceMatrix.needsUpdate = true;
@@ -2598,7 +2618,9 @@ function makeChunk(cx, cz) {
   // ---- Procedural flora + boulders (biome-gated) ----
   // Caps per chunk — we build 4 instanced meshes and only use what we fill
   const floraMaterial = lowPoly ? floraMatLow : floraMat;
-  const CAP_PINE = 110, CAP_CACTUS = 60, CAP_SHRUB = 140, CAP_BOULDER = 35;
+  // Per-chunk caps. The GROUND DETAIL slider scales these via clutterDensity
+  // (0.2x..1.6x), so the visible counts span roughly 35..280 pines etc.
+  const CAP_PINE = 180, CAP_CACTUS = 100, CAP_SHRUB = 220, CAP_BOULDER = 60;
 
   const pines    = new THREE.InstancedMesh(pineGeo,    floraMaterial, CAP_PINE);
   const cacti    = new THREE.InstancedMesh(cactusGeo,  floraMaterial, CAP_CACTUS);
@@ -2608,8 +2630,9 @@ function makeChunk(cx, cz) {
   let nPine = 0, nCactus = 0, nShrub = 0, nBoulder = 0;
   const d = new THREE.Object3D();
 
-  // Single deterministic scatter loop, biome-gated by elevation + slope
-  const samples = 360;
+  // Single deterministic scatter loop, biome-gated by elevation + slope.
+  // More samples ⇒ more chances for plants/boulders to fill the new caps.
+  const samples = 600;
   for (let i = 0; i < samples; i++) {
     const r1 = srand(cx, cz, i * 7 + 1000);
     const r2 = srand(cx, cz, i * 7 + 1001);
@@ -5081,30 +5104,48 @@ function updateMultiplayer(dt) {
         parent.add(pivot);
         parent.updateMatrixWorld(true);
         pivot.attach(node);
+        // Clone every mesh material under this pivot so the per-frame blade
+        // fade (transparent=true, opacity<1) doesn't bleed into other meshes
+        // that share the source material with the prop node.
+        const cloneOne = (m) => (m && typeof m.clone === 'function') ? m.clone() : m;
+        node.traverse(child => {
+          if (!child || !child.isMesh || !child.material) return;
+          child.material = Array.isArray(child.material)
+            ? child.material.map(cloneOne)
+            : cloneOne(child.material);
+        });
         pivot.userData.__propAxis = 'z';
         pivot.userData.__isNamedProp = true;
         addPropDiscToPivot(pivot, Math.max(sizeWorld.x, sizeWorld.y) * 0.5);
         node.userData.__apWrappedProp = true;
         return pivot;
       };
-      model.traverse(o => {
-        if (!o.isMesh && !o.isObject3D) return;
-        if (o === model) return;
-        if (propNames.test(o.name || '')) rawProps.push(o);
-      });
-      const rawPropSet = new Set(rawProps);
-      const topLevelRawProps = rawProps.filter((o) => {
-        let p = o.parent;
-        while (p && p !== model) {
-          if (rawPropSet.has(p)) return false;
-          p = p.parent;
-        }
-        return true;
-      });
-      topLevelRawProps.forEach((o) => {
-        const pivot = wrapNamedPropPivot(o);
-        if (pivot) props.push(pivot);
-      });
+      // Skip named-prop search for stunt variants — they share the
+      // stunt_plane.glb mesh, whose named "prop" node is a low-poly placeholder.
+      // Forcing the geometry-extraction path (the Dusty path) gives a real
+      // spinning blade pivot + motion-blur disc, matching Dusty's effect.
+      if (!isStuntVariant) {
+        model.traverse(o => {
+          if (!o.isMesh && !o.isObject3D) return;
+          if (o === model) return;
+          if (propNames.test(o.name || '')) rawProps.push(o);
+        });
+        const rawPropSet = new Set(rawProps);
+        const topLevelRawProps = rawProps.filter((o) => {
+          let p = o.parent;
+          while (p && p !== model) {
+            if (rawPropSet.has(p)) return false;
+            p = p.parent;
+          }
+          return true;
+        });
+        topLevelRawProps.forEach((o) => {
+          const pivot = wrapNamedPropPivot(o);
+          if (pivot) props.push(pivot);
+        });
+      } else {
+        console.log('[plane-swap] stunt variant — using Dusty-style extracted prop');
+      }
 
       // ——— Geometry surgery: extract baked-in prop triangles ———
       // Most Sketchfab planes (incl. Disney Dusty) merge the propeller
@@ -5287,7 +5328,17 @@ function updateMultiplayer(dt) {
             pos.needsUpdate = true;
             extractedGeo.computeBoundingSphere();
 
-            const extractedMesh = new THREE.Mesh(extractedGeo, o.material);
+            // Clone material(s) — the per-frame prop-blade animation sets
+            // transparent=true and opacity<1 on these to fade the spinning
+            // blades. If we shared the source fuselage mesh's material, the
+            // entire body would go see-through whenever the blades fade
+            // (notably on Disney Dusty, whose prop is baked into the
+            // fuselage mesh).
+            const cloneMat = (m) => (m && typeof m.clone === 'function') ? m.clone() : m;
+            const propMat = Array.isArray(o.material)
+              ? o.material.map(cloneMat)
+              : cloneMat(o.material);
+            const extractedMesh = new THREE.Mesh(extractedGeo, propMat);
             extractedMesh.name = 'ap_extracted_prop_from_' + (o.name || 'mesh');
             extractedMeshes.push({ mesh: extractedMesh, sourceName: o.name || '(unnamed)' });
           }
@@ -8652,7 +8703,9 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0, 'YXZ'));
     return {
       mode: key,
-      pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, -126),
+      // Symmetric with runway36 default — sit at the -Z threshold facing +Z
+      // so the whole runway is ahead.
+      pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, -180),
       vel: new THREE.Vector3(),
       quat: q,
       throttle: 0,
@@ -8674,7 +8727,10 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
   }
   return {
     mode: 'runway36',
-    pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 120),
+    // Runway extends from z=-210 to z=+210; takeoff direction is -Z. Spawning
+    // at z=180 (was 120) puts Dusty just inside the +Z threshold so the full
+    // runway length is ahead of you for the takeoff roll.
+    pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 180),
     vel: new THREE.Vector3(),
     quat: new THREE.Quaternion(),
     throttle: 0,
@@ -8886,7 +8942,8 @@ function resetPlane() {
     camera.userData.diveRevealState = 0;
     camera.userData.heroSide = 1;
     camera.userData.turnBias = 0;
-    camera.fov = 72;
+    camera.userData.lensFov = CAMERA_BASE_FOV;
+    camera.fov = aspectCorrectedCameraFov(CAMERA_BASE_FOV, camera.aspect);
     camera.updateProjectionMatrix();
   }
   if (typeof resetReticleHud === 'function') resetReticleHud();
@@ -9782,7 +9839,7 @@ function updateJetVisual() {
 // =============================================================
 //  CAMERA — chase that stays locked behind the plane
 // =============================================================
-const camLocalOffset = new THREE.Vector3(0, 2.25, 10.4);
+const camLocalOffset = new THREE.Vector3(0, 2.35, 12.8);
 
 // =============================================================
 //  FLIGHT RECORDER / REPLAY
@@ -10610,7 +10667,9 @@ function updateCamera(dt) {
   const diveReveal = prevDiveReveal + (rawDiveReveal - prevDiveReveal) * Math.min(1, dt * 1.0);
   camera.userData.climbRevealState = climbReveal;
   camera.userData.diveRevealState = diveReveal;
-  const backDist = Math.abs(offsetRotated.z) + 2.8 * maneuverReveal + 1.55 * (climbReveal + diveReveal);
+  const speedKtsForCamera = plane.vel.length() * 1.94;
+  const speedDolly = clamp01((speedKtsForCamera - 58) / 230) * 1.7;
+  const backDist = Math.abs(offsetRotated.z) + speedDolly + 2.8 * maneuverReveal + 1.55 * (climbReveal + diveReveal);
   const rawHeight = Math.max(-2.0,
     offsetRotated.y +
     3.2 * maneuverReveal -
@@ -10655,12 +10714,10 @@ function updateCamera(dt) {
 
   const blendedUp = worldUp;
   camera.up.copy(blendedUp);
-  const speedKtsForCamera = plane.vel.length() * 1.94;
   const cameraGroundH = getHeight(plane.pos.x, plane.pos.z);
-  const lowFastFov = clamp01(1 - Math.max(0, plane.pos.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 28) / 88) * 5.5;
-  const speedFov = clamp01((speedKtsForCamera - 36) / 150) * 12.5 + clamp01((speedKtsForCamera - 130) / 230) * 5.5;
-  camera.fov += ((76 + speedFov + lowFastFov + maneuverReveal * 5.2) - camera.fov) * Math.min(1, dt * 4.4);
-  camera.updateProjectionMatrix();
+  const lowFastFov = clamp01(1 - Math.max(0, plane.pos.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 34) / 100) * 1.2;
+  const speedFov = clamp01((speedKtsForCamera - 42) / 190) * 4.5 + clamp01((speedKtsForCamera - 150) / 280) * 2.0;
+  applyCameraLensFov(CAMERA_BASE_FOV + speedFov + lowFastFov + maneuverReveal * 1.3, Math.min(1, dt * 4.4));
 
   camera.lookAt(lookTarget);
   camera.userData.focusTarget = lookTarget.clone();
@@ -12080,6 +12137,7 @@ window.addEventListener('focus', () => {
 // =============================================================
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
+  camera.fov = aspectCorrectedCameraFov(camera.userData.lensFov || CAMERA_BASE_FOV, camera.aspect);
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   updateFxaaPassResolution();
@@ -12115,6 +12173,10 @@ document.addEventListener('fullscreenchange', () => {
 // Apply default style (low-poly) once all HUD refs + scene state exist,
 // so the sky / materials match the HUD indicator from frame one.
 applyStyle();
+// Default biome: desert. Reuses the same code path as the in-game [Y]
+// switcher so sky, fog, lights, sand shader, clouds, dust devils, HUD
+// label and chunks all align from frame one.
+applyBiome('desert');
 
 // __world_feature_runway_markers__ — Runway threshold markers and corner pylons
 (function addRunwayEndMarkers() {
@@ -13249,7 +13311,10 @@ function updateTraffic(dt) {
 spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 240, patternX: 420 }),
-  { speed: 72, targetSize: 11.5, radiusMul: 0.72, phaseOffset: 0, health: 3, rewardPoints: 220, rewardAmmo: 20, callsign: 'UFO 11', typeLabel: 'SAUCER DRONE' }
+  // phase 220 puts it just past the runway threshold in the climb-out segment
+  // (waypoints p0-p2 = 0-170m are ground/runway; p2->p3 ~289m is rotation).
+  // Avoids spawning parked on the runway.
+  { speed: 72, targetSize: 11.5, radiusMul: 0.72, phaseOffset: 220, health: 3, rewardPoints: 220, rewardAmmo: 20, callsign: 'UFO 11', typeLabel: 'SAUCER DRONE' }
 );
 spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
@@ -13270,6 +13335,33 @@ spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 210, patternX: 360 }),
   { speed: 64, targetSize: 11.9, radiusMul: 0.72, phaseOffset: 1640, health: 3, rewardPoints: 230, rewardAmmo: 20, callsign: 'UFO 51', typeLabel: 'SAUCER DRONE' }
+);
+// Second wave — wider/higher patterns, all phases land in the airborne
+// portion of the circuit (>~290m past p3) so none spawn parked.
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathAirfieldCircuit('runway36', { circuitAlt: 290, patternX: 540 }),
+  { speed: 70, targetSize: 12.0, radiusMul: 0.72, phaseOffset: 1400, health: 3, rewardPoints: 240, rewardAmmo: 22, callsign: 'UFO 12', typeLabel: 'SAUCER DRONE' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathAirfieldCircuit('runway18', { circuitAlt: 200, patternX: 380, side: -1 }),
+  { speed: 76, targetSize: 11.6, radiusMul: 0.72, phaseOffset: 700, health: 3, rewardPoints: 230, rewardAmmo: 20, callsign: 'UFO 22', typeLabel: 'SAUCER DRONE' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathAirfieldCircuit('runway36', { circuitAlt: 320, patternX: 600, lookAhead: 28 }),
+  { speed: 84, targetSize: 13.0, radiusMul: 0.72, phaseOffset: 2200, health: 4, rewardPoints: 320, rewardAmmo: 30, callsign: 'UFO 32', typeLabel: 'HEAVY SAUCER' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathAirfieldCircuit('runway18', { circuitAlt: 260, patternX: 460 }),
+  { speed: 68, targetSize: 11.7, radiusMul: 0.72, phaseOffset: 2400, health: 3, rewardPoints: 240, rewardAmmo: 22, callsign: 'UFO 42', typeLabel: 'SAUCER DRONE' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathAirfieldCircuit('runway36', { circuitAlt: 340, patternX: 660, side: -1 }),
+  { speed: 88, targetSize: 13.4, radiusMul: 0.72, phaseOffset: 500, health: 4, rewardPoints: 340, rewardAmmo: 32, callsign: 'UFO 61', typeLabel: 'HEAVY SAUCER' }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
@@ -13834,19 +13926,21 @@ function updatePracticeRingCourse(dt) {
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================
 (function setupGraphicsPanel() {
-  const LEGACY_LS_KEYS = ['gfx-settings-v2', 'gfx-settings-v3', 'gfx-settings-v4'];
-  const LS_KEY = 'gfx-settings-v5';
+  const LEGACY_LS_KEYS = ['gfx-settings-v2', 'gfx-settings-v3', 'gfx-settings-v4', 'gfx-settings-v5'];
+  const LS_KEY = 'gfx-settings-v6';
+  // Defaults track the ultra preset for visual quality, but with bloom and
+  // motion-blur dialed down — full ultra blew them out by default.
   const DEFAULTS = {
-    fxaa: true, shadowsOn: false, shadowQuality: 'low', shadowDistance: 140,
-    dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22,
-    waterReflectivity: 1.28, waterFresnel: 1.12, waterGlint: 1.18, waterOpacity: 0.92,
+    fxaa: true, shadowsOn: true, shadowQuality: 'high', shadowDistance: 320,
+    dof: true, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, ambientFxDensity: 1.12,
+    waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 6, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
     controlPreset: 'casual',
     flightAccel: 0.96, topSpeedKts: 540, liftAssist: 1.06, idlePower: 1.0, pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
     brakeStrength: 1.10, pitchDamping: 1.14, rollDamping: 1.18, rudderDamping: 1.10, stallSoftness: 1.24, maneuverAssist: 1.18, selfLevel: 1.36, weathervaneYaw: 1.18, gearDrag: 1.02, groundEffectStrength: 1.08,
     cameraClimbReveal: 0.95, cameraDiveReveal: 1.0, cameraLag: 0.78,
-    fps: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.42,
+    fps: false, renderScale: 1.0, resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 0.40,
   };
   const PRESETS = {
     low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.52 },
@@ -14129,12 +14223,14 @@ function updatePracticeRingCourse(dt) {
     }
   }
   function applyTerrainClutter() {
-    const density = Math.max(0.2, Math.min(1.2, gfx.floraDensity || 1.0));
+    const density = Math.max(0.2, Math.min(1.6, gfx.floraDensity || 1.0));
     scene.userData.__floraDensity = density;
     for (const c of chunks.values()) {
       c.group.children.forEach(child => {
         if (!child.isInstancedMesh || child.userData.__densityGroup !== 'terrain-clutter') return;
         const base = child.userData.__baseCount || child.count || 0;
+        // base = number actually placed during scatter (≤ per-chunk cap).
+        // Math.min keeps us within the InstancedMesh's allocated capacity.
         child.count = Math.max(0, Math.min(base, Math.round(base * density)));
       });
     }
@@ -14519,7 +14615,7 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
     advancedVisuals.body.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));
-    advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.2, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.6, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'PRACTICE RINGS'));
