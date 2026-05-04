@@ -5387,7 +5387,7 @@ function syncMultiplayerSetupUI() {
       });
     }
     if (mpSetupNote) {
-      const trafficLine = MULTIPLAYER_URL ? 'Random traffic is disabled while network flight is configured.' : (hostIsLocal ? 'Leave server blank for SOLO.' : 'Live deployments default the server to this host.');
+      const trafficLine = hostIsLocal ? 'Leave server blank for SOLO.' : 'Live deployments default the server to this host.';
       mpSetupNote.textContent = `${trafficLine} Spawn: ${SPAWN_OPTIONS.find(opt => opt.key === playerProfileState.spawnMode)?.label || 'RWY 36'} · Callsign: ${playerProfileState.callsign}.`;
     }
   } catch (err) {
@@ -14981,8 +14981,13 @@ function pathUfoWideRoam(opts = {}) {
 }
 
 function trafficEnabled() {
+  // Traffic (UFOs etc.) is scenery/combat fodder, not networked. It used to be
+  // gated behind `!MULTIPLAYER_URL`, but on live deploys MULTIPLAYER_URL
+  // auto-fills to the current host, which silently hid all UFOs in production.
+  // Decoupled: traffic now follows ambient FX density only. MP rooms still see
+  // local UFOs, which is fine — they aren't synced and act as shared scenery.
   const ambientDensity = scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0;
-  return !MULTIPLAYER_URL && ambientDensity > 0.05;
+  return ambientDensity > 0.05;
 }
 
 function updateTraffic(dt) {
