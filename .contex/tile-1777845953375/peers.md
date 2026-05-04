@@ -7,5 +7,10 @@ Available tools:
 - `mcp__contex__chat_send_message` (pass `tile_id: "tile-1777845917309"`)
 - `mcp__contex__chat_acknowledge` (pass `tile_id: "tile-1777845917309"`)
 
+## chat — `tile-1777854846426`
+Available tools:
+- `mcp__contex__chat_send_message` (pass `tile_id: "tile-1777854846426"`)
+- `mcp__contex__chat_acknowledge` (pass `tile_id: "tile-1777854846426"`)
+
 ---
 *This file is auto-updated when canvas links change. Use `reload_objective` or re-read this file for the latest state.*

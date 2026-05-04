@@ -1850,11 +1850,11 @@
     <h1>CANYON AIRSTRIP</h1>
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
-      <div>W/S or PAD LS — PITCH</div>
-      <div>A/D or PAD LS — BANK · Q/E or RB/LB — RUDDER</div>
-      <div>SHIFT/CTRL or RT/LT — THROTTLE</div>
-      <div>SPACE or A — FIRE · M or DPAD RIGHT — NEXT PLANE</div>
-      <div>R or START — RESET · BACK — RACE · F — FULLSCREEN</div>
+      <div>W/S, PAD LS, or TOUCH STICK — PITCH</div>
+      <div>A/D, PAD LS, or TOUCH STICK — BANK · Q/E or RB/LB — RUDDER</div>
+      <div>SHIFT/CTRL, RT/LT, or TOUCH THROTTLE — POWER</div>
+      <div>SPACE, A, or FIRE — SHOOT · M or DPAD RIGHT — NEXT PLANE</div>
+      <div>R, START, or RESET — RESTART · BACK — RACE · F — FULLSCREEN</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -1871,8 +1871,8 @@
       <div class="mp-spawn-row" id="mp-spawn-row"></div>
       <div class="mp-setup-note" id="mp-setup-note">Leave server blank for SOLO. When network flight is enabled, random traffic clears out and everyone uses their chosen callsign + spawn profile.</div>
     </div>
-    <p class="meta">KEYBOARD OR CONTROLLER · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
-    <div class="cta">CLICK, PRESS ANY KEY, OR PRESS A ON CONTROLLER TO FLY</div>
+    <p class="meta">KEYBOARD · CONTROLLER · TOUCH · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
+    <div class="cta">CLICK, TAP, PRESS ANY KEY, OR PRESS A ON CONTROLLER TO FLY</div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -9567,6 +9567,7 @@ function resetPlane() {
   controlState.yaw = 0;
   controlState.throttleUp = 0;
   controlState.throttleDown = 0;
+  if (typeof syncTouchThrottleFromPlane === 'function') syncTouchThrottleFromPlane();
   resetMissionDebrief();
   healPlane();
   resetCombatState();
@@ -9702,8 +9703,9 @@ function updatePhysics(dt) {
   const rollIn = controlState.roll;
   const yawIn = controlState.yaw;
 
-  const throttleUpIn = Math.max((keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleUp : 0);
-  const throttleDownIn = Math.max((keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleDown : 0);
+  const touchThrottle = (typeof getTouchThrottleInput === 'function') ? getTouchThrottleInput() : { up: 0, down: 0 };
+  const throttleUpIn = Math.max((keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowUp']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleUp : 0, touchThrottle.up || 0);
+  const throttleDownIn = Math.max((keys['ControlLeft'] || keys['ControlRight'] || keys['ArrowDown']) ? 1 : 0, INPUT_FLAGS.gamepad ? gamepadState.throttleDown : 0, touchThrottle.down || 0);
   controlState.throttleUp += (throttleUpIn - controlState.throttleUp) * (1 - Math.exp(-18 * dt));
   controlState.throttleDown += (throttleDownIn - controlState.throttleDown) * (1 - Math.exp(-18 * dt));
   if (controlState.throttleUp > 0.01) plane.throttleTarget = Math.min(1, plane.throttleTarget + dt * 2.75 * controlState.throttleUp);
@@ -11064,9 +11066,12 @@ function syncInputIndicator() {
   const ch2 = document.getElementById('ch-line2');
   if (inputInd) {
     if (gamepadState.connected) {
-      const label = /xbox/i.test(gamepadState.id)
-        ? 'XBOX PAD'
-        : (/playstation|dualsense|dualshock|wireless controller/i.test(gamepadState.id) ? 'PS PAD' : 'PAD');
+      const touchInputActive = gamepadState.source === 'virtual' && /touch/i.test(gamepadState.id || '');
+      const label = touchInputActive
+        ? 'TOUCH'
+        : (/xbox/i.test(gamepadState.id)
+          ? 'XBOX PAD'
+          : (/playstation|dualsense|dualshock|wireless controller/i.test(gamepadState.id) ? 'PS PAD' : 'PAD'));
       inputInd.textContent = label;
       inputInd.className = 'hud-chip ok';
     } else {
@@ -11075,10 +11080,18 @@ function syncInputIndicator() {
     }
   }
   if (gamepadState.connected) {
-    if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE';
-    if (ch2) ch2.textContent = plane.fixedGear
-      ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · BACK RACE · START RESET'
-      : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · BACK RACE · START RESET';
+    const touchInputActive = gamepadState.source === 'virtual' && /touch/i.test(gamepadState.id || '');
+    if (touchInputActive) {
+      if (ch1) ch1.textContent = 'TOUCH STICK PITCH/BANK · RIGHT THROTTLE SLIDER';
+      if (ch2) ch2.textContent = plane.fixedGear
+        ? 'FIRE · BRAKE · RESET · SYSTEMS/OPTIONS IN BOTTOM TRAY'
+        : 'FIRE · BRAKE · GEAR · RESET · SYSTEMS/OPTIONS IN BOTTOM TRAY';
+    } else {
+      if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE';
+      if (ch2) ch2.textContent = plane.fixedGear
+        ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · BACK RACE · START RESET'
+        : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · BACK RACE · START RESET';
+    }
   } else {
     if (ch1) ch1.textContent = 'W/S PITCH · A/D BANK · Q/E RUDDER';
     if (ch2) ch2.textContent = plane.fixedGear
@@ -11087,7 +11100,266 @@ function syncInputIndicator() {
   }
 }
 
+const touchControlsState = {
+  enabled: false,
+  supported: false,
+  stickPointerId: null,
+  throttlePointerId: null,
+  stickX: 0,
+  stickY: 0,
+  throttle: 0,
+  lastInputAt: 0,
+  buttons: { fire: false, brake: false, gear: false, reset: false },
+  buttonPulseUntil: { gear: 0, reset: 0 },
+  buttonPointerMap: new Map(),
+};
+
+function getTouchControlElements() {
+  return {
+    root: document.getElementById('touch-controls'),
+    stick: document.getElementById('touch-stick'),
+    stickKnob: document.getElementById('touch-stick-knob'),
+    throttle: document.getElementById('touch-throttle'),
+    throttleFill: document.getElementById('touch-throttle-fill'),
+    throttleKnob: document.getElementById('touch-throttle-knob'),
+    throttleReadout: document.getElementById('touch-throttle-readout'),
+    buttons: Array.from(document.querySelectorAll('[data-touch-button]')),
+  };
+}
+
+function isTouchControlsLikelyUseful() {
+  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return coarse || window.innerWidth <= 920;
+}
+
+function touchButtonActive(name, now = performance.now()) {
+  return !!touchControlsState.buttons[name] || ((touchControlsState.buttonPulseUntil[name] || 0) > now);
+}
+
+function syncTouchButtonClasses() {
+  const now = performance.now();
+  for (const btn of getTouchControlElements().buttons) {
+    const name = btn.dataset.touchButton;
+    btn.classList.toggle('is-active', touchButtonActive(name, now));
+  }
+  const els = getTouchControlElements();
+  if (els.stick) els.stick.classList.toggle('is-active', touchControlsState.stickPointerId != null || Math.hypot(touchControlsState.stickX, touchControlsState.stickY) > 0.03);
+  if (els.throttle) els.throttle.classList.toggle('is-active', touchControlsState.throttlePointerId != null);
+}
+
+function syncTouchThrottleVisual() {
+  const els = getTouchControlElements();
+  const pct = Math.round(Math.max(0, Math.min(1, touchControlsState.throttle)) * 100);
+  if (els.throttleFill) els.throttleFill.style.height = `${pct}%`;
+  if (els.throttleKnob) els.throttleKnob.style.bottom = `${pct}%`;
+  if (els.throttleReadout) els.throttleReadout.textContent = `${pct}%`;
+  if (els.throttle) els.throttle.setAttribute('aria-valuenow', String(pct));
+}
+
+function syncTouchStickVisual() {
+  const els = getTouchControlElements();
+  if (!els.stickKnob) return;
+  els.stickKnob.style.left = `${50 + touchControlsState.stickX * 31}%`;
+  els.stickKnob.style.top = `${50 + touchControlsState.stickY * 31}%`;
+  syncTouchButtonClasses();
+}
+
+function syncTouchVirtualGamepad() {
+  const now = performance.now();
+  const enabled = !!touchControlsState.enabled;
+  if (!enabled) return;
+  const buttons = new Array(16).fill(0);
+  buttons[0] = touchButtonActive('fire', now) ? 1 : 0;
+  buttons[1] = touchButtonActive('brake', now) ? 1 : 0;
+  buttons[2] = touchButtonActive('gear', now) ? 1 : 0;
+  buttons[9] = touchButtonActive('reset', now) ? 1 : 0;
+  virtualGamepadInput.enabled = true;
+  virtualGamepadInput.id = 'Touch Controls';
+  virtualGamepadInput.mapping = 'standard';
+  virtualGamepadInput.axes = [touchControlsState.stickX, touchControlsState.stickY, 0, 0];
+  virtualGamepadInput.buttons = buttons;
+  if (Math.hypot(touchControlsState.stickX, touchControlsState.stickY) > 0.02 || buttons.some(Boolean)) {
+    touchControlsState.lastInputAt = now;
+  }
+}
+
+function clearTouchControlsInput({ keepThrottle = true } = {}) {
+  touchControlsState.stickPointerId = null;
+  touchControlsState.throttlePointerId = null;
+  touchControlsState.stickX = 0;
+  touchControlsState.stickY = 0;
+  for (const name of Object.keys(touchControlsState.buttons)) touchControlsState.buttons[name] = false;
+  touchControlsState.buttonPointerMap.clear();
+  if (!keepThrottle) touchControlsState.throttle = Math.max(0, Math.min(1, plane.throttleTarget || 0));
+  syncTouchStickVisual();
+  syncTouchThrottleVisual();
+  syncTouchVirtualGamepad();
+}
+
+function syncTouchThrottleFromPlane() {
+  if (!Number.isFinite(plane.throttleTarget)) return;
+  touchControlsState.throttle = Math.max(0, Math.min(1, plane.throttleTarget));
+  syncTouchThrottleVisual();
+  syncTouchVirtualGamepad();
+}
+
+function getTouchThrottleInput() {
+  if (!touchControlsState.enabled) return { up: 0, down: 0 };
+  const delta = touchControlsState.throttle - plane.throttleTarget;
+  if (Math.abs(delta) < 0.012) return { up: 0, down: 0 };
+  const shaped = Math.min(1, Math.max(0.18, Math.abs(delta) * 3.4));
+  return delta > 0 ? { up: shaped, down: 0 } : { up: 0, down: shaped };
+}
+
+function markTouchControlsActive(e) {
+  touchControlsState.enabled = true;
+  touchControlsState.supported = true;
+  touchControlsState.lastInputAt = performance.now();
+  if (typeof setAudioEnabled === 'function') {
+    try {
+      setAudioEnabled(true);
+      if (typeof syncAudioIndicator === 'function') syncAudioIndicator();
+    } catch {}
+  }
+  if (renderer && renderer.domElement && typeof renderer.domElement.focus === 'function') {
+    try { renderer.domElement.focus(); } catch {}
+  }
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+}
+
+function setTouchStickFromPointer(e) {
+  const els = getTouchControlElements();
+  if (!els.stick) return;
+  const rect = els.stick.getBoundingClientRect();
+  const cx = rect.left + rect.width * 0.5;
+  const cy = rect.top + rect.height * 0.5;
+  const radius = Math.max(24, Math.min(rect.width, rect.height) * 0.42);
+  let x = (e.clientX - cx) / radius;
+  let y = (e.clientY - cy) / radius;
+  const mag = Math.hypot(x, y);
+  if (mag > 1) { x /= mag; y /= mag; }
+  touchControlsState.stickX = Math.max(-1, Math.min(1, x));
+  touchControlsState.stickY = Math.max(-1, Math.min(1, y));
+  syncTouchStickVisual();
+  syncTouchVirtualGamepad();
+}
+
+function setTouchThrottleFromPointer(e) {
+  const els = getTouchControlElements();
+  if (!els.throttle) return;
+  const track = els.throttle.querySelector('.touch-throttle-track') || els.throttle;
+  const rect = track.getBoundingClientRect();
+  const value = 1 - ((e.clientY - rect.top) / Math.max(1, rect.height));
+  touchControlsState.throttle = Math.max(0, Math.min(1, value));
+  syncTouchThrottleVisual();
+  syncTouchVirtualGamepad();
+}
+
+function setTouchButton(name, down) {
+  if (!Object.prototype.hasOwnProperty.call(touchControlsState.buttons, name)) return;
+  touchControlsState.buttons[name] = !!down;
+  if (down && (name === 'gear' || name === 'reset')) {
+    touchControlsState.buttonPulseUntil[name] = performance.now() + 180;
+  }
+  syncTouchButtonClasses();
+  syncTouchVirtualGamepad();
+}
+
+function configureTouchControlsAvailability() {
+  const els = getTouchControlElements();
+  if (!els.root) return false;
+  const useful = isTouchControlsLikelyUseful();
+  touchControlsState.supported = useful;
+  if (useful && !touchControlsState.enabled) {
+    touchControlsState.enabled = true;
+    syncTouchThrottleFromPlane();
+  }
+  if (!useful && touchControlsState.stickPointerId == null && touchControlsState.throttlePointerId == null && touchControlsState.buttonPointerMap.size === 0) {
+    touchControlsState.enabled = false;
+    if (virtualGamepadInput.id === 'Touch Controls') clearVirtualGamepadInput();
+  }
+  return useful;
+}
+
+function initTouchControls() {
+  const els = getTouchControlElements();
+  if (!els.root || !els.stick || !els.throttle) return;
+  syncTouchThrottleFromPlane();
+
+  els.stick.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    markTouchControlsActive(e);
+    touchControlsState.stickPointerId = e.pointerId;
+    try { els.stick.setPointerCapture(e.pointerId); } catch {}
+    setTouchStickFromPointer(e);
+  });
+  els.stick.addEventListener('pointermove', (e) => {
+    if (touchControlsState.stickPointerId !== e.pointerId) return;
+    markTouchControlsActive(e);
+    setTouchStickFromPointer(e);
+  });
+  const releaseStick = (e) => {
+    if (touchControlsState.stickPointerId !== e.pointerId) return;
+    touchControlsState.stickPointerId = null;
+    touchControlsState.stickX = 0;
+    touchControlsState.stickY = 0;
+    syncTouchStickVisual();
+    syncTouchVirtualGamepad();
+  };
+  els.stick.addEventListener('pointerup', releaseStick);
+  els.stick.addEventListener('pointercancel', releaseStick);
+
+  els.throttle.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    markTouchControlsActive(e);
+    touchControlsState.throttlePointerId = e.pointerId;
+    try { els.throttle.setPointerCapture(e.pointerId); } catch {}
+    setTouchThrottleFromPointer(e);
+  });
+  els.throttle.addEventListener('pointermove', (e) => {
+    if (touchControlsState.throttlePointerId !== e.pointerId) return;
+    markTouchControlsActive(e);
+    setTouchThrottleFromPointer(e);
+  });
+  const releaseThrottle = (e) => {
+    if (touchControlsState.throttlePointerId !== e.pointerId) return;
+    touchControlsState.throttlePointerId = null;
+    syncTouchButtonClasses();
+    syncTouchVirtualGamepad();
+  };
+  els.throttle.addEventListener('pointerup', releaseThrottle);
+  els.throttle.addEventListener('pointercancel', releaseThrottle);
+
+  for (const btn of els.buttons) {
+    const name = btn.dataset.touchButton;
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      markTouchControlsActive(e);
+      touchControlsState.buttonPointerMap.set(e.pointerId, name);
+      try { btn.setPointerCapture(e.pointerId); } catch {}
+      setTouchButton(name, true);
+    });
+  }
+  const releaseButtonPointer = (e) => {
+    const name = touchControlsState.buttonPointerMap.get(e.pointerId);
+    if (!name) return;
+    touchControlsState.buttonPointerMap.delete(e.pointerId);
+    setTouchButton(name, false);
+  };
+  window.addEventListener('pointerup', releaseButtonPointer, true);
+  window.addEventListener('pointercancel', releaseButtonPointer, true);
+  window.addEventListener('resize', configureTouchControlsAvailability);
+  window.addEventListener('orientationchange', configureTouchControlsAvailability);
+  window.addEventListener('blur', () => clearTouchControlsInput({ keepThrottle: true }));
+  configureTouchControlsAvailability();
+}
+
+initTouchControls();
+window.__touchControls = touchControlsState;
+window.__syncTouchControls = syncTouchVirtualGamepad;
+
 function pollGamepadInput() {
+  if (typeof syncTouchVirtualGamepad === 'function') syncTouchVirtualGamepad();
   if (!INPUT_FLAGS.gamepad || (!virtualGamepadInput.enabled && typeof navigator.getGamepads !== 'function')) {
     resetGamepadState();
     combatState.fireHeld = false;
@@ -15337,8 +15609,13 @@ function updatePracticeRingCourse(dt) {
       try { document.exitPointerLock(); } catch {}
     }
     graphicsOverlay.style.display = 'block';
+    document.body.classList.add('options-open');
+    if (typeof clearTouchControlsInput === 'function') clearTouchControlsInput({ keepThrottle: true });
   };
-  const closeOptions = () => { graphicsOverlay.style.display = 'none'; };
+  const closeOptions = () => {
+    graphicsOverlay.style.display = 'none';
+    document.body.classList.remove('options-open');
+  };
   const toggleOptions = () => {
     if (graphicsOverlay.style.display === 'block') closeOptions();
     else openOptions();
@@ -15575,6 +15852,13 @@ window.__ap = {
       camera_height_offset: camera.userData.cameraHeightOffset || 0,
       camera_focus_y_offset: camera.userData.cameraFocusYOffset || 0,
       mouse_flight_enabled: !!INPUT_FLAGS.mouseFlight,
+      touch_controls_enabled: typeof touchControlsState !== 'undefined' ? !!touchControlsState.enabled : false,
+      touch_controls_supported: typeof touchControlsState !== 'undefined' ? !!touchControlsState.supported : false,
+      touch_stick_x: typeof touchControlsState !== 'undefined' ? touchControlsState.stickX : 0,
+      touch_stick_y: typeof touchControlsState !== 'undefined' ? touchControlsState.stickY : 0,
+      touch_throttle: typeof touchControlsState !== 'undefined' ? touchControlsState.throttle : 0,
+      touch_fire: typeof touchControlsState !== 'undefined' ? touchButtonActive('fire') : false,
+      touch_brake: typeof touchControlsState !== 'undefined' ? touchButtonActive('brake') : false,
       reticle_x: reticleState.x,
       reticle_y: reticleState.y,
       mouse_flight_steer_x: mouseFlightState.steerX,
