@@ -1915,6 +1915,8 @@ let MULTIPLAYER_URL = (() => {
 const MULTIPLAYER_CALLSIGN_KEY = 'flight_mp_callsign';
 const MULTIPLAYER_ROOM_KEY = 'flight_mp_room';
 const PLAYER_SPAWN_KEY = 'flight_spawn_mode';
+const PLAYER_SPAWN_EXPLICIT_KEY = 'flight_spawn_mode_explicit';
+const DEFAULT_SPAWN_MODE = 'runway36';
 let MULTIPLAYER_ROOM = (() => {
   try {
     return bootParams.get('room') || localStorage.getItem(MULTIPLAYER_ROOM_KEY) || 'default';
@@ -1931,6 +1933,25 @@ function sanitizeCallsign(value) {
     .slice(0, 16);
   return cleaned || 'PILOT';
 }
+function resolveInitialSpawnMode() {
+  const explicitSpawn = bootParams.get('spawn');
+  if (explicitSpawn) return explicitSpawn;
+  try {
+    const storedSpawn = localStorage.getItem(PLAYER_SPAWN_KEY);
+    const explicitStoredSpawn = localStorage.getItem(PLAYER_SPAWN_EXPLICIT_KEY) === '1';
+    // Old live builds defaulted network-enabled/public hosts to SKY and could
+    // leave that behind in localStorage. Treat an unmarked stored SKY as stale
+    // so live deploys boot on the runway unless the URL explicitly says
+    // `?spawn=sky` or the pilot selects SKY again in the spawn picker.
+    if (storedSpawn === 'sky' && !explicitStoredSpawn) {
+      localStorage.setItem(PLAYER_SPAWN_KEY, DEFAULT_SPAWN_MODE);
+      return DEFAULT_SPAWN_MODE;
+    }
+    return storedSpawn || DEFAULT_SPAWN_MODE;
+  } catch {
+    return DEFAULT_SPAWN_MODE;
+  }
+}
 const playerProfileState = {
   callsign: (() => {
     try {
@@ -1939,13 +1960,7 @@ const playerProfileState = {
       return sanitizeCallsign(bootParams.get('name') || 'PILOT');
     }
   })(),
-  spawnMode: (() => {
-    try {
-      return bootParams.get('spawn') || localStorage.getItem(PLAYER_SPAWN_KEY) || (MULTIPLAYER_URL ? 'sky' : 'runway36');
-    } catch {
-      return bootParams.get('spawn') || (MULTIPLAYER_URL ? 'sky' : 'runway36');
-    }
-  })(),
+  spawnMode: resolveInitialSpawnMode(),
 };
 const SPAWN_OPTIONS = [
   { key: 'sky', label: 'SKY' },
@@ -1955,7 +1970,7 @@ const SPAWN_OPTIONS = [
 ];
 function normalizeSpawnMode(mode) {
   const found = SPAWN_OPTIONS.find(opt => opt.key === mode);
-  return found ? found.key : (MULTIPLAYER_URL ? 'sky' : 'runway36');
+  return found ? found.key : DEFAULT_SPAWN_MODE;
 }
 playerProfileState.spawnMode = normalizeSpawnMode(playerProfileState.spawnMode);
 function persistPlayerProfile() {
@@ -5238,6 +5253,7 @@ function setPlayerCallsign(value) {
 
 function setPlayerSpawnMode(mode) {
   playerProfileState.spawnMode = normalizeSpawnMode(mode);
+  try { localStorage.setItem(PLAYER_SPAWN_EXPLICIT_KEY, '1'); } catch {}
   persistPlayerProfile();
   if (!running) resetPlane();
   syncMultiplayerSetupUI();
