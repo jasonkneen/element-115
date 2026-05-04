@@ -9441,6 +9441,60 @@ const audio = {
   propTextureBlend: 0,
 };
 
+// Crash-replay theme — `final.mp3` triggered when the replay reaches
+// the crash moment, plays through (no loop) until the user stops the
+// replay, resets the plane, or otherwise restarts. Routed through
+// audio.master when possible so the master mute toggle still works.
+const crashFinalMusic = {
+  el: null,
+  source: null,
+  routed: false,
+  triggered: false,
+  ensure() {
+    if (this.el) return this.el;
+    const el = new Audio('final.mp3');
+    el.preload = 'auto';
+    el.loop = false;
+    this.el = el;
+    return el;
+  },
+  routeThroughMaster() {
+    if (this.routed || !this.el || !audio.ctx || !audio.master) return;
+    try {
+      this.source = audio.ctx.createMediaElementSource(this.el);
+      this.source.connect(audio.master);
+      this.routed = true;
+    } catch (err) {
+      // Already routed (some browsers throw on second source creation),
+      // or routing unsupported — fall back to default device output.
+      console.warn('[finalMusic] route failed:', err && err.message || err);
+    }
+  },
+  play() {
+    if (this.triggered) return;
+    this.triggered = true;
+    const el = this.ensure();
+    if (audio.ctx && audio.ctx.state === 'suspended') {
+      try { audio.ctx.resume(); } catch {}
+    }
+    this.routeThroughMaster();
+    try {
+      el.currentTime = 0;
+      const p = el.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(err => console.warn('[finalMusic] play failed:', err && err.message || err));
+      }
+    } catch (err) {
+      console.warn('[finalMusic] play threw:', err && err.message || err);
+    }
+  },
+  stop() {
+    this.triggered = false;
+    if (!this.el) return;
+    try { this.el.pause(); this.el.currentTime = 0; } catch {}
+  },
+};
+
 function isPropAirframe() {
   return typeof plane !== 'undefined' && !!((plane.props && plane.props.length) || plane.suppressJetFX);
 }
@@ -11105,6 +11159,7 @@ function replayClear() {
   replay.eventFrameIdx = 0;
   replay.mode = 'movie';
   replay.eventAnchor = null;
+  if (typeof crashFinalMusic !== 'undefined') crashFinalMusic.stop();
 }
 
 // Build 4–5 movie-cam anchors spaced along the recorded path so the
@@ -11219,6 +11274,7 @@ function replayStop() {
   replay.playing = false;
   replay.startIdx = 0;
   replay.mode = 'movie';
+  if (typeof crashFinalMusic !== 'undefined') crashFinalMusic.stop();
   syncReplayUI();
 }
 // Called from animate() when replay is active, BEFORE updateJetVisual +
@@ -11305,6 +11361,15 @@ function replayPreStep(dt) {
   if (idx < 0) idx = frames.length - 1;
   replay.playIdx = idx;
   replaySyncState(frames, idx);
+  // Cue the crash theme just before the impact frame plays. Crash-only
+  // (skip landings); the `triggered` flag ensures it fires once per replay
+  // session, so loops don't re-start the song.
+  if (replay.playing && plane.crashed && replay.eventFrameIdx > 0
+      && typeof crashFinalMusic !== 'undefined' && !crashFinalMusic.triggered) {
+    const lead = Math.floor(REPLAY_FPS * 0.5); // ~0.5s before impact
+    const triggerIdx = Math.max(replay.startIdx, replay.eventFrameIdx - lead);
+    if (idx >= triggerIdx) crashFinalMusic.play();
+  }
 }
 // Phase 2 (after updateCamera): override camera for non-chase modes.
 function replayPostStep() {
