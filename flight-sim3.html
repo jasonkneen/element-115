@@ -605,6 +605,11 @@
     color: #fff3d6;
     background: radial-gradient(circle at 42% 34%, rgba(255, 238, 188, 0.18), rgba(255, 117, 70, 0.26) 48%, rgba(12, 14, 21, 0.38));
   }
+  .touch-button.missile {
+    color: #dff8ff;
+    border-color: rgba(125, 231, 255, 0.24);
+    background: radial-gradient(circle at 42% 34%, rgba(178, 248, 255, 0.20), rgba(44, 170, 255, 0.24) 52%, rgba(10, 16, 26, 0.40));
+  }
   .touch-button.is-active,
   .touch-pad.is-active {
     border-color: rgba(255, 230, 178, 0.42);
@@ -649,6 +654,7 @@
     }
     .touch-button { border-radius: 13px; font-size: 7px; }
     .touch-button.fire { border-radius: 16px; height: calc(var(--touch-button-size) * 2 + 6px); }
+    .touch-button.missile { font-size: 6.5px; }
     .touch-label { display: none; }
     .touch-throttle-readout { top: -17px; font-size: 7px; }
     .touch-throttle-knob { width: 28px; height: 15px; }
@@ -663,10 +669,10 @@
   .target-frame {
     position: absolute;
     inset: 0;
-    border: 1px solid rgba(255, 206, 104, 0.52);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255, 210, 110, 0.06), rgba(255, 210, 110, 0.01));
-    box-shadow: inset 0 0 0 1px rgba(255, 231, 176, 0.08), 0 0 20px rgba(255, 186, 64, 0.08);
+    border: 1px solid rgba(255, 206, 104, 0.66);
+    border-radius: 3px;
+    background: linear-gradient(180deg, rgba(255, 210, 110, 0.035), rgba(255, 210, 110, 0.006));
+    box-shadow: inset 0 0 0 1px rgba(255, 231, 176, 0.1), 0 0 20px rgba(255, 186, 64, 0.12);
   }
   .target-frame::before,
   .target-frame::after {
@@ -711,6 +717,22 @@
     background: rgba(12, 18, 28, 0.72);
     color: rgba(255, 244, 206, 0.98);
     border-radius: 6px;
+  }
+  .target-bracket.locked .target-frame {
+    border-color: rgba(116, 239, 255, 0.92);
+    box-shadow: inset 0 0 0 1px rgba(116, 239, 255, 0.28), 0 0 30px rgba(116, 239, 255, 0.36);
+  }
+  .target-bracket.locked .target-tag,
+  .target-bracket.locked .target-readout {
+    border-color: rgba(116, 239, 255, 0.46);
+    color: rgba(218, 253, 255, 0.98);
+  }
+  .target-bracket.shield-hit .target-frame {
+    border-color: rgba(116, 239, 255, 1);
+    box-shadow: inset 0 0 0 1px rgba(116, 239, 255, 0.48), 0 0 42px rgba(116, 239, 255, 0.62);
+  }
+  .target-bracket.damaged .target-readout {
+    color: rgba(255, 194, 126, 0.98);
   }
 
   #title.flight-briefing-card {
@@ -1739,6 +1761,7 @@
     </div>
     <div class="touch-buttons" aria-label="Mobile flight buttons">
       <button type="button" class="touch-button fire" data-touch-button="fire">FIRE</button>
+      <button type="button" class="touch-button missile" data-touch-button="missile">MSL</button>
       <button type="button" class="touch-button" data-touch-button="brake">BRAKE</button>
       <button type="button" class="touch-button" data-touch-button="gear">GEAR</button>
       <button type="button" class="touch-button" data-touch-button="reset">RESET</button>
@@ -1766,8 +1789,9 @@
         <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
       </div>
       <div class="hud-stat-chip hud-track-chip" id="hud-ammo-chip">
-        <div class="hud-track-head"><span class="hud-label">AMMO</span><span class="hud-subtle"><span id="ammo-val">300</span>/<span id="ammo-max">300</span></span></div>
+        <div class="hud-track-head"><span class="hud-label">WEAP</span><span class="hud-subtle"><span id="ammo-val">120</span>/<span id="ammo-max">300</span> · MSL <span id="missile-val">1</span> · EARN <span id="supply-val">IDLE</span></span></div>
         <div class="bar hud-mini-track"><div id="ammo-bar" style="width:100%;background:#ffcc66;"></div></div>
+        <div class="hud-subtle" id="weapon-mode">BULLET</div>
       </div>
       <div class="hud-stat-chip" id="hud-score-chip">
         <div class="hud-track-head"><span class="hud-label">SCORE</span><span class="hud-value big" id="score-val">0</span></div>
@@ -1806,7 +1830,7 @@
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
     <div id="ch-line1">W/S PITCH · A/D BANK · Q/E RUDDER</div>
-    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · N RACE · P OPTIONS · R RESET</div>
+    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · G GEAR · N RACE · P OPTIONS · R RESET</div>
   </div>
   <div class="panel game-dialog-chrome game-status-shell" id="status-msg">SHIFT/CTRL THROTTLE · M CHANGE PLANE · P OPTIONS</div>
   <div class="panel game-dialog-chrome thin-surface-hud-shell course-director-shell is-hidden" id="course-director">
@@ -1853,8 +1877,8 @@
       <div>W/S, PAD LS, or TOUCH STICK — PITCH</div>
       <div>A/D, PAD LS, or TOUCH STICK — BANK · Q/E or RB/LB — RUDDER</div>
       <div>SHIFT/CTRL, RT/LT, or TOUCH THROTTLE — POWER</div>
-      <div>SPACE, A, or FIRE — SHOOT · M or DPAD RIGHT — NEXT PLANE</div>
-      <div>R, START, or RESET — RESTART · BACK — RACE · F — FULLSCREEN</div>
+      <div>SPACE, A, or FIRE — BULLET GUNS · C — CYCLE TARGET · X or MSL — MISSILE</div>
+      <div>M or DPAD RIGHT — NEXT PLANE · R, START, or RESET — RESTART · BACK — RACE · F — FULLSCREEN</div>
     </div>
     <div class="multiplayer-setup-card">
       <div class="multiplayer-setup-grid">
@@ -3566,6 +3590,12 @@ function registerDestructible(object, opts = {}) {
     object,
     radius: opts.radius || 3,
     health: opts.health || 1,
+    maxHealth: opts.maxHealth || opts.health || 1,
+    shield: opts.shield || 0,
+    shieldMax: opts.shieldMax || opts.shield || 0,
+    shieldPulse: 0,
+    lastHitAt: 0,
+    lastDamageText: '',
     alive: true,
     kind: opts.kind || 'prop',
   };
@@ -4111,6 +4141,69 @@ function buildAirfield() {
 }
 buildAirfield();
 
+const worldInstallations = [];
+function addGenerativeInstallation(label, x, z, opts = {}) {
+  const groundY = (x * x + z * z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(x, z);
+  const group = new THREE.Group();
+  group.name = `installation:${label}`;
+  group.position.set(x, groundY, z);
+  const padRadius = opts.padRadius || 24;
+  const padMat = new THREE.MeshStandardMaterial({ color: opts.padColor || 0x34333a, roughness: 0.86, metalness: 0.12 });
+  const trimMat = new THREE.MeshBasicMaterial({ color: opts.trimColor || 0x7de7ff, transparent: true, opacity: 0.45, toneMapped: false });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x242936, roughness: 0.62, metalness: 0.34 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: opts.wallColor || 0x8e897c, roughness: 0.82, metalness: 0.12 });
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(padRadius, padRadius * 1.06, 0.22, 36), padMat);
+  pad.position.y = 0.08;
+  group.add(pad);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(padRadius * 0.86, 0.16, 8, 48), trimMat.clone());
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.28;
+  group.add(ring);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(5.6, 18, 10), wallMat);
+  dome.scale.set(1.25, 0.52, 1.25);
+  dome.position.set(-padRadius * 0.22, 3.0, padRadius * 0.12);
+  group.add(dome);
+  const block = new THREE.Mesh(new THREE.BoxGeometry(10, 5.2, 7.2), wallMat.clone());
+  block.position.set(padRadius * 0.26, 2.6, -padRadius * 0.18);
+  group.add(block);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.34, 24, 8), darkMat);
+  mast.position.set(padRadius * 0.42, 12, padRadius * 0.38);
+  group.add(mast);
+  const dish = new THREE.Mesh(new THREE.ConeGeometry(3.2, 1.25, 28, 1, true), new THREE.MeshStandardMaterial({ color: 0x9fb6c7, roughness: 0.34, metalness: 0.56, side: THREE.DoubleSide }));
+  dish.rotation.x = Math.PI * 0.36;
+  dish.rotation.z = opts.dishYaw || 0;
+  dish.position.set(padRadius * 0.42, 24.2, padRadius * 0.38);
+  group.add(dish);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + (opts.phase || 0);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), trimMat.clone());
+    beacon.position.set(Math.cos(a) * padRadius * 0.72, 0.62, Math.sin(a) * padRadius * 0.72);
+    beacon.userData.phase = i / 6;
+    group.add(beacon);
+  }
+  applyShadowFlags(group);
+  scene.add(group);
+  const rec = { label, group, pos: new THREE.Vector3(x, groundY, z), radius: padRadius, beacons: group.children.filter(o => o.material && o.material.toneMapped === false) };
+  worldInstallations.push(rec);
+  return rec;
+}
+addGenerativeInstallation('RIDGE ARRAY', 420, -760, { padRadius: 28, trimColor: 0x7df7ff, dishYaw: 0.4 });
+addGenerativeInstallation('CANYON RELAY', -560, -430, { padRadius: 24, trimColor: 0xffd37f, wallColor: 0x9a8066, phase: 0.3 });
+addGenerativeInstallation('RESERVOIR LAB', 620, 720, { padRadius: 30, trimColor: 0x8dffcb, wallColor: 0x7f8f90, dishYaw: -0.55 });
+window.__worldInstallations = worldInstallations;
+
+function updateGenerativeInstallations(dt) {
+  const t = performance.now() * 0.002;
+  for (const inst of worldInstallations) {
+    if (inst.group) inst.group.rotation.y += dt * 0.015;
+    for (const beacon of inst.beacons || []) {
+      const pulse = 0.28 + Math.max(0, Math.sin(t * 2.2 + (beacon.userData.phase || 0) * Math.PI * 2)) * 0.46;
+      beacon.material.opacity = pulse;
+      beacon.scale.setScalar(0.75 + pulse * 1.35);
+    }
+  }
+}
+
 function updateRunwayLights(nightFactor, twilight) {
   const nightGlow = Math.max(0, nightFactor * 1.15 + twilight * 0.22);
   const pulseT = performance.now() * 0.004;
@@ -4221,6 +4314,16 @@ function makeJet() {
   }
   root.userData.gunL = addWingGun(-1);
   root.userData.gunR = addWingGun(1);
+  root.userData.missileL = new THREE.Vector3(-4.15, -0.42, 0.72);
+  root.userData.missileR = new THREE.Vector3(4.15, -0.42, 0.72);
+
+  // Small under-wing rails for alternating missile launches.
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 1.15), matDark);
+    rail.position.set(side * 4.15, -0.42, 0.72);
+    rail.rotation.y = side * -0.04;
+    root.add(rail);
+  }
 
   // Engine nozzle
   const nozzle = new THREE.Mesh(
@@ -5722,7 +5825,7 @@ function updateMultiplayer(dt) {
       // top strip still has a complete systems readout, but label it as
       // fixed rather than implying retractable gear is available.
       const ch2 = document.getElementById('ch-line2');
-      if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · P OPTIONS · R RESET';
+      if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · P OPTIONS · R RESET';
       const gearRow = document.getElementById('gear');
       if (gearRow) {
         gearRow.textContent = 'FIXED';
@@ -7156,16 +7259,39 @@ const puffTex = makePuffTexture(128, 37);
 // Log combat system availability once it's fully wired (moved below)
 const combatState = {
   projectiles: [],
+  missiles: [],
   fireCooldown: 0,
+  missileCooldown: 0,
   shotsFired: 0,
   shotHits: 0,
+  missilesFired: 0,
+  missileHits: 0,
   kills: 0,
   crashFxTriggered: false,
   crashBlastTimer: 0,
-  // E16 — ammo is a belt of 300 rounds. Two rounds per burst (one per
-  // muzzle). Depleted → silent cooldown, regens slowly while not firing.
-  ammo: 300,
+  // E16 — ammo is a belt of 300 rounds. Bullets are now lower-power
+  // kinetic rounds; missiles carry the old explosive force one at a time.
+  // The player starts light and earns the rest through active flight time
+  // plus combat rewards, so weapons feel like resources instead of freebies.
+  ammoStart: 120,
+  ammo: 120,
   ammoMax: 300,
+  ammoEarnRate: 5.0,
+  ammoEarnBank: 0,
+  ammoEarnedTotal: 0,
+  missilesStart: 1,
+  missilesAmmo: 1,
+  missilesMax: 4,
+  missileEarnInterval: 24,
+  missileEarnBank: 0,
+  missilesEarnedTotal: 0,
+  supplyEarnSeconds: 0,
+  supplyToastAmmo: 0,
+  lastSupplyAwardAt: 0,
+  lastSupplyFlashAt: 0,
+  missileSide: -1,
+  alienWeaponUntil: 0,
+  alienWeaponLastAwardAt: 0,
   lastFiredAt: 0,
   dryClickUntil: 0,
 };
@@ -7193,9 +7319,9 @@ const tracerHaloMat = new THREE.MeshBasicMaterial({
 });
 for (let i = 0; i < 72; i++) {
   const mesh = new THREE.Group();
-  const halo = new THREE.Mesh(projectileHaloGeo, tracerHaloMat);
-  const shell = new THREE.Mesh(projectileShellGeo, projectileShellMat);
-  const core = new THREE.Mesh(projectileCoreGeo, projectileCoreMat);
+  const halo = new THREE.Mesh(projectileHaloGeo, tracerHaloMat.clone());
+  const shell = new THREE.Mesh(projectileShellGeo, projectileShellMat.clone());
+  const core = new THREE.Mesh(projectileCoreGeo, projectileCoreMat.clone());
   halo.renderOrder = 28;
   shell.renderOrder = 29;
   core.renderOrder = 30;
@@ -7210,6 +7336,49 @@ for (let i = 0; i < 72; i++) {
     vel: new THREE.Vector3(),
     life: 0,
     active: false,
+    halo,
+    shell,
+    core,
+    damage: 0.36,
+    intensity: 0.36,
+    source: 'shot',
+    type: 'bullet',
+  });
+}
+
+const missileGroup = new THREE.Group();
+scene.add(missileGroup);
+const missileBodyGeo = new THREE.CylinderGeometry(0.16, 0.23, 2.8, 10);
+const missileNoseGeo = new THREE.ConeGeometry(0.24, 0.62, 10);
+const missileFinGeo = new THREE.BoxGeometry(0.48, 0.035, 0.22);
+const missileBodyMat = new THREE.MeshStandardMaterial({ color: 0xd8dde4, roughness: 0.42, metalness: 0.36 });
+const missileGlowMat = new THREE.MeshBasicMaterial({ color: 0x7de7ff, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+for (let i = 0; i < 8; i++) {
+  const mesh = new THREE.Group();
+  const body = new THREE.Mesh(missileBodyGeo, missileBodyMat.clone());
+  body.rotation.x = Math.PI / 2;
+  const nose = new THREE.Mesh(missileNoseGeo, missileBodyMat.clone());
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -1.7;
+  const flare = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), missileGlowMat.clone());
+  flare.position.z = 1.55;
+  const finL = new THREE.Mesh(missileFinGeo, missileBodyMat.clone());
+  finL.position.set(-0.32, 0, 0.94);
+  const finR = finL.clone();
+  finR.position.x = 0.32;
+  mesh.add(body, nose, flare, finL, finR);
+  mesh.visible = false;
+  missileGroup.add(mesh);
+  combatState.missiles.push({
+    mesh,
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    target: null,
+    targetId: '',
+    life: 0,
+    active: false,
+    side: 1,
+    smokeTimer: 0,
   });
 }
 const muzzleFlashPool = new ParticlePool(scene, {
@@ -7323,11 +7492,206 @@ const groundScorchFX = (() => {
     }
   };
 })();
+const bulletSurfaceDamageFX = (() => {
+  const COUNT = 96;
+  const tex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 96;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(48, 48, 1, 48, 48, 45);
+    grad.addColorStop(0, 'rgba(4,3,2,0.95)');
+    grad.addColorStop(0.23, 'rgba(18,13,9,0.76)');
+    grad.addColorStop(0.52, 'rgba(48,34,24,0.22)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 96, 96);
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 7 + Math.random() * 22;
+      const x = 48 + Math.cos(a) * r;
+      const y = 48 + Math.sin(a) * r;
+      g.fillStyle = `rgba(5,4,3,${0.18 + Math.random() * 0.32})`;
+      g.beginPath(); g.arc(x, y, 1.2 + Math.random() * 3.4, 0, Math.PI * 2); g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace || t.colorSpace;
+    return t;
+  })();
+  const pool = [];
+  for (let i = 0; i < COUNT; i++) {
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false,
+      color: 0xffffff,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.renderOrder = 3;
+    mesh.visible = false;
+    scene.add(mesh);
+    pool.push({ mesh, age: Infinity, life: 0, active: false, baseOpacity: 0 });
+  }
+  return {
+    spawn(pos, size = 1.0, opts = {}) {
+      let slot = pool.find(p => !p.active);
+      if (!slot) slot = pool.reduce((a, b) => (a.age > b.age ? a : b));
+      const jitter = opts.jitter || 0.18;
+      slot.mesh.position.set(
+        pos.x + (Math.random() - 0.5) * jitter,
+        pos.y + 0.055 + Math.random() * 0.018,
+        pos.z + (Math.random() - 0.5) * jitter
+      );
+      slot.mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
+      const s = Math.max(0.45, 0.72 + size * 1.45) * (0.82 + Math.random() * 0.44);
+      slot.mesh.scale.set(s, s * (0.72 + Math.random() * 0.42), 1);
+      slot.baseOpacity = Math.min(0.46, 0.2 + size * 0.12);
+      slot.mesh.material.opacity = slot.baseOpacity;
+      slot.mesh.material.color.setHex(opts.color || 0xffffff);
+      slot.mesh.visible = true;
+      slot.age = 0;
+      slot.life = opts.life || (7.5 + Math.random() * 9.0 + size * 4.0);
+      slot.active = true;
+    },
+    update(dt) {
+      for (const p of pool) {
+        if (!p.active) continue;
+        p.age += dt;
+        const fadeIn = Math.min(1, p.age / 0.08);
+        const fadeOut = p.age > p.life ? Math.max(0, 1 - (p.age - p.life) / 3.8) : 1;
+        p.mesh.material.opacity = p.baseOpacity * fadeIn * fadeOut;
+        if (fadeOut <= 0.01) {
+          p.active = false;
+          p.mesh.visible = false;
+          p.mesh.material.opacity = 0;
+          p.age = Infinity;
+          p.life = 0;
+        }
+      }
+    },
+    clear() {
+      for (const p of pool) {
+        p.active = false;
+        p.mesh.visible = false;
+        p.mesh.material.opacity = 0;
+        p.age = Infinity;
+        p.life = 0;
+      }
+    },
+    activeCount() {
+      return pool.reduce((n, p) => n + (p.active ? 1 : 0), 0);
+    }
+  };
+})();
+
+function spawnGunSurfaceDamage(pos, opts = {}) {
+  const bullet = opts.type !== 'alien';
+  const size = bullet ? (opts.size || 0.38) : (opts.size || 0.72);
+  const color = bullet ? 0xffffff : 0x80f4ff;
+  if (bulletSurfaceDamageFX) bulletSurfaceDamageFX.spawn(pos, size, { color, life: bullet ? 10 + Math.random() * 8 : 4.5 + Math.random() * 3, jitter: bullet ? 0.34 : 0.5 });
+  if (groundScorchFX && bullet && Math.random() < 0.28) groundScorchFX.spawn(pos, 0.08 + size * 0.14);
+  const sparkCount = bullet ? 2 + Math.floor(Math.random() * 3) : 5;
+  impactSparkPool.emitCluster(pos, sparkCount, bullet ? 0.22 : 0.55, 0.08, bullet ? 0.16 : 0.28, bullet ? 0.34 : 0.66);
+}
 const _combatTmpA = new THREE.Vector3();
 const _combatTmpB = new THREE.Vector3();
 const _combatTmpC = new THREE.Vector3();
 const _combatTmpD = new THREE.Vector3();
 const _projectileForward = new THREE.Vector3(0, 0, 1);
+const _missileForward = new THREE.Vector3(0, 0, -1);
+
+function alienWeaponActive(now = performance.now()) {
+  return now < (combatState.alienWeaponUntil || 0);
+}
+
+function setProjectileVisual(p, type = 'bullet') {
+  p.type = type;
+  const alien = type === 'alien';
+  if (p.halo && p.halo.material) {
+    p.halo.material.color.setHex(alien ? 0x31d9ff : 0xff5e2c);
+    p.halo.material.opacity = alien ? 0.62 : 0.22;
+  }
+  if (p.shell && p.shell.material) {
+    p.shell.material.color.setHex(alien ? 0x74efff : 0xffb14d);
+    p.shell.material.opacity = alien ? 0.96 : 0.58;
+  }
+  if (p.core && p.core.material) {
+    p.core.material.color.setHex(alien ? 0xd9fdff : 0xfffde8);
+  }
+  p.mesh.scale.set(alien ? 1.22 : 0.62, alien ? 1.22 : 0.62, alien ? 1.18 : 0.42);
+}
+
+function deactivateMissile(m) {
+  m.active = false;
+  m.life = 0;
+  m.target = null;
+  m.targetId = '';
+  m.smokeTimer = 0;
+  m.mesh.visible = false;
+}
+
+function getMissileTarget() {
+  const target = targetHudState.activeTarget;
+  if (!target || target.kind !== 'traffic' || !target.destructible || !target.destructible.alive) return null;
+  if ((targetHudState.lockAmount || 0) < 0.35) return null;
+  return target;
+}
+
+function activateAlienWeapon(durationSec = 30) {
+  const until = performance.now() + durationSec * 1000;
+  combatState.alienWeaponUntil = Math.max(combatState.alienWeaponUntil || 0, until);
+  if (typeof flashStatus === 'function') flashStatus(`ALIEN BLUE PULSE ONLINE · ${durationSec}S`, 'panel ok', 1.8);
+  if (typeof window.showComboBanner === 'function') window.showComboBanner('ALIEN WEAPON', 'BLUE PULSE · 30 SECONDS', '#74efff');
+}
+
+function maybeAwardAlienWeapon() {
+  if (combatState.kills > 0 && combatState.kills % 3 === 0 && combatState.alienWeaponLastAwardAt !== combatState.kills) {
+    combatState.alienWeaponLastAwardAt = combatState.kills;
+    activateAlienWeapon(30);
+  }
+}
+
+function markAlienReaction(target, source = 'shot') {
+  const rec = target && target.trafficRef;
+  if (!rec || rec.targetKind !== 'ufo-saucer') return;
+  const now = performance.now();
+  rec.aiMode = source === 'missile' || (target.health <= Math.max(1, target.maxHealth * 0.55) && Math.random() > 0.35) ? 'flee' : 'dogfight';
+  rec.aiUntil = now + (rec.aiMode === 'flee' ? 5200 : 7800);
+  rec.evasivePhase = Math.random() * Math.PI * 2;
+}
+
+function fireMissile() {
+  if (combatState.missileCooldown > 0 || combatState.missilesAmmo <= 0 || plane.crashed || combatState.missiles.some(m => m.active)) {
+    if (combatState.missilesAmmo <= 0 && typeof flashStatus === 'function') flashStatus('MISSILES EMPTY · KEEP FLYING TO EARN', 'panel warn', 0.9);
+    else if (combatState.missiles.some(m => m.active) && typeof flashStatus === 'function') {
+      combatState.missileCooldown = Math.max(combatState.missileCooldown, 0.45);
+      flashStatus('MISSILE IN FLIGHT', 'panel warn', 0.55);
+    }
+    return false;
+  }
+  const missile = combatState.missiles.find(m => !m.active);
+  if (!missile) return false;
+  const side = combatState.missileSide > 0 ? 1 : -1;
+  combatState.missileSide = -side;
+  combatState.missilesAmmo = Math.max(0, combatState.missilesAmmo - 1);
+  combatState.missilesFired += 1;
+  combatState.missileCooldown = 1.18;
+  combatState.lastFiredAt = performance.now();
+  const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const anchor = side < 0 ? (jet.userData.missileL || jet.userData.gunL) : (jet.userData.missileR || jet.userData.gunR);
+  missile.pos.copy(anchor || _combatTmpB.set(side * 4.0, -0.35, 0.4)).applyQuaternion(plane.quat).add(plane.pos);
+  missile.vel.copy(forward).multiplyScalar(230).addScaledVector(plane.vel, 0.82);
+  missile.target = getMissileTarget();
+  missile.targetId = missile.target ? missile.target.id : '';
+  missile.life = 6.2;
+  missile.active = true;
+  missile.side = side;
+  missile.mesh.visible = true;
+  missile.mesh.position.copy(missile.pos);
+  missile.mesh.quaternion.setFromUnitVectors(_missileForward, forward);
+  muzzleFlashPool.emitCluster(missile.pos, 8, 0.3, 0.18, 0.45, 0.9);
+  if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 180, maxMs: 120, volume: 0.72, rate: 0.72 });
+  if (typeof flashStatus === 'function') flashStatus(missile.target ? `MISSILE AWAY · ${missile.target.label}` : 'MISSILE AWAY · DUMB FIRE', 'panel ok', 1.0);
+  return true;
+}
 
 function deactivateProjectile(p) {
   p.active = false;
@@ -7373,41 +7737,132 @@ function spawnGroundImpactExplosion(pos, intensity = 1.0) {
   }
 }
 
-// Apply damage to a destructible. Falls through to destroyTarget() on kill.
-// For single-shot targets (health == 1 default) this behaves identically
-// to the old instant-kill path. Traffic planes now take 3 hits.
+// Apply damage to a destructible. UFOs absorb hits through shields first;
+// missiles carry the explosive punch, while bullets are mostly kinetic pings.
 function damageDestructible(target, pos, damage = 1.0, intensity = 1.0, source = 'shot') {
   if (!target || !target.alive) return false;
-  if (source === 'shot') combatState.shotHits += 1;
-  target.health = Math.max(0, target.health - damage);
-  const isAirframeTarget = target.kind === 'traffic' || target.kind === 'drone' || target.kind === 'floatingTarget';
-  impactBlastPool.emitCluster(pos,
-    Math.round(3 + intensity * 4),
-    0.45 + intensity * 0.35, 0.18, 0.28 + intensity * 0.12, 0.8 + intensity * 0.35
-  );
-  // Hit feedback spark cluster — scaled to damage
-  impactSparkPool.emitCluster(pos,
-    Math.round(4 + damage * 6),
-    0.6 + damage * 0.5, 0.35, 0.5 + damage * 0.2, 0.9 + damage * 0.4
-  );
-  if (isAirframeTarget) {
-    spawnExplosion(pos, 0.28 + intensity * 0.18, 0.10 + intensity * 0.06);
+  const playerWeapon = source === 'shot' || source === 'missile' || source === 'alien-pulse';
+  if (playerWeapon) combatState.shotHits += 1;
+  const isTrafficTarget = target.kind === 'traffic';
+  const isAirframeTarget = isTrafficTarget || target.kind === 'drone' || target.kind === 'floatingTarget';
+  target.lastHitAt = performance.now();
+  target.shieldPulse = Math.min(1.8, (target.shieldPulse || 0) + 1.0);
+
+  let hullDamage = damage;
+  if (target.shield > 0) {
+    const shieldDamage = Math.min(target.shield, damage * (source === 'missile' ? 1.65 : source === 'alien-pulse' ? 1.25 : 1.0));
+    target.shield = Math.max(0, target.shield - shieldDamage);
+    hullDamage = Math.max(0, damage - shieldDamage * 0.58);
+    target.lastDamageText = `SHIELD ${Math.round((target.shield / Math.max(1, target.shieldMax || 1)) * 100)}%`;
+    impactBlastPool.emitCluster(pos, Math.round(5 + intensity * 5), 0.72 + intensity * 0.42, 0.10, 0.32 + intensity * 0.12, 0.9 + intensity * 0.35);
+    impactSparkPool.emitCluster(pos, Math.round(8 + damage * 5), 0.9 + damage * 0.42, 0.22, 0.45 + damage * 0.12, 1.0 + damage * 0.34);
+    if (typeof flashStatus === 'function' && isTrafficTarget) flashStatus(`${target.lastDamageText} · ${target.health}/${target.maxHealth} HULL`, 'panel warn', 0.8);
   }
-  // Bullet impact ping — variant chosen randomly so repeat shots don't
-  // sound identical. Throttled because multiple projectiles can land in
-  // the same frame on a big target.
+
+  if (hullDamage > 0.01) {
+    target.health = Math.max(0, target.health - hullDamage);
+    target.lastDamageText = `HULL ${Math.round((target.health / Math.max(1, target.maxHealth || 1)) * 100)}%`;
+  }
+
+  if (isAirframeTarget && source === 'missile') {
+    spawnExplosion(pos, 0.78 + intensity * 0.38, 0.35 + intensity * 0.16);
+  } else if (isAirframeTarget && source === 'alien-pulse') {
+    impactBlastPool.emitCluster(pos, 9, 1.0, 0.12, 0.35, 1.2);
+  } else if (isAirframeTarget) {
+    impactSparkPool.emitCluster(pos, Math.round(4 + damage * 6), 0.45 + damage * 0.3, 0.18, 0.32 + damage * 0.14, 0.72 + damage * 0.28);
+  } else {
+    if (source === 'shot' || source === 'alien-pulse') {
+      spawnGunSurfaceDamage(pos, { type: source === 'alien-pulse' ? 'alien' : 'bullet', size: source === 'alien-pulse' ? 0.6 : 0.3 });
+    } else {
+      impactBlastPool.emitCluster(pos, Math.round(2 + intensity * 2), 0.25 + intensity * 0.18, 0.10, 0.16 + intensity * 0.06, 0.45 + intensity * 0.18);
+      impactSparkPool.emitCluster(pos, Math.round(3 + damage * 5), 0.45 + damage * 0.3, 0.22, 0.38 + damage * 0.14, 0.72 + damage * 0.28);
+    }
+  }
+
+  markAlienReaction(target, source);
   if (typeof playSfx === 'function') {
-    playSfx('mg-hit', { volume: 0.5 + intensity * 0.2, throttleMs: 60 });
+    playSfx(source === 'missile' ? 'explosion' : 'mg-hit', { volume: source === 'missile' ? 0.56 : 0.44 + intensity * 0.12, throttleMs: source === 'missile' ? 120 : 60 });
   }
   if (target.health <= 0) {
     destroyTarget(target, pos, intensity, source);
     return true;
   }
-  // Light smoke from damaged but alive targets (visible tell)
-  if (damage > 0.2) {
-    explosionSmokePool.emitCluster(pos, 3, 0.6, 0.3, 0.9, 0.9);
-  }
+  if (hullDamage > 0.2) explosionSmokePool.emitCluster(pos, 3, 0.6, 0.3, 0.9, 0.9);
   return false;
+}
+
+function awardCombatAmmo(amount, source = 'supply') {
+  if (!combatState || !Number.isFinite(amount) || amount <= 0) return 0;
+  const before = combatState.ammo;
+  combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + amount);
+  const gained = Math.max(0, combatState.ammo - before);
+  if (gained > 0) {
+    combatState.ammoEarnedTotal += gained;
+    if (source === 'supply') combatState.supplyToastAmmo += gained;
+    combatState.lastSupplyAwardAt = performance.now();
+  }
+  return gained;
+}
+
+function awardCombatMissiles(amount, source = 'supply') {
+  if (!combatState || !Number.isFinite(amount) || amount <= 0) return 0;
+  const before = combatState.missilesAmmo;
+  combatState.missilesAmmo = Math.min(combatState.missilesMax, combatState.missilesAmmo + Math.floor(amount));
+  const gained = Math.max(0, combatState.missilesAmmo - before);
+  if (gained > 0) {
+    combatState.missilesEarnedTotal += gained;
+    combatState.lastSupplyAwardAt = performance.now();
+  }
+  return gained;
+}
+
+function combatSupplyEarnActive() {
+  if (!running || plane.crashed) return false;
+  const speedKts = plane.vel.length() * 1.94;
+  return !plane.onGround || speedKts > 32 || plane.throttle > 0.18 || plane.throttleTarget > 0.22;
+}
+
+function maybeFlashSupplyAward(ammoGained = 0, missileGained = 0) {
+  const now = performance.now();
+  if (!missileGained && combatState.supplyToastAmmo < 24) return;
+  if ((now - (combatState.lastSupplyFlashAt || 0)) < 2200) return;
+  const parts = [];
+  if (combatState.supplyToastAmmo >= 1) parts.push(`+${Math.floor(combatState.supplyToastAmmo)} AMMO`);
+  if (missileGained > 0) parts.push(`+${missileGained} MSL`);
+  if (!parts.length) return;
+  combatState.supplyToastAmmo = 0;
+  combatState.lastSupplyFlashAt = now;
+  if (typeof flashStatus === 'function') flashStatus(`SUPPLY EARNED · ${parts.join(' · ')}`, 'panel ok', 1.1);
+}
+
+function updateCombatSupplyEarnings(dt) {
+  if (!combatSupplyEarnActive()) return;
+  combatState.supplyEarnSeconds += dt;
+  let ammoGained = 0;
+  let missileGained = 0;
+  if (combatState.ammo < combatState.ammoMax) {
+    combatState.ammoEarnBank += dt * combatState.ammoEarnRate;
+    const room = combatState.ammoMax - combatState.ammo;
+    const award = Math.min(Math.floor(combatState.ammoEarnBank), Math.ceil(room));
+    if (award > 0) {
+      combatState.ammoEarnBank -= award;
+      ammoGained = awardCombatAmmo(award, 'supply');
+    }
+  } else {
+    combatState.ammoEarnBank = 0;
+  }
+  if (combatState.missilesAmmo < combatState.missilesMax) {
+    combatState.missileEarnBank += dt / Math.max(1, combatState.missileEarnInterval || 24);
+    const award = Math.floor(combatState.missileEarnBank);
+    if (award > 0) {
+      combatState.missileEarnBank -= award;
+      missileGained = awardCombatMissiles(award, 'supply');
+      if (combatState.missilesAmmo >= combatState.missilesMax) combatState.missileEarnBank = 0;
+    }
+  } else {
+    combatState.missileEarnBank = 0;
+  }
+  maybeFlashSupplyAward(ammoGained, missileGained);
 }
 
 function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
@@ -7416,8 +7871,8 @@ function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
   target.object.visible = false;
   combatState.kills += 1;
   spawnExplosion(pos, intensity * 1.25, intensity * 1.35);
-  if (target.kind === 'traffic' && source === 'shot' && typeof window.showComboBanner === 'function') {
-    window.showComboBanner('AIR KILL', `HOSTILE DOWN · ${combatState.kills} TOTAL`, '#ffb36a');
+  if (target.kind === 'traffic' && (source === 'shot' || source === 'missile' || source === 'alien-pulse') && typeof window.showComboBanner === 'function') {
+    window.showComboBanner(source === 'missile' ? 'MISSILE KILL' : source === 'alien-pulse' ? 'ALIEN PULSE KILL' : 'AIR KILL', `HOSTILE DOWN · ${combatState.kills} TOTAL`, source === 'alien-pulse' ? '#74efff' : '#ffb36a');
   }
   // Reward destruction — mountain targets + big kills top up score,
   // hull and ammo so the player has a reason to chase them down.
@@ -7431,36 +7886,63 @@ function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
     msg += ` +${target.rewardHealth} HULL`;
   }
   if (target.rewardAmmo && combatState) {
-    combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + target.rewardAmmo);
-    msg += ` +${target.rewardAmmo} AMMO`;
+    const gainedAmmo = awardCombatAmmo(target.rewardAmmo, 'kill');
+    if (gainedAmmo > 0) msg += ` +${Math.round(gainedAmmo)} AMMO`;
   }
+  if (target.rewardMissiles && combatState) {
+    const gainedMissiles = awardCombatMissiles(target.rewardMissiles, 'kill');
+    if (gainedMissiles > 0) msg += ` +${gainedMissiles} MSL`;
+  }
+  if (target.kind === 'traffic' && (source === 'shot' || source === 'missile' || source === 'alien-pulse')) maybeAwardAlienWeapon();
   if (typeof flashStatus === 'function') flashStatus(msg, 'panel ok', 1.4);
 }
 
 function resetCombatState() {
   combatState.fireCooldown = 0;
+  combatState.missileCooldown = 0;
   combatState.crashFxTriggered = false;
   combatState.crashBlastTimer = 0;
   combatState.shotsFired = 0;
   combatState.shotHits = 0;
+  combatState.missilesFired = 0;
+  combatState.missileHits = 0;
   combatState.kills = 0;
-  combatState.ammo = combatState.ammoMax;
+  combatState.ammo = combatState.ammoStart;
+  combatState.missilesAmmo = combatState.missilesStart;
+  combatState.ammoEarnBank = 0;
+  combatState.missileEarnBank = 0;
+  combatState.ammoEarnedTotal = 0;
+  combatState.missilesEarnedTotal = 0;
+  combatState.supplyEarnSeconds = 0;
+  combatState.supplyToastAmmo = 0;
+  combatState.lastSupplyAwardAt = 0;
+  combatState.lastSupplyFlashAt = 0;
+  combatState.missileSide = -1;
+  combatState.alienWeaponUntil = 0;
+  combatState.alienWeaponLastAwardAt = 0;
   combatState.lastFiredAt = 0;
   combatState.dryClickUntil = 0;
   crashBlast.visible = false;
   crashBlast.material.opacity = 0;
   if (groundScorchFX) groundScorchFX.clear();
+  if (bulletSurfaceDamageFX) bulletSurfaceDamageFX.clear();
   for (const p of combatState.projectiles) deactivateProjectile(p);
+  for (const m of combatState.missiles) deactivateMissile(m);
   for (const target of destructibleTargets) {
     target.alive = true;
+    target.health = target.maxHealth || target.health || 1;
+    target.shield = target.shieldMax || 0;
+    target.shieldPulse = 0;
+    target.lastDamageText = '';
+    target.lastHitAt = 0;
     target.object.visible = true;
   }
 }
 bootLog.step('combat system',
-  combatState.projectiles.length > 0 && typeof damageDestructible === 'function',
-  `${combatState.projectiles.length} projectiles · ${combatState.ammoMax} rounds · ${destructibleTargets.length} static targets`);
+  combatState.projectiles.length > 0 && combatState.missiles.length > 0 && typeof damageDestructible === 'function',
+  `${combatState.projectiles.length} rounds · ${combatState.missiles.length} missiles · ${destructibleTargets.length} static targets`);
 
-function attemptInstantHit(origin, dir) {
+function attemptInstantHit(origin, dir, damage = 0.36, intensityOverride = null, source = 'shot') {
   let best = null;
   let bestAlong = Infinity;
   for (const target of destructibleTargets) {
@@ -7479,8 +7961,8 @@ function attemptInstantHit(origin, dir) {
     }
   }
   if (best) {
-    const intensity = best.target.kind === 'fuel' ? 1.65 : best.target.kind === 'traffic' ? 1.25 : best.target.kind === 'floatingTarget' ? 1.6 : best.target.kind === 'drone' ? 1.25 : best.target.kind === 'barrel' ? 1.1 : 0.75;
-    damageDestructible(best.target, best.pos, 1.0, intensity, 'shot');
+    const baseIntensity = best.target.kind === 'fuel' ? 1.65 : best.target.kind === 'traffic' ? 0.42 : best.target.kind === 'floatingTarget' ? 0.5 : best.target.kind === 'drone' ? 0.38 : best.target.kind === 'barrel' ? 0.42 : 0.28;
+    damageDestructible(best.target, best.pos, damage, intensityOverride != null ? intensityOverride : baseIntensity, source);
   }
 }
 
@@ -7491,54 +7973,59 @@ function fireProjectileBurst() {
     // Soft dry-click cue: only flash once per second of trying to fire
     if (now > combatState.dryClickUntil) {
       combatState.dryClickUntil = now + 1000;
-      if (typeof flashStatus === 'function') flashStatus('OUT OF AMMO', 'panel warn', 0.9);
+      if (typeof flashStatus === 'function') flashStatus('OUT OF AMMO · KEEP FLYING TO EARN', 'panel warn', 0.9);
     }
     return;
   }
-  combatState.ammo = Math.max(0, combatState.ammo - 2);
-  combatState.lastFiredAt = performance.now();
+  const now = performance.now();
+  const alien = alienWeaponActive(now);
+  combatState.ammo = Math.max(0, combatState.ammo - (alien ? 1 : 2));
+  combatState.lastFiredAt = now;
   // Machine-gun burst sample — capped to a very short burst so the gun
   // doesn't keep sounding like it's firing after the trigger is released.
   // The source clips are ~1.5s long, so without this they keep ringing on
   // long after the actual firing state has ended.
-  playSfx('mg-burst', { throttleMs: 120, maxMs: 95, volume: 0.55 + Math.random() * 0.2, rate: 0.95 + Math.random() * 0.12 });
+  playSfx('mg-burst', { throttleMs: alien ? 72 : 140, maxMs: alien ? 120 : 72, volume: alien ? 0.64 : 0.42 + Math.random() * 0.12, rate: alien ? 1.25 + Math.random() * 0.08 : 1.05 + Math.random() * 0.16 });
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const muzzles = [jet.userData.gunL, jet.userData.gunR];
   for (const muzzle of muzzles) {
     const projectile = combatState.projectiles.find(p => !p.active);
     if (!projectile) break;
     projectile.active = true;
-    projectile.life = 2.1;
+    projectile.life = alien ? 1.45 : 1.25;
+    projectile.damage = alien ? 1.05 : 0.34;
+    projectile.intensity = alien ? 0.78 : 0.30;
+    projectile.source = alien ? 'alien-pulse' : 'shot';
+    setProjectileVisual(projectile, alien ? 'alien' : 'bullet');
     projectile.pos.copy(muzzle).applyQuaternion(plane.quat).add(plane.pos);
     const shotDir = getAimAssistDirection(projectile.pos, forward, _combatTmpD) || forward;
-    projectile.vel.copy(shotDir).multiplyScalar(390).add(plane.vel);
+    projectile.vel.copy(shotDir).multiplyScalar(alien ? 620 : 520).add(plane.vel);
     projectile.mesh.visible = true;
     projectile.mesh.position.copy(projectile.pos);
     projectile.mesh.quaternion.setFromUnitVectors(_projectileForward, projectile.vel.clone().normalize());
-    muzzleFlashPool.emitCluster(projectile.pos, 4, 0.16, 0.12, 0.4, 0.75);
-    attemptInstantHit(projectile.pos, shotDir);
+    muzzleFlashPool.emitCluster(projectile.pos, alien ? 6 : 3, alien ? 0.34 : 0.11, 0.08, alien ? 0.45 : 0.24, alien ? 0.95 : 0.42);
+    attemptInstantHit(projectile.pos, shotDir, projectile.damage, projectile.intensity, projectile.source);
   }
   combatState.shotsFired += 1;
 }
 
 function updateCombat(dt) {
   combatState.fireCooldown = Math.max(0, combatState.fireCooldown - dt);
+  combatState.missileCooldown = Math.max(0, combatState.missileCooldown - dt);
   transientStatus.timer = Math.max(0, transientStatus.timer - dt);
-  // Ammo regen: 8 rounds/sec after 1.5s without firing. Reaches full
-  // belt from empty in ~38s. Fast enough that players aren't stranded,
-  // slow enough to matter in sustained combat.
-  const sinceFired = (performance.now() - combatState.lastFiredAt) / 1000;
-  if (combatState.ammo < combatState.ammoMax && sinceFired > 1.5) {
-    combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + dt * 8);
-  }
+  // Time-earned supply: active flight steadily refills bullets and builds
+  // missile credits. Firing can still outpace earning, so ammo remains scarce.
+  updateCombatSupplyEarnings(dt);
   // Fire on Space OR left mouse. `combatState.fireHeld` tracks the
   // mouse button so left-click doesn't need to go through the keys
   // map (which can get stuck if keyup misses during focus changes).
   const firing = !plane.crashed && (keys['Space'] || combatState.fireHeld);
   if (firing && combatState.fireCooldown <= 0) {
     fireProjectileBurst();
-    combatState.fireCooldown = 0.085;
+    combatState.fireCooldown = alienWeaponActive() ? 0.055 : 0.115;
   }
+  const missileRequested = !plane.crashed && (keys['KeyX'] || gamepadState.missile || touchButtonActive('missile'));
+  if (missileRequested && combatState.missileCooldown <= 0) fireMissile();
 
   // Player-vs-object collision (D11): flying into any registered
   // destructible causes mutual damage. Relative speed scales severity
@@ -7638,7 +8125,12 @@ function updateCombat(dt) {
     if (p.pos.y <= groundH + 0.12) {
       const hitPos = p.pos.clone();
       hitPos.y = groundH + 0.05;
-      spawnGroundImpactExplosion(hitPos, 1.35);
+      if (p.type === 'alien') {
+        spawnGunSurfaceDamage(hitPos, { type: 'alien', size: 0.74 });
+        impactBlastPool.emitCluster(hitPos, 5, 0.9, 0.06, 0.24, 0.8);
+      } else {
+        spawnGunSurfaceDamage(hitPos, { type: 'bullet', size: 0.34 });
+      }
       deactivateProjectile(p);
       continue;
     }
@@ -7647,9 +8139,51 @@ function updateCombat(dt) {
       if (!target.alive || !target.object.visible) continue;
       const targetPos = getTargetWorldPosition(target, _combatTmpC);
       if (p.pos.distanceTo(targetPos) < target.radius) {
-        const intensity = target.kind === 'fuel' ? 1.65 : target.kind === 'traffic' ? 1.25 : target.kind === 'floatingTarget' ? 1.6 : target.kind === 'drone' ? 1.25 : target.kind === 'barrel' ? 1.1 : 0.75;
-        damageDestructible(target, targetPos.clone(), 1.0, intensity, 'shot');
+        damageDestructible(target, targetPos.clone(), p.damage || 0.34, p.intensity || 0.32, p.source || 'shot');
         deactivateProjectile(p);
+        break;
+      }
+    }
+  }
+
+  for (const m of combatState.missiles) {
+    if (!m.active) continue;
+    m.life -= dt;
+    if (m.life <= 0) {
+      deactivateMissile(m);
+      continue;
+    }
+    const target = m.target && m.target.destructible && m.target.destructible.alive ? m.target : null;
+    if (target && target.object) {
+      target.object.getWorldPosition(_combatTmpC);
+      if (target.velocity) _combatTmpC.addScaledVector(target.velocity, 0.22 + targetHudState.lockAmount * 0.28);
+      const desired = _combatTmpC.sub(m.pos).normalize();
+      const speed = Math.max(180, m.vel.length());
+      m.vel.lerp(desired.multiplyScalar(285), Math.min(1, dt * (2.2 + (targetHudState.lockAmount || 0) * 2.2))).normalize().multiplyScalar(Math.max(speed, 245));
+    }
+    m.pos.addScaledVector(m.vel, dt);
+    m.mesh.position.copy(m.pos);
+    m.mesh.quaternion.setFromUnitVectors(_missileForward, _combatTmpB.copy(m.vel).normalize());
+    m.smokeTimer -= dt;
+    if (m.smokeTimer <= 0) {
+      m.smokeTimer = 0.045;
+      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.0), 1, 0.72, 0.08, 0.62, 0.82);
+    }
+    const groundH = (m.pos.x * m.pos.x + m.pos.z * m.pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(m.pos.x, m.pos.z);
+    if (m.pos.y <= groundH + 0.2) {
+      const hitPos = m.pos.clone();
+      hitPos.y = groundH + 0.05;
+      spawnGroundImpactExplosion(hitPos, 1.35);
+      deactivateMissile(m);
+      continue;
+    }
+    for (const targetObj of destructibleTargets) {
+      if (!targetObj.alive || !targetObj.object.visible) continue;
+      const targetPos = getTargetWorldPosition(targetObj, _combatTmpC);
+      if (m.pos.distanceTo(targetPos) < targetObj.radius + 2.4) {
+        combatState.missileHits += 1;
+        damageDestructible(targetObj, targetPos.clone(), 4.2, 1.55, 'missile');
+        deactivateMissile(m);
         break;
       }
     }
@@ -7661,6 +8195,7 @@ function updateCombat(dt) {
   explosionFirePool.update(dt);
   explosionSmokePool.update(dt);
   if (groundScorchFX) groundScorchFX.update(dt);
+  if (bulletSurfaceDamageFX) bulletSurfaceDamageFX.update(dt);
 }
 
 // Wing-vapor pools — continuous wingtip condensation stream for hard turns,
@@ -10966,6 +11501,7 @@ const gamepadState = {
   fire: false,
   brake: false,
   gear: false,
+  missile: false,
   lights: false,
   model: false,
   race: false,
@@ -11065,6 +11601,7 @@ function resetGamepadState() {
   gamepadState.fire = false;
   gamepadState.brake = false;
   gamepadState.gear = false;
+  gamepadState.missile = false;
   gamepadState.lights = false;
   gamepadState.model = false;
   gamepadState.race = false;
@@ -11100,19 +11637,19 @@ function syncInputIndicator() {
     if (touchInputActive) {
       if (ch1) ch1.textContent = 'TOUCH STICK PITCH/BANK · RIGHT THROTTLE SLIDER';
       if (ch2) ch2.textContent = plane.fixedGear
-        ? 'FIRE · BRAKE · RESET · SYSTEMS/OPTIONS IN BOTTOM TRAY'
-        : 'FIRE · BRAKE · GEAR · RESET · SYSTEMS/OPTIONS IN BOTTOM TRAY';
+        ? 'FIRE · MSL · BRAKE · RESET · C TARGET ON KEYBOARD'
+        : 'FIRE · MSL · BRAKE · GEAR · RESET · C TARGET ON KEYBOARD';
     } else {
-      if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE';
+      if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE · Y MSL';
       if (ch2) ch2.textContent = plane.fixedGear
-        ? 'RT/LT THROTTLE · B BRAKE · Y LIGHTS · BACK RACE · START RESET'
-        : 'RT/LT THROTTLE · B BRAKE · X GEAR · Y LIGHTS · BACK RACE · START RESET';
+        ? 'C KEY TARGET · RT/LT THROTTLE · B BRAKE · DPAD-L LIGHTS · BACK RACE · START RESET'
+        : 'C KEY TARGET · RT/LT THROTTLE · B BRAKE · X GEAR · DPAD-L LIGHTS · BACK RACE · START RESET';
     }
   } else {
     if (ch1) ch1.textContent = 'W/S PITCH · A/D BANK · Q/E RUDDER';
     if (ch2) ch2.textContent = plane.fixedGear
-      ? 'SHIFT/CTRL THROTTLE · SPACE FIRE · M MODEL · F FULLSCREEN · R RESET'
-      : 'SHIFT/CTRL THROTTLE · SPACE FIRE · G GEAR · M MODEL · F FULLSCREEN · R RESET';
+      ? 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · F FULLSCREEN · R RESET'
+      : 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · G GEAR · M MODEL · F FULLSCREEN · R RESET';
   }
 }
 
@@ -11125,8 +11662,8 @@ const touchControlsState = {
   stickY: 0,
   throttle: 0,
   lastInputAt: 0,
-  buttons: { fire: false, brake: false, gear: false, reset: false },
-  buttonPulseUntil: { gear: 0, reset: 0 },
+  buttons: { fire: false, missile: false, brake: false, gear: false, reset: false },
+  buttonPulseUntil: { missile: 0, gear: 0, reset: 0 },
   buttonPointerMap: new Map(),
 };
 
@@ -11188,6 +11725,7 @@ function syncTouchVirtualGamepad() {
   buttons[0] = touchButtonActive('fire', now) ? 1 : 0;
   buttons[1] = touchButtonActive('brake', now) ? 1 : 0;
   buttons[2] = touchButtonActive('gear', now) ? 1 : 0;
+  buttons[3] = touchButtonActive('missile', now) ? 1 : 0;
   buttons[9] = touchButtonActive('reset', now) ? 1 : 0;
   virtualGamepadInput.enabled = true;
   virtualGamepadInput.id = 'Touch Controls';
@@ -11274,7 +11812,7 @@ function setTouchThrottleFromPointer(e) {
 function setTouchButton(name, down) {
   if (!Object.prototype.hasOwnProperty.call(touchControlsState.buttons, name)) return;
   touchControlsState.buttons[name] = !!down;
-  if (down && (name === 'gear' || name === 'reset')) {
+  if (down && (name === 'missile' || name === 'gear' || name === 'reset')) {
     touchControlsState.buttonPulseUntil[name] = performance.now() + 180;
   }
   syncTouchButtonClasses();
@@ -11429,13 +11967,14 @@ function pollGamepadInput() {
   gamepadState.fire = gamepadButtonPressed(pad, 0);
   gamepadState.brake = gamepadButtonPressed(pad, 1) || lt > 0.72;
   gamepadState.gear = gamepadButtonPressed(pad, 2);
-  gamepadState.lights = gamepadButtonPressed(pad, 3);
+  gamepadState.missile = gamepadButtonPressed(pad, 3);
+  gamepadState.lights = dpadLeft;
   gamepadState.model = dpadRight;
   gamepadState.race = gamepadButtonPressed(pad, 8);
   gamepadState.reset = gamepadButtonPressed(pad, 9);
   if (Math.abs(gamepadState.pitch) > 0.01 || Math.abs(gamepadState.roll) > 0.01 || Math.abs(gamepadState.yaw) > 0.01 ||
       gamepadState.throttleUp > 0.01 || gamepadState.throttleDown > 0.01 ||
-      gamepadState.fire || gamepadState.brake || gamepadState.gear || gamepadState.lights || gamepadState.model || gamepadState.race || gamepadState.reset) {
+      gamepadState.fire || gamepadState.brake || gamepadState.gear || gamepadState.missile || gamepadState.lights || gamepadState.model || gamepadState.race || gamepadState.reset) {
     gamepadState.lastInputAt = performance.now();
   }
   combatState.fireHeld = gamepadState.fire;
@@ -11681,7 +12220,11 @@ const $targetOverlay = document.getElementById('target-overlay');
 const $hullPct = document.getElementById('hull-pct');
 const $hullBar = document.getElementById('hull-bar');
 const $ammoVal = document.getElementById('ammo-val');
+const $ammoMax = document.getElementById('ammo-max');
 const $ammoBar = document.getElementById('ammo-bar');
+const $missileVal = document.getElementById('missile-val');
+const $supplyVal = document.getElementById('supply-val');
+const $weaponMode = document.getElementById('weapon-mode');
 const $scoreVal = document.getElementById('score-val');
 const $scoreStreak = document.getElementById('score-streak');
 const $courseDirector = document.getElementById('course-director');
@@ -11802,6 +12345,13 @@ const targetHudState = {
   activeType: '',
   activeDistanceM: 0,
   activeTarget: null,
+  selectedId: '',
+  selectedLabel: '',
+  selectedIndex: 0,
+  selectedVisible: false,
+  selectableCount: 0,
+  cyclePressed: false,
+  selectedCycleCount: 0,
   lockId: '',
   lockAmount: 0,
   lockSolid: false,
@@ -11863,6 +12413,13 @@ function resetReticleHud() {
   targetHudState.activeType = '';
   targetHudState.activeDistanceM = 0;
   targetHudState.activeTarget = null;
+  targetHudState.selectedId = '';
+  targetHudState.selectedLabel = '';
+  targetHudState.selectedIndex = 0;
+  targetHudState.selectedVisible = false;
+  targetHudState.selectableCount = 0;
+  targetHudState.cyclePressed = false;
+  targetHudState.selectedCycleCount = 0;
   targetHudState.lockId = '';
   targetHudState.lockAmount = 0;
   targetHudState.lockSolid = false;
@@ -11952,10 +12509,11 @@ function collectAirTargetCandidates() {
     if (!rec || !rec.loaded || !rec.group || !rec.destructible || !rec.destructible.alive || rec.group.visible === false) continue;
     trafficIndex += 1;
     targets.push({
-      id: `traffic-${trafficIndex}`,
+      id: rec.hudId || `traffic-${trafficIndex}`,
       label: rec.callsign || `TRAFFIC ${String(trafficIndex).padStart(2, '0')}`,
       type: rec.typeLabel || inferTargetTypeLabel(rec.file || rec.group.name || 'traffic'),
       kind: 'traffic',
+      isThreat: rec.targetKind === 'ufo-saucer' || !!(rec.child && rec.child.userData.__isUfoTarget),
       object: rec.group,
       destructible: rec.destructible,
       trafficRef: rec,
@@ -11963,7 +12521,7 @@ function collectAirTargetCandidates() {
       distanceM: plane.pos.distanceTo(rec.group.position),
       speedKts: (rec.speed || 0) * 1.94,
       altFt: rec.group.position.y * 3.28,
-      velocity: estimateTrafficVelocity(rec).clone(),
+      velocity: rec.velocity && rec.velocity.lengthSq && rec.velocity.lengthSq() > 0.01 ? rec.velocity.clone() : estimateTrafficVelocity(rec).clone(),
     });
   }
   for (const [id, rec] of multiplayerState.remotePlayers) {
@@ -11983,6 +12541,53 @@ function collectAirTargetCandidates() {
   }
   return targets;
 }
+function selectTargetHudEntry(target, { announce = false, manual = false } = {}) {
+  if (!target) return null;
+  const changed = targetHudState.selectedId !== target.id;
+  targetHudState.selectedId = target.id;
+  targetHudState.selectedLabel = target.label || '';
+  targetHudState.selectedVisible = false;
+  if (changed) {
+    targetHudState.lockId = target.id;
+    targetHudState.lockAmount = 0;
+    targetHudState.lockSolid = false;
+    targetHudState.lockTone = 'off';
+    targetHudState.aimAssist = 0;
+    if (typeof stopLockTone === 'function') stopLockTone();
+  }
+  if (announce && typeof flashStatus === 'function') {
+    flashStatus(`${manual ? 'TARGET SELECT' : 'TARGET'} · ${target.label || 'THREAT'}`, 'panel ok', 0.85);
+  }
+  return target;
+}
+function resolveSelectedThreatTarget(threats, cycleChoices = threats) {
+  targetHudState.selectableCount = threats.length;
+  targetHudState.selectedVisible = false;
+  const cycleDown = !!(typeof keys !== 'undefined' && keys['KeyC']);
+  if (!threats.length) {
+    targetHudState.selectedId = '';
+    targetHudState.selectedLabel = '';
+    targetHudState.selectedIndex = 0;
+    targetHudState.cyclePressed = cycleDown;
+    targetHudState.lockAmount = Math.max(0, targetHudState.lockAmount - 0.08);
+    return null;
+  }
+  let selected = threats.find(t => t.id === targetHudState.selectedId) || null;
+  if (cycleDown && !targetHudState.cyclePressed) {
+    const choices = cycleChoices.length ? cycleChoices : threats;
+    let choiceIndex = choices.findIndex(t => t.id === targetHudState.selectedId);
+    choiceIndex = choiceIndex >= 0 ? (choiceIndex + 1) % choices.length : 0;
+    const target = choices[choiceIndex];
+    targetHudState.selectedCycleCount += 1;
+    targetHudState.cyclePressed = true;
+    targetHudState.selectedIndex = Math.max(0, threats.findIndex(t => t.id === target.id));
+    return selectTargetHudEntry(target, { announce: true, manual: true });
+  }
+  targetHudState.cyclePressed = cycleDown;
+  if (!selected) selected = cycleChoices[0] || threats[0];
+  targetHudState.selectedIndex = Math.max(0, threats.findIndex(t => t.id === selected.id));
+  return selectTargetHudEntry(selected);
+}
 function getMouseFlightReticleScreenPoint() {
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
@@ -11992,12 +12597,22 @@ function getMouseFlightReticleScreenPoint() {
     y: h * 0.5 - aimNdc.y * h * 0.5,
   };
 }
+function getGunReticleScreenPoint() {
+  if (!jet.userData.gunL || !jet.userData.gunR) return null;
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
+  _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
+  _hudWorldC.copy(_hudWorldA).add(_hudWorldB).multiplyScalar(0.5);
+  _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  _hudNdcA.copy(_hudWorldC).addScaledVector(_hudDirA, 900).project(camera);
+  if (!Number.isFinite(_hudNdcA.x) || !Number.isFinite(_hudNdcA.y) || _hudNdcA.z < -1 || _hudNdcA.z > 1) return null;
+  return {
+    x: (_hudNdcA.x * 0.5 + 0.5) * w,
+    y: (-_hudNdcA.y * 0.5 + 0.5) * h + (reticleState.baseYOffset || 0),
+  };
+}
 function updateReticleHud(dt = 1 / 60) {
-  if (!INPUT_FLAGS.mouseFlight) {
-    if ($crosshair) $crosshair.style.opacity = '0';
-    reticleState.visible = false;
-    return;
-  }
   if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
     if ($crosshair) $crosshair.style.opacity = '0';
     reticleState.visible = false;
@@ -12011,7 +12626,14 @@ function updateReticleHud(dt = 1 / 60) {
     return;
   }
 
-  const basePoint = getMouseFlightReticleScreenPoint();
+  const basePoint = INPUT_FLAGS.mouseFlight
+    ? getMouseFlightReticleScreenPoint()
+    : getGunReticleScreenPoint();
+  if (!basePoint) {
+    $crosshair.style.opacity = '0';
+    reticleState.visible = false;
+    return;
+  }
 
   reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x));
   reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y));
@@ -12036,10 +12658,12 @@ function updateTargetHud(dt = 1 / 60) {
   const camForward = _hudWorldF.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
   const camRight = _hudWorldB.set(1, 0, 0).applyQuaternion(camera.quaternion);
   const camUp = _hudWorldC.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  const candidates = collectAirTargetCandidates();
+  const allThreats = candidates.filter(v => v.isThreat || v.kind === 'traffic');
   const visible = [];
   let active = null;
   let bestScore = Infinity;
-  for (const candidate of collectAirTargetCandidates()) {
+  for (const candidate of candidates) {
     candidate.object.getWorldPosition(_hudWorldA);
     const depth = _hudWorldD.copy(_hudWorldA).sub(camera.position).dot(camForward);
     if (depth < 24) continue;
@@ -12054,8 +12678,11 @@ function updateTargetHud(dt = 1 / 60) {
     const rightX = (_hudNdcB.x * 0.5 + 0.5) * window.innerWidth;
     _hudNdcB.copy(_hudWorldE).project(camera);
     const upY = (-_hudNdcB.y * 0.5 + 0.5) * window.innerHeight;
-    const width = Math.max(42, Math.min(220, Math.abs(rightX - centerX) * 2));
-    const height = Math.max(24, Math.min(140, Math.abs(upY - centerY) * 2));
+    let width = Math.max(42, Math.min(220, Math.abs(rightX - centerX) * 2));
+    let height = Math.max(42, Math.min(220, Math.abs(upY - centerY) * 2));
+    const boxSize = Math.max(width, height);
+    width = boxSize;
+    height = boxSize;
     const left = centerX - width * 0.5;
     const top = centerY - height * 0.5;
     if (left > window.innerWidth || top > window.innerHeight || left + width < 0 || top + height < 0) continue;
@@ -12080,9 +12707,12 @@ function updateTargetHud(dt = 1 / 60) {
     }
   }
   visible.sort((a, b) => a.score - b.score || a.depth - b.depth);
-  const preferredLock = targetHudState.lockId ? visible.find(v => v.id === targetHudState.lockId) : null;
-  if (preferredLock && (preferredLock.score < 90000 || targetHudState.lockAmount > 0.18)) active = preferredLock;
-  targetHudState.visibleCount = Math.min(TARGET_BOX_LIMIT, visible.length);
+  const visibleThreats = visible.filter(v => v.isThreat || v.kind === 'traffic');
+  const selectedCandidate = resolveSelectedThreatTarget(allThreats, visibleThreats);
+  active = selectedCandidate ? (visible.find(v => v.id === selectedCandidate.id) || null) : null;
+  targetHudState.selectedVisible = !!active;
+  const displayTargets = active ? [active] : [];
+  targetHudState.visibleCount = displayTargets.length;
   targetHudState.activeTarget = active || null;
   targetHudState.activeId = active ? active.id : '';
   targetHudState.activeLabel = active ? active.label : '';
@@ -12122,12 +12752,14 @@ function updateTargetHud(dt = 1 / 60) {
 
   for (let i = 0; i < targetHudState.boxes.length; i++) {
     const poolEntry = targetHudState.boxes[i];
-    const target = visible[i];
+    const target = displayTargets[i];
     if (!target) {
       poolEntry.el.style.display = 'none';
       poolEntry.el.classList.remove('active');
       poolEntry.el.classList.remove('tracking');
       poolEntry.el.classList.remove('locked');
+      poolEntry.el.classList.remove('shield-hit');
+      poolEntry.el.classList.remove('damaged');
       continue;
     }
     poolEntry.el.style.display = 'block';
@@ -12140,15 +12772,21 @@ function updateTargetHud(dt = 1 / 60) {
     poolEntry.el.classList.toggle('active', isActive);
     poolEntry.el.classList.toggle('tracking', isTracking);
     poolEntry.el.classList.toggle('locked', isLocked);
+    const d = target.destructible || null;
+    const shieldPct = d && d.shieldMax ? Math.round((d.shield / Math.max(1, d.shieldMax)) * 100) : 0;
+    const hullPct = d && d.maxHealth ? Math.round((d.health / Math.max(1, d.maxHealth)) * 100) : 100;
+    poolEntry.el.classList.toggle('shield-hit', !!(d && (d.shieldPulse || 0) > 0.08));
+    poolEntry.el.classList.toggle('damaged', !!(d && hullPct < 100));
     poolEntry.el.style.opacity = isLocked ? '1' : isTracking ? '0.96' : isActive ? '0.78' : '0.42';
     const lockPct = isActive ? Math.round(targetHudState.lockAmount * 100) : 0;
     poolEntry.tag.textContent = isLocked
       ? `${target.label} · ${target.type} · LOCK`
       : isTracking
         ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
-        : `${target.label} · ${target.type}`;
+        : `${target.label} · ${target.type} · SELECTED`;
     poolEntry.readout.style.display = isActive ? 'block' : 'none';
-    poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft`;
+    const damageLine = d ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
+    poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
   }
 }
 function getAimAssistDirection(origin, baseDir, out = _hudWorldG) {
@@ -12819,10 +13457,42 @@ function updateHUD(dt = 1 / 60) {
   }
   if ($ammoVal) {
     const a = Math.floor(combatState.ammo);
+    const msl = Math.floor(combatState.missilesAmmo);
+    const alienLeft = Math.max(0, (combatState.alienWeaponUntil - performance.now()) / 1000);
     $ammoVal.textContent = a;
+    if ($ammoMax) $ammoMax.textContent = combatState.ammoMax;
+    if ($missileVal) $missileVal.textContent = msl;
+    if ($supplyVal) {
+      const earnActive = combatSupplyEarnActive();
+      const missileProgress = combatState.missilesAmmo >= combatState.missilesMax
+        ? 1
+        : clamp01(combatState.missileEarnBank || 0);
+      if (combatState.ammo >= combatState.ammoMax && combatState.missilesAmmo >= combatState.missilesMax) {
+        $supplyVal.textContent = 'FULL';
+      } else if (!earnActive) {
+        $supplyVal.textContent = 'IDLE';
+      } else if (combatState.missilesAmmo < combatState.missilesMax) {
+        $supplyVal.textContent = `MSL ${Math.round(missileProgress * 100)}%`;
+      } else {
+        $supplyVal.textContent = 'AMMO';
+      }
+    }
+    if ($weaponMode) {
+      if (alienLeft > 0) {
+        $weaponMode.textContent = `ALIEN PULSE ${Math.ceil(alienLeft)}S`;
+        $weaponMode.className = 'hud-subtle ok';
+      } else {
+        const lockPct = Math.round((targetHudState.lockAmount || 0) * 100);
+        if (targetHudState.lockSolid) $weaponMode.textContent = `MSL LOCK · ${targetHudState.activeLabel || 'TARGET'}`;
+        else if ((targetHudState.lockAmount || 0) > 0.35) $weaponMode.textContent = `MSL TRACK ${lockPct}% · ${targetHudState.activeLabel || 'TARGET'}`;
+        else if (targetHudState.selectedLabel) $weaponMode.textContent = `TGT ${targetHudState.selectedLabel} · C CYCLE`;
+        else $weaponMode.textContent = 'C TARGET · X MSL';
+        $weaponMode.className = 'hud-subtle';
+      }
+    }
     if ($ammoBar) {
       $ammoBar.style.width = (a / combatState.ammoMax * 100).toFixed(0) + '%';
-      $ammoBar.style.background = a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
+      $ammoBar.style.background = alienLeft > 0 ? '#74efff' : a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
     }
   }
   if ($scoreVal && window.__gameScore) {
@@ -12830,7 +13500,7 @@ function updateHUD(dt = 1 / 60) {
     if ($scoreStreak) $scoreStreak.textContent = window.__gameScore.streak;
   }
   const combatRecent = (performance.now() - (combatState.lastFiredAt || 0)) < 7000;
-  const combatVisible = combatRecent || combatState.fireHeld || (targetHudState.lockAmount || 0) > 0.18 || (combatState.kills || 0) > 0 || plane.crashed;
+  const combatVisible = combatRecent || combatState.fireHeld || combatState.missiles.some(m => m.active) || alienWeaponActive() || (targetHudState.lockAmount || 0) > 0.18 || (combatState.kills || 0) > 0 || plane.crashed;
   if ($aeroChip) $aeroChip.classList.toggle('is-hidden', !combatVisible && plane.onGround && sp < 40);
   if ($ammoChip) $ammoChip.classList.toggle('is-hidden', !combatVisible);
   if ($scoreChip) $scoreChip.classList.toggle('is-hidden', !combatVisible && (!window.__gameScore || !window.__gameScore.points));
@@ -12957,6 +13627,7 @@ function animate(now) {
   updatePracticeRingCourse(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAirfieldAmbient(dt);
+  updateGenerativeInstallations(dt);
   updateAudio(dt);
   updateMissionDebrief(dt, plane.vel.length() * 1.94);
   updateLandingCompleteFlow(plane.vel.length() * 1.94);
@@ -13918,6 +14589,9 @@ function createSaucerTargetModel(opts = {}) {
   root.userData.__trafficTargetType = 'ufo-saucer';
   root.userData.spinRate = opts.spinRate || 1.25;
   root.userData.beaconLights = [];
+  root.userData.glowParts = [];
+  root.userData.shieldMesh = null;
+  root.userData.landingBeam = null;
 
   const hullMat = new THREE.MeshStandardMaterial({
     color: 0x7f92a8,
@@ -13989,6 +14663,28 @@ function createSaucerTargetModel(opts = {}) {
   ringGlow.rotation.x = Math.PI / 2;
   ringGlow.position.y = 0.18;
   root.add(ringGlow);
+  root.userData.glowParts.push(lowerGlow, ringGlow);
+
+  const shield = new THREE.Mesh(
+    new THREE.SphereGeometry(6.15, 36, 18),
+    new THREE.MeshBasicMaterial({ color: 0x74efff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+  );
+  shield.name = 'ufo reactive shield bubble';
+  shield.scale.set(1.18, 0.48, 1.18);
+  shield.renderOrder = 26;
+  root.userData.shieldMesh = shield;
+  root.add(shield);
+
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 4.4, 1, 32, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x9cf8ff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false })
+  );
+  beam.name = 'ufo vertical landing beam';
+  beam.position.y = -8;
+  beam.scale.set(1, 16, 1);
+  beam.renderOrder = 24;
+  root.userData.landingBeam = beam;
+  root.add(beam);
 
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
@@ -14020,6 +14716,7 @@ function spawnTraffic(file, pathFn, opts) {
   const rec = {
     group, pathFn, loaded: false,
     file,
+    hudId: opts.hudId || `traffic-${traffic.length + 1}`,
     targetKind: isProceduralUfo ? 'ufo-saucer' : 'aircraft',
     phase: opts.phaseOffset || 0,
     speed: opts.speed || 60,          // metres/sec along path
@@ -14027,6 +14724,13 @@ function spawnTraffic(file, pathFn, opts) {
     pitchSmoothed: 0,
     callsign: opts.callsign || '',
     typeLabel: opts.typeLabel || '',
+    aiMode: 'patrol',
+    aiUntil: 0,
+    aiBlend: 0,
+    evasivePhase: opts.evasivePhase || 0,
+    beamSmoothed: 0,
+    velocity: new THREE.Vector3(),
+    prevPosition: new THREE.Vector3(),
     child: null,
   };
   traffic.push(rec);
@@ -14059,13 +14763,17 @@ function spawnTraffic(file, pathFn, opts) {
       radius: Math.max(4, (opts.targetSize || 10) * (opts.radiusMul || 0.6)),
       kind: 'traffic',
       health: opts.health || 3,
+      shield: opts.shield != null ? opts.shield : (isProceduralUfo ? Math.max(2, Math.round((opts.health || 3) * 0.9)) : 0),
     });
     rec.destructible.rewardPoints = opts.rewardPoints || 180;
     rec.destructible.rewardAmmo = opts.rewardAmmo || 18;
     rec.destructible.rewardHealth = opts.rewardHealth || 4;
+    rec.destructible.rewardMissiles = opts.rewardMissiles || (isProceduralUfo ? 1 : 0);
+    rec.destructible.trafficRef = rec;
     rec.child = model;
     rec.loaded = true;
     group.visible = trafficEnabled() && rec.destructible.alive;
+    rec.prevPosition.copy(group.position);
     console.log('[traffic] loaded', String(sourceName).split('/').pop(), '×' + s.toFixed(3));
   };
 
@@ -14180,7 +14888,7 @@ function pathWaypointLoop(points, opts = {}) {
     const pitch = Math.atan2(tangent.y, horiz);
     const prevYaw = Math.atan2(cur.pos.x - prev.pos.x, -(cur.pos.z - prev.pos.z));
     const bank = Math.max(-0.38, Math.min(0.38, -wrapRadians(yaw - prevYaw) * bankScale));
-    return { pos: cur.pos, yaw, pitch, bank };
+    return { pos: cur.pos, yaw, pitch, bank, segment: cur.segment };
   };
 }
 function pathAirfieldCircuit(runwayKey = 'runway36', opts = {}) {
@@ -14212,6 +14920,66 @@ function pathAirfieldCircuit(runwayKey = 'runway36', opts = {}) {
   ], { lookAhead: opts.lookAhead || 22, bankScale: 2.05 });
 }
 
+function installationByLabel(label, fallback = new THREE.Vector3(0, AIRFIELD_SURFACE_Y, 0)) {
+  if (label === 'AIRFIELD') return { label: 'AIRFIELD', pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y, 0), radius: 70 };
+  const rec = worldInstallations.find(inst => inst.label === label) || worldInstallations[0];
+  return rec || { label: 'AIRFIELD', pos: fallback.clone ? fallback.clone() : fallback, radius: 30 };
+}
+function pathUfoVerticalVisit(label, opts = {}) {
+  const site = installationByLabel(label);
+  const p = site.pos.clone();
+  const groundY = p.y + 2.4;
+  const hoverY = groundY + (opts.hoverY || 32);
+  const cruiseY = groundY + (opts.cruiseY || 230);
+  const r = opts.radius || (site.radius || 28) + 58;
+  const loop = pathWaypointLoop([
+    new THREE.Vector3(p.x - r, cruiseY, p.z - r * 1.4),
+    new THREE.Vector3(p.x + r * 0.6, cruiseY + 34, p.z - r),
+    new THREE.Vector3(p.x + r * 0.35, hoverY, p.z - r * 0.18),
+    new THREE.Vector3(p.x, groundY + 4.6, p.z),
+    new THREE.Vector3(p.x, groundY + 4.6, p.z),
+    new THREE.Vector3(p.x, hoverY, p.z),
+    new THREE.Vector3(p.x - r * 0.9, hoverY + 18, p.z + r * 0.55),
+    new THREE.Vector3(p.x - r * 1.4, cruiseY, p.z + r * 1.2),
+  ], { lookAhead: opts.lookAhead || 14, bankScale: 0.55 });
+  return function(phase) {
+    const sample = loop(phase);
+    const agl = sample.pos.y - p.y;
+    sample.bank *= 0.35;
+    sample.beam = agl < 82 ? clamp01((82 - agl) / 70) : 0;
+    sample.lowPass = agl < 48;
+    sample.siteLabel = label;
+    return sample;
+  };
+}
+function pathUfoLowPass(labelA, labelB, opts = {}) {
+  const a = installationByLabel(labelA, new THREE.Vector3(0, AIRFIELD_SURFACE_Y, -180));
+  const b = installationByLabel(labelB, new THREE.Vector3(0, AIRFIELD_SURFACE_Y, 180));
+  const lift = opts.lift || 46;
+  return pathWaypointLoop([
+    new THREE.Vector3(a.pos.x - 260, a.pos.y + 170, a.pos.z - 340),
+    new THREE.Vector3(a.pos.x - 90, a.pos.y + lift, a.pos.z - 96),
+    new THREE.Vector3(a.pos.x + 40, a.pos.y + Math.max(26, lift * 0.7), a.pos.z + 24),
+    new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 26, opts.runwayZ || -40),
+    new THREE.Vector3(b.pos.x - 64, b.pos.y + lift, b.pos.z - 54),
+    new THREE.Vector3(b.pos.x + 220, b.pos.y + 180, b.pos.z + 360),
+  ], { lookAhead: opts.lookAhead || 26, bankScale: 2.8 });
+}
+function pathUfoWideRoam(opts = {}) {
+  const y = opts.y || 280;
+  const rx = opts.rx || 980;
+  const rz = opts.rz || 780;
+  return function(phase) {
+    const a = phase / Math.max(1, opts.period || 560);
+    const x = Math.sin(a * 0.91 + (opts.phase || 0)) * rx + Math.sin(a * 1.7) * 130;
+    const z = Math.cos(a * 1.13 + (opts.phase || 0.3)) * rz + Math.sin(a * 0.43) * 220;
+    const yy = y + Math.sin(a * 1.9) * 64 + Math.sin(a * 0.37) * 32;
+    const tx = Math.cos(a * 0.91) * rx * 0.91 + Math.cos(a * 1.7) * 221;
+    const tz = -Math.sin(a * 1.13) * rz * 1.13 + Math.cos(a * 0.43) * 95;
+    return { pos: new THREE.Vector3(x, yy, z), yaw: Math.atan2(tx, -tz), pitch: Math.sin(a * 1.9) * 0.08, bank: Math.sin(a * 1.4) * 0.36, beam: 0 };
+  };
+}
+
 function trafficEnabled() {
   const ambientDensity = scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0;
   return !MULTIPLAYER_URL && ambientDensity > 0.05;
@@ -14226,12 +14994,62 @@ function updateTraffic(dt) {
     }
     return;
   }
+  const nowMs = performance.now();
   for (const t of traffic) {
     if (!t.loaded) continue;
     if (!t.group) continue; // __traffic_safety__ skip entries missing group (async load race)
-    t.group.visible = !!(t.destructible ? t.destructible.alive : true);
+    const alive = !!(t.destructible ? t.destructible.alive : true);
+    t.group.visible = alive;
+    if (!alive) continue;
     t.phase += dt * t.speed;
-    const { pos, yaw, pitch = 0, bank } = t.pathFn(t.phase);
+    const sample = t.pathFn(t.phase) || {};
+    const isUfo = t.targetKind === 'ufo-saucer' || (t.child && t.child.userData.__isUfoTarget);
+    const pos = sample.pos && sample.pos.clone ? sample.pos.clone() : new THREE.Vector3();
+    let yaw = sample.yaw || 0;
+    let pitch = sample.pitch || 0;
+    let bank = sample.bank || 0;
+
+    if (isUfo) {
+      const aiActive = t.aiUntil && t.aiUntil > nowMs;
+      const aiTarget = aiActive ? 1 : 0;
+      t.aiBlend += (aiTarget - (t.aiBlend || 0)) * Math.min(1, dt * (aiTarget ? 2.6 : 1.2));
+      if (!aiActive && (t.aiBlend || 0) <= 0.025) t.aiMode = 'patrol';
+      const aiBlend = clamp01(t.aiBlend || 0);
+      if (aiBlend > 0.01) {
+        const phase = nowMs * 0.0013 + (t.evasivePhase || 0);
+        if (t.aiMode === 'dogfight') {
+          const orbitRadius = 170 + Math.sin(phase * 0.7) * 48;
+          const desired = _combatTmpA.copy(plane.pos)
+            .add(new THREE.Vector3(Math.cos(phase) * orbitRadius, 0, Math.sin(phase) * orbitRadius));
+          const terrain = desired.x * desired.x + desired.z * desired.z < AIRFIELD_FLAT_R2
+            ? AIRFIELD_SURFACE_Y : getHeight(desired.x, desired.z);
+          desired.y = Math.max(terrain + 72, plane.pos.y + 42 + Math.sin(phase * 1.6) * 38);
+          pos.lerp(desired, aiBlend * 0.42);
+          const face = _combatTmpB.copy(plane.pos).sub(pos);
+          const faceLen = Math.max(1, face.length());
+          yaw = Math.atan2(face.x, -face.z);
+          pitch = Math.max(-0.42, Math.min(0.42, Math.asin(Math.max(-0.8, Math.min(0.8, face.y / faceLen)))));
+          bank += Math.sin(phase * 2.4) * 0.62 * aiBlend;
+        } else if (t.aiMode === 'flee') {
+          const away = _combatTmpB.copy(pos).sub(plane.pos);
+          if (away.lengthSq() < 1) away.set(Math.sin(phase), 0.22, Math.cos(phase));
+          away.normalize();
+          const dist = Math.max(1, pos.distanceTo(plane.pos));
+          pos.addScaledVector(away, aiBlend * (115 + clamp01(1 - dist / 900) * 170));
+          pos.y += aiBlend * (70 + Math.sin(phase * 2.2) * 34);
+          yaw = Math.atan2(away.x, -away.z);
+          pitch = 0.18 + Math.sin(phase * 1.8) * 0.12;
+          bank += Math.sin(phase * 3.1) * 0.72 * aiBlend;
+        }
+      }
+    }
+
+    if (t.prevPosition && t.prevPosition.lengthSq() > 0) {
+      t.velocity.copy(pos).sub(t.prevPosition).divideScalar(Math.max(dt, 1e-3));
+    } else if (t.velocity) {
+      t.velocity.set(0, 0, 0);
+    }
+    if (t.prevPosition) t.prevPosition.copy(pos);
     t.group.position.copy(pos);
     t.pitchSmoothed += (pitch - t.pitchSmoothed) * Math.min(1, dt * 2.2);
     t.group.rotation.set(t.pitchSmoothed, yaw, 0);
@@ -14241,15 +15059,45 @@ function updateTraffic(dt) {
     if (t.child) {
       t.bankSmoothed += (bank - t.bankSmoothed) * Math.min(1, dt * 2.6);
       if (t.child.userData.__isUfoTarget) {
-        t.child.rotation.y += dt * (t.child.userData.spinRate || 1.25);
+        t.child.rotation.y += dt * (t.child.userData.spinRate || 1.25) * (1 + (t.aiBlend || 0) * 0.55);
         t.child.rotation.z = t.bankSmoothed * 0.55;
         const lights = t.child.userData.beaconLights || [];
-        const pulseT = performance.now() * 0.004;
+        const pulseT = nowMs * 0.004;
         for (let i = 0; i < lights.length; i++) {
           const beacon = lights[i];
           const pulse = 0.62 + Math.max(0, Math.sin(pulseT + (beacon.userData.phase || 0) * Math.PI * 2)) * 0.45;
           beacon.material.opacity = Math.min(1, pulse);
-          beacon.scale.setScalar(0.82 + pulse * 0.42);
+          beacon.scale.setScalar(0.82 + pulse * 0.42 + (t.aiBlend || 0) * 0.18);
+        }
+        for (const glow of (t.child.userData.glowParts || [])) {
+          if (glow.material) glow.material.opacity = 0.28 + Math.max(0, Math.sin(pulseT * 0.8 + (t.evasivePhase || 0))) * 0.24;
+        }
+        const destructible = t.destructible;
+        if (destructible) {
+          destructible.shieldPulse = Math.max(0, (destructible.shieldPulse || 0) - dt * 1.35);
+          const shield = t.child.userData.shieldMesh;
+          if (shield && shield.material) {
+            const shieldRatio = clamp01((destructible.shield || 0) / Math.max(1, destructible.shieldMax || 1));
+            const hitPulse = clamp01(destructible.shieldPulse || 0);
+            const opacity = Math.max(hitPulse * 0.42, shieldRatio > 0 ? 0.035 + shieldRatio * 0.045 : 0);
+            shield.visible = opacity > 0.012;
+            shield.material.opacity = opacity;
+            shield.material.color.setHex(destructible.shield > 0 ? 0x74efff : 0xff8c6a);
+            const s = 1 + hitPulse * 0.16 + Math.sin(pulseT * 1.4) * 0.015;
+            shield.scale.set(1.18 * s, 0.48 * s, 1.18 * s);
+          }
+        }
+        const beam = t.child.userData.landingBeam;
+        if (beam && beam.material) {
+          const groundH = pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2 ? AIRFIELD_SURFACE_Y : getHeight(pos.x, pos.z);
+          const length = Math.max(7, pos.y - groundH - 1.5);
+          const beamTarget = clamp01(sample.beam || 0);
+          t.beamSmoothed += (beamTarget - (t.beamSmoothed || 0)) * Math.min(1, dt * 4.6);
+          const beamOpacity = t.beamSmoothed * (0.18 + Math.max(0, Math.sin(pulseT * 0.9)) * 0.18);
+          beam.visible = beamOpacity > 0.012;
+          beam.position.y = -length * 0.5;
+          beam.scale.set(0.75 + t.beamSmoothed * 0.35, length, 0.75 + t.beamSmoothed * 0.35);
+          beam.material.opacity = beamOpacity;
         }
       } else {
         t.child.rotation.z = t.bankSmoothed;
@@ -14315,6 +15163,40 @@ spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
   pathAirfieldCircuit('runway36', { circuitAlt: 340, patternX: 660, side: -1 }),
   { speed: 88, targetSize: 13.4, radiusMul: 0.72, phaseOffset: 500, health: 4, rewardPoints: 340, rewardAmmo: 32, callsign: 'UFO 61', typeLabel: 'HEAVY SAUCER' }
+);
+
+// Encounter layer: landers, low passes, and wide-roaming interceptors around
+// the airfield and generated installations. These deliberately use different
+// path families so the sky stops feeling like one synchronized racetrack.
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoVerticalVisit('AIRFIELD', { hoverY: 36, cruiseY: 245, radius: 150 }),
+  { speed: 38, targetSize: 13.8, radiusMul: 0.78, phaseOffset: 80, health: 5, shield: 5, rewardPoints: 420, rewardAmmo: 28, rewardMissiles: 1, callsign: 'UFO LZ', typeLabel: 'VERTICAL LANDER' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoVerticalVisit('RIDGE ARRAY', { hoverY: 42, cruiseY: 310, radius: 165 }),
+  { speed: 44, targetSize: 12.8, radiusMul: 0.76, phaseOffset: 290, health: 4, shield: 4, rewardPoints: 360, rewardAmmo: 24, callsign: 'UFO RA', typeLabel: 'SITE LANDER' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoVerticalVisit('RESERVOIR LAB', { hoverY: 48, cruiseY: 285, radius: 175 }),
+  { speed: 41, targetSize: 13.0, radiusMul: 0.76, phaseOffset: 520, health: 4, shield: 4, rewardPoints: 380, rewardAmmo: 24, callsign: 'UFO LAB', typeLabel: 'SITE LANDER' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoLowPass('RIDGE ARRAY', 'AIRFIELD', { lift: 34, runwayZ: -50 }),
+  { speed: 118, targetSize: 11.7, radiusMul: 0.72, phaseOffset: 160, health: 3, shield: 3, rewardPoints: 330, rewardAmmo: 20, callsign: 'UFO FAST', typeLabel: 'LOW PASS' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoLowPass('CANYON RELAY', 'RESERVOIR LAB', { lift: 42, runwayZ: 80 }),
+  { speed: 106, targetSize: 12.0, radiusMul: 0.72, phaseOffset: 430, health: 3, shield: 3, rewardPoints: 330, rewardAmmo: 20, callsign: 'UFO SWP', typeLabel: 'LOW PASS' }
+);
+spawnTraffic(
+  TRAFFIC_UFO_TARGET_FILE,
+  pathUfoWideRoam({ y: 340, rx: 1120, rz: 880, period: 520, phase: 1.6 }),
+  { speed: 70, targetSize: 14.2, radiusMul: 0.78, phaseOffset: 0, health: 5, shield: 5, rewardPoints: 460, rewardAmmo: 30, rewardMissiles: 2, callsign: 'UFO ACE', typeLabel: 'DOGFIGHT ACE' }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum
@@ -15842,9 +16724,29 @@ window.__ap = {
       pending_chunk_builds: pendingChunkBuilds.length,
       pending_far_chunk_builds: pendingFarChunkBuilds.length,
       projectile_count: combatState.projectiles.filter(p => p.active).length,
+      ammo_count: combatState.ammo,
+      ammo_max: combatState.ammoMax,
+      ammo_start: combatState.ammoStart,
+      ammo_earn_rate: combatState.ammoEarnRate,
+      ammo_earn_bank: combatState.ammoEarnBank,
+      ammo_earned_total: combatState.ammoEarnedTotal,
+      missile_count: combatState.missiles.filter(m => m.active).length,
+      surface_damage_marks: bulletSurfaceDamageFX ? bulletSurfaceDamageFX.activeCount() : 0,
+      missiles_ammo: combatState.missilesAmmo,
+      missiles_start: combatState.missilesStart,
+      missiles_max: combatState.missilesMax,
+      missile_earn_progress: combatState.missilesAmmo >= combatState.missilesMax ? 1 : clamp01(combatState.missileEarnBank || 0),
+      missile_earn_interval_s: combatState.missileEarnInterval,
+      missiles_earned_total: combatState.missilesEarnedTotal,
+      supply_earn_active: combatSupplyEarnActive(),
+      supply_earn_seconds: combatState.supplyEarnSeconds,
       shots_fired: combatState.shotsFired,
       combat_hits: combatState.shotHits,
+      missiles_fired: combatState.missilesFired,
+      missiles_hits: combatState.missileHits,
       combat_kills: combatState.kills,
+      alien_weapon_active: alienWeaponActive(),
+      alien_weapon_remaining_s: Math.max(0, (combatState.alienWeaponUntil - performance.now()) / 1000),
       targets_alive: destructibleTargets.filter(t => t.alive && t.object && t.object.visible !== false).length,
       landing_medal: landingMedalState.lastMedal,
       landing_grade: landingMedalState.lastGrade,
@@ -15874,6 +16776,7 @@ window.__ap = {
       touch_stick_y: typeof touchControlsState !== 'undefined' ? touchControlsState.stickY : 0,
       touch_throttle: typeof touchControlsState !== 'undefined' ? touchControlsState.throttle : 0,
       touch_fire: typeof touchControlsState !== 'undefined' ? touchButtonActive('fire') : false,
+      touch_missile: typeof touchControlsState !== 'undefined' ? touchButtonActive('missile') : false,
       touch_brake: typeof touchControlsState !== 'undefined' ? touchButtonActive('brake') : false,
       reticle_x: reticleState.x,
       reticle_y: reticleState.y,
@@ -15895,12 +16798,19 @@ window.__ap = {
       gamepad_fire: !!gamepadState.fire,
       gamepad_brake: !!gamepadState.brake,
       gamepad_gear: !!gamepadState.gear,
+      gamepad_missile: !!gamepadState.missile,
       gamepad_lights: !!gamepadState.lights,
       gamepad_model: !!gamepadState.model,
       gamepad_race: !!gamepadState.race,
       gamepad_reset: !!gamepadState.reset,
       gamepad_last_input_age_ms: gamepadState.lastInputAt ? Math.max(0, performance.now() - gamepadState.lastInputAt) : null,
       target_boxes: targetHudState.visibleCount || 0,
+      target_selectable_count: targetHudState.selectableCount || 0,
+      target_selected: targetHudState.selectedId || '',
+      target_selected_label: targetHudState.selectedLabel || '',
+      target_selected_visible: !!targetHudState.selectedVisible,
+      target_selected_index: targetHudState.selectedIndex || 0,
+      target_cycle_count: targetHudState.selectedCycleCount || 0,
       target_lock: targetHudState.activeId || '',
       target_lock_label: targetHudState.activeLabel || '',
       target_lock_type: targetHudState.activeType || '',
@@ -15983,6 +16893,22 @@ window.__ap = {
     return key;
   },
   fire() { fireProjectileBurst(); },
+  surfaceDamage(distance = 22, count = 6) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat).normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat).normalize();
+    const marks = [];
+    for (let i = 0; i < Math.max(1, count | 0); i++) {
+      const pos = plane.pos.clone()
+        .addScaledVector(forward, distance + i * 0.55)
+        .addScaledVector(right, (Math.random() - 0.5) * 2.6);
+      const groundH = (pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2)
+        ? AIRFIELD_SURFACE_Y : getHeight(pos.x, pos.z);
+      pos.y = groundH + 0.05;
+      spawnGunSurfaceDamage(pos, { type: 'bullet', size: 0.34 });
+      marks.push({ x: pos.x, y: pos.y, z: pos.z });
+    }
+    return { marks, active: bulletSurfaceDamageFX ? bulletSurfaceDamageFX.activeCount() : 0 };
+  },
   groundBlast(intensity = 1.0, distance = 22) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat).normalize();
     const pos = plane.pos.clone().addScaledVector(forward, distance);
@@ -16138,6 +17064,7 @@ window.advanceTime = (ms = 16.7) => {
     updateSunShadowRig();
     updateHeat(stepDt);
     updateTraffic(stepDt);
+    if (typeof updateGenerativeInstallations === 'function') updateGenerativeInstallations(stepDt);
     updatePracticeRingCourse(stepDt);
     updateWater(stepDt, plane.pos.x, plane.pos.z);
     updateMissionDebrief(stepDt, plane.vel.length() * 1.94);
