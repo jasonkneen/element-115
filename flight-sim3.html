@@ -444,6 +444,215 @@
     pointer-events: none;
     overflow: hidden;
   }
+  #touch-controls {
+    --touch-stick-size: clamp(108px, 24vw, 154px);
+    --touch-button-size: clamp(44px, 10vw, 58px);
+    --touch-throttle-height: clamp(146px, 30vh, 210px);
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 48;
+    pointer-events: none;
+    font-family: var(--game-font-ui);
+    color: rgba(255, 242, 214, 0.86);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.72);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .touch-pad,
+  .touch-button {
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .touch-pad {
+    position: absolute;
+    border: 1px solid rgba(255, 215, 150, 0.16);
+    background: radial-gradient(circle at 50% 45%, rgba(255, 215, 150, 0.12), rgba(8, 12, 20, 0.22) 66%);
+    backdrop-filter: blur(16px) saturate(145%);
+    -webkit-backdrop-filter: blur(16px) saturate(145%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 16px 38px rgba(0, 0, 0, 0.24);
+  }
+  #touch-stick {
+    left: calc(14px + var(--safe-left));
+    bottom: calc(104px + var(--safe-bottom));
+    width: var(--touch-stick-size);
+    height: var(--touch-stick-size);
+    border-radius: 50%;
+  }
+  .touch-stick-crosshair,
+  .touch-stick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .touch-stick-crosshair {
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 225, 170, 0.10);
+  }
+  .touch-stick-crosshair::before,
+  .touch-stick-crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255, 225, 170, 0.16);
+  }
+  .touch-stick-crosshair::before { left: 50%; top: 12%; bottom: 12%; width: 1px; }
+  .touch-stick-crosshair::after { top: 50%; left: 12%; right: 12%; height: 1px; }
+  .touch-stick-knob {
+    width: 44%;
+    height: 44%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 230, 178, 0.32);
+    background: radial-gradient(circle at 38% 32%, rgba(255,255,255,0.18), rgba(255,204,102,0.18) 42%, rgba(14,18,26,0.36));
+    box-shadow: 0 0 22px rgba(255, 204, 102, 0.12), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .touch-label {
+    position: absolute;
+    left: 50%;
+    bottom: -18px;
+    transform: translateX(-50%);
+    font-size: 8px;
+    letter-spacing: 0.16em;
+    color: rgba(255, 230, 178, 0.62);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #touch-throttle {
+    right: calc(14px + var(--safe-right));
+    bottom: calc(104px + var(--safe-bottom));
+    width: clamp(48px, 11vw, 62px);
+    height: var(--touch-throttle-height);
+    border-radius: 999px;
+    padding: 10px 9px;
+  }
+  .touch-throttle-track {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    overflow: hidden;
+    background: rgba(255, 204, 102, 0.10);
+    border: 1px solid rgba(255, 215, 150, 0.12);
+  }
+  .touch-throttle-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0%;
+    border-radius: inherit;
+    background: linear-gradient(0deg, rgba(255, 136, 68, 0.58), rgba(255, 204, 102, 0.76));
+    box-shadow: 0 0 20px rgba(255, 170, 86, 0.18);
+    pointer-events: none;
+  }
+  .touch-throttle-knob {
+    position: absolute;
+    left: 50%;
+    bottom: 0%;
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    transform: translate(-50%, 50%);
+    background: #ffe2a6;
+    box-shadow: 0 3px 16px rgba(0,0,0,0.35), 0 0 16px rgba(255,204,102,0.18);
+    pointer-events: none;
+  }
+  .touch-throttle-readout {
+    position: absolute;
+    left: 50%;
+    top: -22px;
+    transform: translateX(-50%);
+    min-width: 48px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #fff1ce;
+    pointer-events: none;
+  }
+  .touch-buttons {
+    position: absolute;
+    right: calc(78px + var(--safe-right));
+    bottom: calc(118px + var(--safe-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, var(--touch-button-size));
+    gap: 8px;
+    pointer-events: none;
+  }
+  .touch-button {
+    width: var(--touch-button-size);
+    min-width: 0;
+    height: var(--touch-button-size);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 215, 150, 0.16);
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(10,14,22,0.32));
+    color: rgba(255, 242, 214, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 14px 30px rgba(0,0,0,0.22);
+    font: 800 8px/1 var(--game-font-ui);
+    letter-spacing: 0.12em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .touch-button.fire {
+    grid-row: span 2;
+    height: calc(var(--touch-button-size) * 2 + 8px);
+    border-radius: 20px;
+    color: #fff3d6;
+    background: radial-gradient(circle at 42% 34%, rgba(255, 238, 188, 0.18), rgba(255, 117, 70, 0.26) 48%, rgba(12, 14, 21, 0.38));
+  }
+  .touch-button.is-active,
+  .touch-pad.is-active {
+    border-color: rgba(255, 230, 178, 0.42);
+    background-color: rgba(255, 204, 102, 0.10);
+    color: #fff7e4;
+  }
+  @media (pointer: coarse), (max-width: 920px) {
+    body:not(.preflight):not(.review-open) #touch-controls { display: block; }
+  }
+  body.preflight #touch-controls,
+  body.review-open #touch-controls,
+  body.options-open #touch-controls {
+    display: none !important;
+  }
+  @media (max-width: 720px) and (orientation: portrait) {
+    #touch-stick { bottom: calc(122px + var(--safe-bottom)); }
+    #touch-throttle { bottom: calc(122px + var(--safe-bottom)); }
+    .touch-buttons { bottom: calc(134px + var(--safe-bottom)); }
+  }
+  @media (orientation: landscape) and (max-height: 760px),
+         (orientation: landscape) and (max-width: 1280px),
+         (pointer: coarse) and (orientation: landscape) {
+    #touch-controls {
+      --touch-stick-size: clamp(86px, 23vh, 116px);
+      --touch-button-size: clamp(38px, 10vh, 48px);
+      --touch-throttle-height: clamp(104px, 35vh, 152px);
+    }
+    #touch-stick {
+      left: calc(10px + var(--safe-left));
+      bottom: calc(48px + var(--safe-bottom));
+    }
+    #touch-throttle {
+      right: calc(10px + var(--safe-right));
+      bottom: calc(48px + var(--safe-bottom));
+      width: clamp(42px, 10vh, 54px);
+      padding: 8px 7px;
+    }
+    .touch-buttons {
+      right: calc(72px + var(--safe-right));
+      bottom: calc(54px + var(--safe-bottom));
+      gap: 6px;
+    }
+    .touch-button { border-radius: 13px; font-size: 7px; }
+    .touch-button.fire { border-radius: 16px; height: calc(var(--touch-button-size) * 2 + 6px); }
+    .touch-label { display: none; }
+    .touch-throttle-readout { top: -17px; font-size: 7px; }
+    .touch-throttle-knob { width: 28px; height: 15px; }
+  }
   .target-bracket {
     position: absolute;
     pointer-events: none;
@@ -1161,6 +1370,114 @@
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
   }
+  @media (orientation: landscape) and (max-height: 760px),
+         (orientation: landscape) and (max-width: 1280px),
+         (pointer: coarse) and (orientation: landscape) {
+    #hud { font-size: 8px; letter-spacing: 0.035em; }
+    #course-director,
+    #mp-race-panel,
+    #controls-help,
+    #status-msg { display: none !important; }
+    #instruments,
+    #throttle-wrap {
+      left: calc(8px + var(--safe-left));
+      right: calc(8px + var(--safe-right));
+      width: auto;
+      transform: none;
+      padding: 3px 5px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(14,18,26,0.30), rgba(8,10,16,0.08));
+      backdrop-filter: blur(12px) saturate(135%);
+      -webkit-backdrop-filter: blur(12px) saturate(135%);
+    }
+    #instruments { top: calc(4px + var(--safe-top)); }
+    #throttle-wrap { bottom: calc(4px + var(--safe-bottom)); }
+    .hud-compact-grid {
+      grid-template-columns: minmax(74px, 0.9fr) minmax(74px, 0.9fr) minmax(108px, 1.15fr) minmax(82px, 0.8fr);
+      gap: 3px;
+      margin-top: 0;
+    }
+    #hud-aero-chip,
+    #hud-gear-chip,
+    #hud-ammo-chip,
+    #hud-score-chip { display: none !important; }
+    .hud-stat-chip {
+      min-height: 28px;
+      padding: 3px 5px;
+      border-radius: 8px;
+      gap: 0;
+    }
+    .hud-stat-line,
+    .hud-track-head,
+    .hud-inline-readout,
+    .hud-stack-line { gap: 3px; }
+    .hud-label,
+    .hud-inline-state,
+    #throttle-wrap .deck-meta-row,
+    #throttle-wrap .hud-action,
+    #status-msg {
+      font-size: 6px;
+      letter-spacing: 0.08em;
+    }
+    #instruments .big,
+    #throttle-wrap .big,
+    .hud-value { font-size: 14px; }
+    .top-stat-emphasis .hud-value,
+    #instruments .hud-primary-chip .hud-value,
+    #throttle-wrap .hud-primary-chip .hud-value,
+    .hud-primary-chip .hud-value,
+    .hud-engine-chip.hud-primary-chip .hud-value {
+      font-size: clamp(17px, 4.8vh, 22px);
+      line-height: 0.84;
+    }
+    .hud-primary-chip .hud-unit,
+    .hud-unit,
+    .hud-subtle { font-size: 7px; }
+    .hud-subtle > span { font-size: 12px; }
+    .hud-mini-track { height: 2px; margin: 1px 0 0; }
+    .hud-bottom-surface {
+      grid-template-columns: minmax(82px, max-content) auto;
+      gap: 5px;
+      margin-top: 0;
+      align-items: center;
+    }
+    .hud-engine-strip { gap: 4px; min-width: 0; }
+    .hud-engine-chip {
+      padding: 3px 6px;
+      border-radius: 9px;
+      min-width: 0;
+    }
+    .hud-meta-strip,
+    #ab-status { display: none !important; }
+    .hud-action-tray { justify-self: end; }
+    .hud-action-tray summary {
+      min-height: 28px;
+      padding: 6px 8px;
+      font-size: 6px;
+      letter-spacing: 0.08em;
+    }
+    #throttle-wrap .hud-action {
+      min-height: 30px;
+      padding: 6px 7px;
+      text-align: center;
+      white-space: normal;
+    }
+    #hud-control-grid {
+      position: fixed;
+      left: calc(8px + var(--safe-left));
+      right: calc(8px + var(--safe-right));
+      bottom: calc(42px + var(--safe-bottom));
+      width: auto;
+      max-height: min(44vh, 210px);
+      overflow: auto;
+      justify-content: stretch;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 5px;
+      padding: 6px;
+      z-index: 9998;
+    }
+    .hud-action-tray[open] #hud-control-grid { display: grid; }
+  }
   @media (max-height: 520px) and (orientation: landscape) {
     #hud { font-size: 9px; letter-spacing: 0.04em; }
     #instruments,
@@ -1406,6 +1723,27 @@
 <div id="hud">
   <div id="crosshair"></div>
   <div id="target-overlay"></div>
+  <div id="touch-controls" aria-label="Mobile touch flight controls">
+    <div class="touch-pad" id="touch-stick" aria-label="Pitch and bank stick" role="application">
+      <div class="touch-stick-crosshair"></div>
+      <div class="touch-stick-knob" id="touch-stick-knob"></div>
+      <div class="touch-label">STICK</div>
+    </div>
+    <div class="touch-pad" id="touch-throttle" aria-label="Throttle slider" role="slider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="touch-throttle-readout" id="touch-throttle-readout">0%</div>
+      <div class="touch-throttle-track">
+        <div class="touch-throttle-fill" id="touch-throttle-fill"></div>
+        <div class="touch-throttle-knob" id="touch-throttle-knob"></div>
+      </div>
+      <div class="touch-label">THROTTLE</div>
+    </div>
+    <div class="touch-buttons" aria-label="Mobile flight buttons">
+      <button type="button" class="touch-button fire" data-touch-button="fire">FIRE</button>
+      <button type="button" class="touch-button" data-touch-button="brake">BRAKE</button>
+      <button type="button" class="touch-button" data-touch-button="gear">GEAR</button>
+      <button type="button" class="touch-button" data-touch-button="reset">RESET</button>
+    </div>
+  </div>
   <div class="panel game-dialog-chrome flight-core-shell thin-surface-hud-shell top-surface-strip" id="instruments">
     <div class="hud-compact-grid">
       <div class="hud-stat-chip top-stat-emphasis hud-primary-chip">
