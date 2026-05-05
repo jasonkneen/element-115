@@ -32,3 +32,5 @@ node_modules/
 .grok/
 research/_agent_ids.txt
 /.playwright-mcp
+/.contex
+.gstack/
