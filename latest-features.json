@@ -1,0 +1,23 @@
+{
+  "version": "2026.05.05",
+  "title": "Welcome back, pilot",
+  "subtitle": "Latest combat training upgrades are live.",
+  "features": [
+    {
+      "title": "Target upgrade course",
+      "description": "Practice rings are now spaced out as target gates with visible next-reward callouts. Hit them in sequence to earn ammo, missiles, shields, and alien pulse time."
+    },
+    {
+      "title": "Real missile drop launch",
+      "description": "Wing missiles now fall clear of the rail before the motor lights and guidance takes over."
+    },
+    {
+      "title": "Damaged UFO feedback",
+      "description": "Alien ships show failing shield flicker, sparks, and smoke trails as their hulls degrade."
+    },
+    {
+      "title": "Player shields",
+      "description": "Course targets can now recharge your shield before hull damage gets through."
+    }
+  ]
+}
