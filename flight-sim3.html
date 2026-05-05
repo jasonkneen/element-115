@@ -737,6 +737,29 @@
     border-color: rgba(194, 255, 205, 0.56);
     color: rgba(226, 255, 231, 1);
   }
+  .target-bracket.cue-warn .target-frame {
+    border-color: rgba(255, 72, 72, 0.92);
+    background: rgba(255, 40, 36, 0.035);
+    box-shadow: inset 0 0 0 1px rgba(255, 126, 98, 0.14), 0 0 26px rgba(255, 44, 42, 0.26);
+  }
+  .target-bracket.cue-warn .target-tag,
+  .target-bracket.cue-warn .target-readout {
+    border-color: rgba(255, 92, 72, 0.46);
+    background: rgba(34, 5, 5, 0.72);
+    color: rgba(255, 190, 174, 0.98);
+  }
+  .target-bracket.cue-ready .target-frame {
+    border-color: rgba(84, 255, 128, 0.96);
+    background: rgba(75, 255, 118, 0.04);
+    box-shadow: inset 0 0 0 1px rgba(176, 255, 196, 0.2), 0 0 32px rgba(80, 255, 122, 0.34);
+  }
+  .target-bracket.locking .target-frame {
+    animation: target-lock-breathe 0.46s ease-in-out infinite alternate;
+  }
+  @keyframes target-lock-breathe {
+    from { transform: rotate(45deg) scale(0.96); }
+    to { transform: rotate(45deg) scale(1.05); }
+  }
   .target-bracket.shield-hit .target-frame {
     border-color: rgba(178, 255, 194, 1);
     box-shadow: inset 0 0 0 1px rgba(178, 255, 194, 0.48), 0 0 42px rgba(94, 255, 130, 0.66);
@@ -7516,7 +7539,7 @@ for (let i = 0; i < 8; i++) {
     side: 1,
     smokeTimer: 0,
     launchAge: 0,
-    ignitionDelay: 0.32,
+    ignitionDelay: 0.52,
     engineLit: false,
     launchForward: new THREE.Vector3(0, 0, -1),
     dropDir: new THREE.Vector3(0, -1, 0),
@@ -7768,7 +7791,10 @@ function deactivateMissile(m) {
   m.smokeTimer = 0;
   m.launchAge = 0;
   m.engineLit = false;
-  if (m.flare && m.flare.material) m.flare.material.opacity = 0;
+  if (m.flare && m.flare.material) {
+    m.flare.material.opacity = 0;
+    m.flare.scale.setScalar(1);
+  }
   m.mesh.visible = false;
 }
 
@@ -7830,7 +7856,7 @@ function fireMissile() {
   missile.active = true;
   missile.side = side;
   missile.launchAge = 0;
-  missile.ignitionDelay = 0.30 + Math.random() * 0.08;
+  missile.ignitionDelay = 0.48 + Math.random() * 0.12;
   missile.engineLit = false;
   missile.launchForward.copy(forward);
   missile.dropDir.copy(dropDir);
@@ -8391,10 +8417,14 @@ function updateCombat(dt) {
       const igniteDir = m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward.clone().normalize() : _combatTmpB.copy(m.vel).normalize();
       const igniteVel = igniteDir.clone().multiplyScalar(255).addScaledVector(plane.vel, 0.35);
       m.vel.lerp(igniteVel, 0.86);
-      if (m.flare && m.flare.material) m.flare.material.opacity = 0.78;
-      impactBlastPool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.2), 5, 0.55, 0.08, 0.24, 0.68);
-      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.4), 3, 0.85, 0.10, 0.76, 0.9);
-      if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 120, maxMs: 130, volume: 0.78, rate: 1.55 });
+      if (m.flare && m.flare.material) {
+        m.flare.material.opacity = 1.0;
+        m.flare.scale.setScalar(1.35);
+      }
+      impactBlastPool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.2), 10, 1.08, 0.10, 0.38, 1.1);
+      explosionFirePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.15), 7, 1.35, 0.16, 0.42, 0.92);
+      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.8), 9, 1.45, 0.18, 1.05, 1.28);
+      if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 120, maxMs: 160, volume: 0.92, rate: 1.68 });
     }
     const target = m.engineLit && m.target && m.target.destructible && m.target.destructible.alive ? m.target : null;
     if (target && target.object) {
@@ -8414,12 +8444,16 @@ function updateCombat(dt) {
     m.mesh.position.copy(m.pos);
     const visualDir = m.engineLit ? _combatTmpB.copy(m.vel).normalize() : (m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward : _combatTmpB.copy(m.vel).normalize());
     m.mesh.quaternion.setFromUnitVectors(_missileForward, visualDir);
-    if (m.flare && m.flare.material) m.flare.material.opacity = m.engineLit ? (0.58 + Math.sin(performance.now() * 0.03) * 0.16) : 0;
+    if (m.flare && m.flare.material) {
+      m.flare.material.opacity = m.engineLit ? (0.78 + Math.sin(performance.now() * 0.03) * 0.18) : 0;
+      m.flare.scale.setScalar(m.engineLit ? 1.08 + Math.sin(performance.now() * 0.028) * 0.18 : 1);
+    }
     if (m.engineLit) {
       m.smokeTimer -= dt;
       if (m.smokeTimer <= 0) {
-        m.smokeTimer = 0.045;
-        explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.0), 1, 0.72, 0.08, 0.62, 0.82);
+        m.smokeTimer = 0.026;
+        const trailPos = m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.25);
+        explosionSmokePool.emitCluster(trailPos, 2, 1.05, 0.08, 0.82, 1.05);
       }
     }
     const groundH = (m.pos.x * m.pos.x + m.pos.z * m.pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(m.pos.x, m.pos.z);
@@ -12715,6 +12749,8 @@ const targetHudState = {
   lockAmount: 0,
   lockSolid: false,
   lockTone: 'off',
+  lockHoldUntil: 0,
+  lockCenterHoldPx: 178,
   aimAssist: 0,
 };
 const _hudWorldA = new THREE.Vector3();
@@ -12783,6 +12819,7 @@ function resetReticleHud() {
   targetHudState.lockAmount = 0;
   targetHudState.lockSolid = false;
   targetHudState.lockTone = 'off';
+  targetHudState.lockHoldUntil = 0;
   targetHudState.aimAssist = 0;
   if (typeof stopLockTone === 'function') stopLockTone();
   if ($crosshair) {
@@ -12797,6 +12834,9 @@ function resetReticleHud() {
     box.el.classList.remove('active');
     box.el.classList.remove('tracking');
     box.el.classList.remove('locked');
+    box.el.classList.remove('locking');
+    box.el.classList.remove('cue-warn');
+    box.el.classList.remove('cue-ready');
     box.el.classList.remove('shield-hit');
     box.el.classList.remove('damaged');
   }
@@ -12915,6 +12955,7 @@ function selectTargetHudEntry(target, { announce = false, manual = false } = {})
     targetHudState.lockAmount = 0;
     targetHudState.lockSolid = false;
     targetHudState.lockTone = 'off';
+    targetHudState.lockHoldUntil = 0;
     targetHudState.aimAssist = 0;
     if (typeof stopLockTone === 'function') stopLockTone();
   }
@@ -13023,6 +13064,9 @@ function makeGuidedTargetHudEntry(candidate, camForward, camRight, camUp) {
     h * 0.5 - (up / denom) * h * 0.33
   );
   const size = 58;
+  const distanceM = candidate.distanceM || plane.pos.distanceTo(_hudWorldA);
+  const behind = depth <= 0;
+  const far = distanceM > 2800;
   return {
     ...candidate,
     centerX: cue.x,
@@ -13035,7 +13079,10 @@ function makeGuidedTargetHudEntry(candidate, camForward, camRight, camUp) {
     score: (cue.x - reticleState.x) ** 2 + (cue.y - reticleState.y) ** 2 + Math.max(0, depth) * 0.45,
     guided: true,
     offscreenCue: true,
-    distanceM: candidate.distanceM || plane.pos.distanceTo(_hudWorldA),
+    cueWarn: true,
+    cueReady: false,
+    guidanceLabel: behind ? 'BEHIND' : far ? 'FAR' : 'OFF CAMERA',
+    distanceM,
     altFt: candidate.altFt != null ? candidate.altFt : _hudWorldA.y * 3.28,
   };
 }
@@ -13116,6 +13163,9 @@ function updateTargetHud(dt = 1 / 60) {
     const dx = cue.x - reticleState.x;
     const dy = cue.y - reticleState.y;
     const score = dx * dx + dy * dy + depth * 0.45;
+    const far = (candidate.distanceM || 0) > 2800;
+    const cueWarn = cue.clamped || far || depth < 60;
+    const guidanceLabel = depth < 60 ? 'BEHIND' : far ? 'FAR' : cue.clamped ? 'OFF CAMERA' : 'IN FRONT';
     const entry = {
       ...candidate,
       centerX: cue.x,
@@ -13127,6 +13177,9 @@ function updateTargetHud(dt = 1 / 60) {
       depth,
       score,
       offscreenCue: cue.clamped,
+      cueWarn,
+      cueReady: !cueWarn,
+      guidanceLabel,
     };
     visible.push(entry);
     if (score < bestScore) {
@@ -13150,9 +13203,13 @@ function updateTargetHud(dt = 1 / 60) {
   const activeReticleDx = active ? (active.centerX - reticleState.x) : 0;
   const activeReticleDy = active ? (active.centerY - reticleState.y) : 0;
   const activeReticleDist = active ? Math.hypot(activeReticleDx, activeReticleDy) : 9999;
-  const lockProximity = active ? clamp01(1 - activeReticleDist / 260) : 0;
-  const lockDistanceEase = active ? clamp01(1 - Math.max(0, active.distanceM - 350) / 3800) : 0;
+  const lockEligible = !!(active && !active.cueWarn && !active.offscreenCue);
+  const lockProximity = lockEligible ? clamp01(1 - activeReticleDist / 260) : 0;
+  const lockDistanceEase = lockEligible ? clamp01(1 - Math.max(0, active.distanceM - 350) / 3800) : 0;
   const desiredLockId = active ? active.id : '';
+  const nowMs = performance.now();
+  const wasSolid = !!(active && targetHudState.lockSolid && targetHudState.lockId === desiredLockId);
+  const withinLockHold = !!(lockEligible && active.depth > 40 && active.distanceM < 4300 && activeReticleDist < (targetHudState.lockCenterHoldPx || 178));
   if (!active) {
     targetHudState.lockAmount = Math.max(0, targetHudState.lockAmount - dt * 1.8);
     if (targetHudState.lockAmount <= 0.02) targetHudState.lockId = '';
@@ -13162,15 +13219,26 @@ function updateTargetHud(dt = 1 / 60) {
     } else {
       if (targetHudState.lockId !== desiredLockId) {
         targetHudState.lockId = desiredLockId;
-        targetHudState.lockAmount *= 0.35;
+        targetHudState.lockAmount *= 0.28;
+        targetHudState.lockHoldUntil = 0;
       }
-      const desiredLock = clamp01(lockProximity * (0.74 + lockDistanceEase * 0.26) + lockDistanceEase * 0.08);
-      const lockRate = desiredLock > targetHudState.lockAmount ? (3.4 + lockProximity * 2.6) : 2.4;
+      let desiredLock = clamp01(lockProximity * (0.72 + lockDistanceEase * 0.28) + lockDistanceEase * 0.08);
+      if (withinLockHold && (wasSolid || targetHudState.lockAmount > 0.72)) {
+        desiredLock = Math.max(desiredLock, 0.88);
+        targetHudState.lockHoldUntil = nowMs + 850;
+      } else if (targetHudState.lockHoldUntil > nowMs && activeReticleDist < (targetHudState.lockCenterHoldPx || 178) * 1.18) {
+        desiredLock = Math.max(desiredLock, 0.80);
+      }
+      const snapEase = smoothstep(clamp01((targetHudState.lockAmount - 0.46) / 0.34));
+      const acquireRate = 2.0 + lockProximity * 2.2 + snapEase * 5.4;
+      const releaseRate = wasSolid && withinLockHold ? 0.35 : 1.8;
+      const lockRate = desiredLock > targetHudState.lockAmount ? acquireRate : releaseRate;
       targetHudState.lockAmount += (desiredLock - targetHudState.lockAmount) * Math.min(1, dt * lockRate);
     }
   }
   targetHudState.lockAmount = clamp01(targetHudState.lockAmount);
-  targetHudState.lockSolid = !!active && targetHudState.lockId === desiredLockId && targetHudState.lockAmount > 0.78 && lockProximity > 0.58;
+  const centerLocked = withinLockHold && targetHudState.lockAmount > 0.74;
+  targetHudState.lockSolid = !!active && targetHudState.lockId === desiredLockId && (centerLocked || (targetHudState.lockHoldUntil > nowMs && targetHudState.lockAmount > 0.78));
   targetHudState.lockTone = targetHudState.lockSolid ? 'solid' : (targetHudState.lockAmount > 0.18 ? 'beep' : 'off');
   targetHudState.aimAssist = active && active.kind === 'traffic'
     ? (targetHudState.lockSolid ? 0.58 : clamp01((targetHudState.lockAmount - 0.38) / 0.42) * 0.34)
@@ -13186,6 +13254,9 @@ function updateTargetHud(dt = 1 / 60) {
       poolEntry.el.classList.remove('active');
       poolEntry.el.classList.remove('tracking');
       poolEntry.el.classList.remove('locked');
+      poolEntry.el.classList.remove('locking');
+      poolEntry.el.classList.remove('cue-warn');
+      poolEntry.el.classList.remove('cue-ready');
       poolEntry.el.classList.remove('shield-hit');
       poolEntry.el.classList.remove('damaged');
       continue;
@@ -13194,7 +13265,8 @@ function updateTargetHud(dt = 1 / 60) {
     const isActive = !!active && active.id === target.id;
     const isTracking = isActive && targetHudState.lockAmount > 0.18;
     const isLocked = isActive && targetHudState.lockSolid;
-    const joinVisual = isActive ? smoothstep(clamp01(((targetHudState.lockAmount || 0) - 0.56) / 0.34)) : 0;
+    const isLocking = isActive && !isLocked && targetHudState.lockAmount > 0.42;
+    const joinVisual = isActive ? smoothstep(clamp01(((targetHudState.lockAmount || 0) - 0.34) / 0.48)) : 0;
     const displayW = target.width + (58 - target.width) * joinVisual;
     const displayH = target.height + (58 - target.height) * joinVisual;
     const displayCenterX = target.centerX + (reticleState.x - target.centerX) * joinVisual;
@@ -13205,6 +13277,9 @@ function updateTargetHud(dt = 1 / 60) {
     poolEntry.el.classList.toggle('active', isActive);
     poolEntry.el.classList.toggle('tracking', isTracking);
     poolEntry.el.classList.toggle('locked', isLocked);
+    poolEntry.el.classList.toggle('locking', isLocking);
+    poolEntry.el.classList.toggle('cue-warn', !!(target.cueWarn && !isLocked));
+    poolEntry.el.classList.toggle('cue-ready', !!(target.cueReady || isLocked));
     const d = target.destructible || null;
     const shieldPct = d && d.shieldMax ? Math.round((d.shield / Math.max(1, d.shieldMax)) * 100) : 0;
     const hullPct = d && d.maxHealth ? Math.round((d.health / Math.max(1, d.maxHealth)) * 100) : 100;
@@ -13216,7 +13291,7 @@ function updateTargetHud(dt = 1 / 60) {
       ? `${target.label} · ${target.type} · LOCK`
       : isTracking
         ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
-        : `${target.label} · ${target.type} · ${target.offscreenCue ? 'STEER' : 'SELECTED'}`;
+        : `${target.label} · ${target.type} · ${target.guidanceLabel || (target.offscreenCue ? 'STEER' : 'IN FRONT')}`;
     poolEntry.readout.style.display = isActive ? 'block' : 'none';
     const damageLine = d ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
     poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
