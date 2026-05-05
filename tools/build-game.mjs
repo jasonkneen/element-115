@@ -15,7 +15,7 @@ const outReadmePath = path.join(distDir, 'README.txt');
 const args = new Set(process.argv.slice(2));
 const clean = !args.has('--no-clean');
 const chunkSize = 24_000;
-const deploySupportFiles = ['plane-tweaks.json'];
+const deploySupportFiles = ['plane-tweaks.json', 'latest-features.json'];
 
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
