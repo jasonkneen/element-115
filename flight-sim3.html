@@ -7425,6 +7425,10 @@ const combatState = {
   alienWeaponLastAwardAt: 0,
   lastFiredAt: 0,
   dryClickUntil: 0,
+  spaceDown: false,
+  lastSpaceTapAt: 0,
+  spaceMissileQueued: false,
+  suppressSpaceGunsUntil: 0,
 };
 const projectileGroup = new THREE.Group();
 scene.add(projectileGroup);
@@ -7886,6 +7890,16 @@ function spawnGroundImpactExplosion(pos, intensity = 1.0) {
 
 // Apply damage to a destructible. UFOs absorb hits through shields first;
 // missiles carry the explosive punch, while bullets are mostly kinetic pings.
+function autoSelectDamagedTarget(target, source = 'shot') {
+  if (!target || target.kind !== 'traffic') return;
+  if (!(source === 'shot' || source === 'missile' || source === 'alien-pulse')) return;
+  try {
+    if (typeof collectAirTargetCandidates !== 'function' || typeof selectTargetHudEntry !== 'function') return;
+    const candidate = collectAirTargetCandidates().find(t => t.destructible === target);
+    if (candidate) selectTargetHudEntry(candidate, { announce: false, manual: false });
+  } catch {}
+}
+
 function damageDestructible(target, pos, damage = 1.0, intensity = 1.0, source = 'shot') {
   if (!target || !target.alive) return false;
   const playerWeapon = source === 'shot' || source === 'missile' || source === 'alien-pulse';
@@ -7893,6 +7907,7 @@ function damageDestructible(target, pos, damage = 1.0, intensity = 1.0, source =
   const isTrafficTarget = target.kind === 'traffic';
   const isAirframeTarget = isTrafficTarget || target.kind === 'drone' || target.kind === 'floatingTarget';
   target.lastHitAt = performance.now();
+  if (playerWeapon && isTrafficTarget) autoSelectDamagedTarget(target, source);
   target.shieldPulse = Math.min(1.8, (target.shieldPulse || 0) + 1.0);
 
   let hullDamage = damage;
@@ -8122,6 +8137,10 @@ function resetCombatState() {
   combatState.alienWeaponLastAwardAt = 0;
   combatState.lastFiredAt = 0;
   combatState.dryClickUntil = 0;
+  combatState.spaceDown = false;
+  combatState.lastSpaceTapAt = 0;
+  combatState.spaceMissileQueued = false;
+  combatState.suppressSpaceGunsUntil = 0;
   crashBlast.visible = false;
   crashBlast.material.opacity = 0;
   if (groundScorchFX) groundScorchFX.clear();
@@ -8214,19 +8233,31 @@ function updateCombat(dt) {
   combatState.fireCooldown = Math.max(0, combatState.fireCooldown - dt);
   combatState.missileCooldown = Math.max(0, combatState.missileCooldown - dt);
   transientStatus.timer = Math.max(0, transientStatus.timer - dt);
+  const combatNow = performance.now();
   // Time-earned supply: active flight steadily refills bullets and builds
   // missile credits. Firing can still outpace earning, so ammo remains scarce.
   updateCombatSupplyEarnings(dt);
+  const missileRequested = !plane.crashed && (combatState.spaceMissileQueued || keys['KeyX'] || gamepadState.missile || touchButtonActive('missile'));
+  if (missileRequested && combatState.missileCooldown <= 0) {
+    const launched = fireMissile();
+    if (combatState.spaceMissileQueued) {
+      combatState.spaceMissileQueued = false;
+      combatState.suppressSpaceGunsUntil = Math.max(combatState.suppressSpaceGunsUntil || 0, combatNow + (launched ? 180 : 90));
+    }
+  } else if (combatState.spaceMissileQueued && combatState.missileCooldown > 0.2) {
+    combatState.spaceMissileQueued = false;
+  }
   // Fire on Space OR left mouse. `combatState.fireHeld` tracks the
   // mouse button so left-click doesn't need to go through the keys
   // map (which can get stuck if keyup misses during focus changes).
-  const firing = !plane.crashed && (keys['Space'] || combatState.fireHeld);
+  // A quick double-tap of Space is reserved for missile launch; suppress
+  // gun bursts briefly so the second tap reads as MSL rather than MG fire.
+  const spaceGunHeld = keys['Space'] && combatNow >= (combatState.suppressSpaceGunsUntil || 0);
+  const firing = !plane.crashed && (spaceGunHeld || combatState.fireHeld);
   if (firing && combatState.fireCooldown <= 0) {
     fireProjectileBurst();
     combatState.fireCooldown = alienWeaponActive() ? 0.055 : 0.115;
   }
-  const missileRequested = !plane.crashed && (keys['KeyX'] || gamepadState.missile || touchButtonActive('missile'));
-  if (missileRequested && combatState.missileCooldown <= 0) fireMissile();
 
   // Player-vs-object collision (D11): flying into any registered
   // destructible causes mutual damage. Relative speed scales severity
@@ -10374,10 +10405,25 @@ const MAX_YAW_RATE = 0.82;     // rad/s, ~47 deg/s
 
 const keys = {};
 window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat && typeof combatState !== 'undefined') {
+    const now = performance.now();
+    const doubleTapWindow = 280;
+    if ((now - (combatState.lastSpaceTapAt || 0)) <= doubleTapWindow) {
+      combatState.spaceMissileQueued = true;
+      combatState.suppressSpaceGunsUntil = now + 180;
+      combatState.lastSpaceTapAt = 0;
+    } else {
+      combatState.lastSpaceTapAt = now;
+    }
+    combatState.spaceDown = true;
+  }
   keys[e.code] = true;
-  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'KeyX', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
-window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  if (e.code === 'Space' && typeof combatState !== 'undefined') combatState.spaceDown = false;
+});
 
 let gearPressed = false;
 let lightsPressed = false;
@@ -12944,6 +12990,55 @@ function getReticleAimDirection(origin, out = _hudWorldG) {
   out.copy(_hudWorldF).sub(origin).normalize();
   return Number.isFinite(out.x) && Number.isFinite(out.y) && Number.isFinite(out.z) ? out : null;
 }
+function getTargetHudBounds() {
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  return {
+    minX: Math.max(58, w * 0.20),
+    maxX: Math.min(w - 58, w * 0.80),
+    minY: Math.max(58, h * 0.18),
+    maxY: Math.min(h - 72, h * 0.78),
+  };
+}
+function clampTargetHudCuePoint(x, y) {
+  const b = getTargetHudBounds();
+  const cx = Math.max(b.minX, Math.min(b.maxX, x));
+  const cy = Math.max(b.minY, Math.min(b.maxY, y));
+  return { x: cx, y: cy, clamped: Math.abs(cx - x) > 0.5 || Math.abs(cy - y) > 0.5 };
+}
+function makeGuidedTargetHudEntry(candidate, camForward, camRight, camUp) {
+  if (!candidate || !candidate.object) return null;
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  candidate.object.getWorldPosition(_hudWorldA);
+  const rel = _hudWorldD.copy(_hudWorldA).sub(camera.position);
+  const distance = Math.max(1, rel.length());
+  const depth = rel.dot(camForward);
+  const side = rel.dot(camRight) / distance;
+  const up = rel.dot(camUp) / distance;
+  const fwd = depth / distance;
+  const denom = Math.max(0.18, Math.abs(fwd) + 0.20);
+  const cue = clampTargetHudCuePoint(
+    w * 0.5 + (side / denom) * w * 0.33,
+    h * 0.5 - (up / denom) * h * 0.33
+  );
+  const size = 58;
+  return {
+    ...candidate,
+    centerX: cue.x,
+    centerY: cue.y,
+    width: size,
+    height: size,
+    left: cue.x - size * 0.5,
+    top: cue.y - size * 0.5,
+    depth,
+    score: (cue.x - reticleState.x) ** 2 + (cue.y - reticleState.y) ** 2 + Math.max(0, depth) * 0.45,
+    guided: true,
+    offscreenCue: true,
+    distanceM: candidate.distanceM || plane.pos.distanceTo(_hudWorldA),
+    altFt: candidate.altFt != null ? candidate.altFt : _hudWorldA.y * 3.28,
+  };
+}
 function updateReticleHud(dt = 1 / 60) {
   if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
     if ($crosshair) $crosshair.style.opacity = '0';
@@ -13015,22 +13110,23 @@ function updateTargetHud(dt = 1 / 60) {
     const boxSize = Math.max(width, height);
     width = boxSize;
     height = boxSize;
-    const left = centerX - width * 0.5;
-    const top = centerY - height * 0.5;
-    if (left > window.innerWidth || top > window.innerHeight || left + width < 0 || top + height < 0) continue;
-    const dx = centerX - reticleState.x;
-    const dy = centerY - reticleState.y;
+    const cue = clampTargetHudCuePoint(centerX, centerY);
+    const left = cue.x - width * 0.5;
+    const top = cue.y - height * 0.5;
+    const dx = cue.x - reticleState.x;
+    const dy = cue.y - reticleState.y;
     const score = dx * dx + dy * dy + depth * 0.45;
     const entry = {
       ...candidate,
-      centerX,
-      centerY,
+      centerX: cue.x,
+      centerY: cue.y,
       width,
       height,
       left,
       top,
       depth,
       score,
+      offscreenCue: cue.clamped,
     };
     visible.push(entry);
     if (score < bestScore) {
@@ -13041,7 +13137,7 @@ function updateTargetHud(dt = 1 / 60) {
   visible.sort((a, b) => a.score - b.score || a.depth - b.depth);
   const visibleThreats = visible.filter(v => v.isThreat || v.kind === 'traffic');
   const selectedCandidate = resolveSelectedThreatTarget(allThreats, visibleThreats);
-  active = selectedCandidate ? (visible.find(v => v.id === selectedCandidate.id) || null) : null;
+  active = selectedCandidate ? (visible.find(v => v.id === selectedCandidate.id) || makeGuidedTargetHudEntry(selectedCandidate, camForward, camRight, camUp)) : null;
   targetHudState.selectedVisible = !!active;
   const displayTargets = active ? [active] : [];
   targetHudState.visibleCount = displayTargets.length;
@@ -13120,7 +13216,7 @@ function updateTargetHud(dt = 1 / 60) {
       ? `${target.label} · ${target.type} · LOCK`
       : isTracking
         ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
-        : `${target.label} · ${target.type} · SELECTED`;
+        : `${target.label} · ${target.type} · ${target.offscreenCue ? 'STEER' : 'SELECTED'}`;
     poolEntry.readout.style.display = isActive ? 'block' : 'none';
     const damageLine = d ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
     poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
