@@ -416,27 +416,34 @@
     outline-offset: 3px;
   }
   #crosshair {
+    --hud-lock-green: 114, 255, 145;
     position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%,-50%);
-    width: 50px; height: 50px;
-    border: 1px solid rgba(255, 204, 102, 0.35);
-    border-radius: 50%;
+    transform: translate(-50%,-50%) rotate(45deg);
+    width: 48px; height: 48px;
+    border: 1.5px solid rgba(var(--hud-lock-green), 0.52);
+    border-radius: 4px;
     pointer-events: none;
-    will-change: left, top, transform;
-    box-shadow: 0 0 18px rgba(255, 197, 92, 0.12);
+    will-change: left, top, transform, opacity;
+    box-shadow: 0 0 18px rgba(var(--hud-lock-green), 0.14), inset 0 0 18px rgba(var(--hud-lock-green), 0.035);
   }
   #crosshair::before, #crosshair::after {
-    content: ''; position: absolute; background: rgba(255, 204, 102, 0.35);
+    content: ''; position: absolute; background: rgba(var(--hud-lock-green), 0.46);
   }
-  #crosshair::before { top: 50%; left: -12px; right: -12px; height: 1px; }
-  #crosshair::after { left: 50%; top: -12px; bottom: -12px; width: 1px; }
+  #crosshair::before { top: 50%; left: 10px; right: 10px; height: 1px; }
+  #crosshair::after { left: 50%; top: 10px; bottom: 10px; width: 1px; }
+  #crosshair.tracking {
+    border-color: rgba(var(--hud-lock-green), 0.72);
+    box-shadow: 0 0 24px rgba(var(--hud-lock-green), 0.22), inset 0 0 20px rgba(var(--hud-lock-green), 0.06);
+  }
   #crosshair.locked {
-    border-color: rgba(255, 226, 162, 0.76);
-    box-shadow: 0 0 26px rgba(255, 209, 116, 0.28), inset 0 0 22px rgba(255, 208, 120, 0.08);
+    transform: translate(-50%,-50%) rotate(45deg) scale(1.13);
+    border-color: rgba(194, 255, 205, 0.98);
+    border-width: 2px;
+    box-shadow: 0 0 34px rgba(var(--hud-lock-green), 0.46), inset 0 0 26px rgba(var(--hud-lock-green), 0.14);
   }
   #crosshair.locked::before,
   #crosshair.locked::after {
-    background: rgba(255, 236, 176, 0.8);
+    background: rgba(214, 255, 220, 0.98);
   }
   #target-overlay {
     position: absolute;
@@ -662,27 +669,28 @@
   .target-bracket {
     position: absolute;
     pointer-events: none;
-    color: rgba(255, 224, 164, 0.92);
-    text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+    color: rgba(126, 255, 158, 0.94);
+    text-shadow: 0 0 10px rgba(0, 18, 6, 0.86), 0 0 18px rgba(91, 255, 128, 0.22);
     will-change: transform, opacity, width, height;
   }
   .target-frame {
     position: absolute;
-    inset: 0;
-    border: 1px solid rgba(255, 206, 104, 0.66);
-    border-radius: 3px;
-    background: linear-gradient(180deg, rgba(255, 210, 110, 0.035), rgba(255, 210, 110, 0.006));
-    box-shadow: inset 0 0 0 1px rgba(255, 231, 176, 0.1), 0 0 20px rgba(255, 186, 64, 0.12);
+    inset: 5px;
+    border: 1.5px solid rgba(111, 255, 142, 0.72);
+    border-radius: 4px;
+    transform: rotate(45deg);
+    background: rgba(93, 255, 128, 0.025);
+    box-shadow: inset 0 0 0 1px rgba(180, 255, 194, 0.10), 0 0 20px rgba(80, 255, 122, 0.16);
   }
   .target-frame::before,
   .target-frame::after {
     content: '';
     position: absolute;
-    inset: 8px;
-    border-top: 1px solid rgba(255, 223, 152, 0.42);
-    border-bottom: 1px solid rgba(255, 223, 152, 0.18);
-    opacity: 0.65;
+    inset: 9px;
+    opacity: 0.58;
   }
+  .target-frame::before { border-top: 1px solid rgba(178, 255, 194, 0.42); border-bottom: 1px solid rgba(178, 255, 194, 0.16); }
+  .target-frame::after { border-left: 1px solid rgba(178, 255, 194, 0.22); border-right: 1px solid rgba(178, 255, 194, 0.22); }
   .target-tag,
   .target-readout {
     position: absolute;
@@ -692,7 +700,8 @@
     background: rgba(10, 16, 24, 0.58);
     backdrop-filter: blur(10px) saturate(145%);
     -webkit-backdrop-filter: blur(10px) saturate(145%);
-    border: 1px solid rgba(255, 215, 140, 0.18);
+    border: 1px solid rgba(111, 255, 142, 0.20);
+    color: rgba(126, 255, 158, 0.92);
     font: 600 10px/1.1 var(--game-font-ui);
     letter-spacing: 0.14em;
     white-space: nowrap;
@@ -705,34 +714,35 @@
     top: calc(100% + 6px);
     font-size: 9px;
     letter-spacing: 0.12em;
-    color: rgba(255, 237, 196, 0.82);
+    color: rgba(126, 255, 158, 0.84);
   }
   .target-bracket.active .target-frame {
-    border-color: rgba(255, 236, 176, 0.9);
-    box-shadow: inset 0 0 0 1px rgba(255, 236, 176, 0.16), 0 0 26px rgba(255, 196, 92, 0.2);
+    border-color: rgba(150, 255, 171, 0.94);
+    box-shadow: inset 0 0 0 1px rgba(196, 255, 207, 0.16), 0 0 28px rgba(80, 255, 122, 0.28);
   }
   .target-bracket.active .target-tag,
   .target-bracket.active .target-readout {
-    border-color: rgba(255, 232, 170, 0.34);
-    background: rgba(12, 18, 28, 0.72);
-    color: rgba(255, 244, 206, 0.98);
+    border-color: rgba(126, 255, 158, 0.40);
+    background: rgba(3, 20, 9, 0.72);
+    color: rgba(190, 255, 203, 0.98);
     border-radius: 6px;
   }
   .target-bracket.locked .target-frame {
-    border-color: rgba(116, 239, 255, 0.92);
-    box-shadow: inset 0 0 0 1px rgba(116, 239, 255, 0.28), 0 0 30px rgba(116, 239, 255, 0.36);
+    border-color: rgba(214, 255, 220, 1);
+    border-width: 2px;
+    box-shadow: inset 0 0 0 1px rgba(214, 255, 220, 0.34), 0 0 42px rgba(94, 255, 130, 0.58);
   }
   .target-bracket.locked .target-tag,
   .target-bracket.locked .target-readout {
-    border-color: rgba(116, 239, 255, 0.46);
-    color: rgba(218, 253, 255, 0.98);
+    border-color: rgba(194, 255, 205, 0.56);
+    color: rgba(226, 255, 231, 1);
   }
   .target-bracket.shield-hit .target-frame {
-    border-color: rgba(116, 239, 255, 1);
-    box-shadow: inset 0 0 0 1px rgba(116, 239, 255, 0.48), 0 0 42px rgba(116, 239, 255, 0.62);
+    border-color: rgba(178, 255, 194, 1);
+    box-shadow: inset 0 0 0 1px rgba(178, 255, 194, 0.48), 0 0 42px rgba(94, 255, 130, 0.66);
   }
   .target-bracket.damaged .target-readout {
-    color: rgba(255, 194, 126, 0.98);
+    color: rgba(182, 255, 143, 0.98);
   }
 
   #title.flight-briefing-card {
@@ -1314,8 +1324,8 @@
       pointer-events: none;
     }
     #crosshair { width: 44px; height: 44px; }
-    #crosshair::before { left: -10px; right: -10px; }
-    #crosshair::after { top: -10px; bottom: -10px; }
+    #crosshair::before { left: 9px; right: 9px; }
+    #crosshair::after { top: 9px; bottom: 9px; }
     #graphics-overlay.fullscreen-options-shell {
       background: radial-gradient(circle at top, rgba(44,55,76,0.18), rgba(6,8,12,0.94) 62%);
     }
@@ -8188,7 +8198,8 @@ function fireProjectileBurst() {
     projectile.source = alien ? 'alien-pulse' : 'shot';
     setProjectileVisual(projectile, alien ? 'alien' : 'bullet');
     projectile.pos.copy(muzzle).applyQuaternion(plane.quat).add(plane.pos);
-    const shotDir = getAimAssistDirection(projectile.pos, forward, _combatTmpD) || forward;
+    const sightDir = (typeof getReticleAimDirection === 'function' && getReticleAimDirection(projectile.pos, _combatTmpC)) || forward;
+    const shotDir = getAimAssistDirection(projectile.pos, sightDir, _combatTmpD) || sightDir;
     projectile.vel.copy(shotDir).multiplyScalar(alien ? 620 : 520).add(plane.vel);
     projectile.mesh.visible = true;
     projectile.mesh.position.copy(projectile.pos);
@@ -10001,7 +10012,7 @@ function ensureLockTone(freq = 1240) {
     audio.lockToneGain = gain;
   }
   audio.lockToneOsc.frequency.setTargetAtTime(freq, t, 0.05);
-  audio.lockToneGain.gain.setTargetAtTime(0.055, t, 0.04);
+  audio.lockToneGain.gain.setTargetAtTime(0.074, t, 0.04);
 }
 function updateTargetLockAudio(dt) {
   if (!audio.ctx || !audio.enabled || !running || !reticleState.visible) {
@@ -12621,12 +12632,14 @@ const landingCompleteState = {
   bonusPoints: 0,
   result: null,
 };
+const RETICLE_SCREEN_Y_RATIO = 0.52;
+const RETICLE_GUN_Y_OFFSET_PX = 54;
 const reticleState = {
   x: window.innerWidth * 0.5,
-  y: window.innerHeight * 0.43,
+  y: window.innerHeight * RETICLE_SCREEN_Y_RATIO,
   vx: 0,
   vy: 0,
-  baseYOffset: -18,
+  baseYOffset: RETICLE_GUN_Y_OFFSET_PX,
   visible: false,
 };
 const mouseFlightState = {
@@ -12702,7 +12715,7 @@ function ensureTargetHudPool() {
 }
 function resetReticleHud() {
   reticleState.x = window.innerWidth * 0.5;
-  reticleState.y = window.innerHeight * 0.43;
+  reticleState.y = window.innerHeight * RETICLE_SCREEN_Y_RATIO;
   reticleState.vx = 0;
   reticleState.vy = 0;
   reticleState.visible = false;
@@ -12736,6 +12749,10 @@ function resetReticleHud() {
   for (const box of targetHudState.boxes) {
     box.el.style.display = 'none';
     box.el.classList.remove('active');
+    box.el.classList.remove('tracking');
+    box.el.classList.remove('locked');
+    box.el.classList.remove('shield-hit');
+    box.el.classList.remove('damaged');
   }
 }
 function mouseFlightUiTarget(target) {
@@ -12774,7 +12791,7 @@ function getMouseFlightAimBaseNdc() {
   const limits = getMouseFlightAimLimits();
   return {
     x: 0,
-    y: Math.max(-limits.y * 0.35, Math.min(limits.y * 0.35, 0.14)),
+    y: Math.max(-limits.y * 0.35, Math.min(limits.y * 0.35, -0.10)),
   };
 }
 function getMouseFlightAimNdc() {
@@ -12911,6 +12928,21 @@ function getGunReticleScreenPoint() {
     x: (_hudNdcA.x * 0.5 + 0.5) * w,
     y: (-_hudNdcA.y * 0.5 + 0.5) * h + (reticleState.baseYOffset || 0),
   };
+}
+function getReticleAimDirection(origin, out = _hudWorldG) {
+  if (!origin || !camera) return null;
+  const w = Math.max(1, window.innerWidth);
+  const h = Math.max(1, window.innerHeight);
+  const sx = reticleState && Number.isFinite(reticleState.x) ? reticleState.x : w * 0.5;
+  const sy = reticleState && Number.isFinite(reticleState.y) ? reticleState.y : h * RETICLE_SCREEN_Y_RATIO;
+  const ndcX = (sx / w) * 2 - 1;
+  const ndcY = -(sy / h) * 2 + 1;
+  const ray = _hudWorldE.set(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+  if (!Number.isFinite(ray.x) || !Number.isFinite(ray.y) || !Number.isFinite(ray.z) || ray.lengthSq() < 0.5) return null;
+  const aimDistance = Math.max(420, Math.min(1600, origin.distanceTo(camera.position) + 980));
+  _hudWorldF.copy(camera.position).addScaledVector(ray, aimDistance);
+  out.copy(_hudWorldF).sub(origin).normalize();
+  return Number.isFinite(out.x) && Number.isFinite(out.y) && Number.isFinite(out.z) ? out : null;
 }
 function updateReticleHud(dt = 1 / 60) {
   if (!$crosshair || !jet.userData.gunL || !jet.userData.gunR) {
@@ -13063,12 +13095,17 @@ function updateTargetHud(dt = 1 / 60) {
       continue;
     }
     poolEntry.el.style.display = 'block';
-    poolEntry.el.style.transform = `translate(${target.left.toFixed(1)}px, ${target.top.toFixed(1)}px)`;
-    poolEntry.el.style.width = `${target.width.toFixed(1)}px`;
-    poolEntry.el.style.height = `${target.height.toFixed(1)}px`;
     const isActive = !!active && active.id === target.id;
     const isTracking = isActive && targetHudState.lockAmount > 0.18;
     const isLocked = isActive && targetHudState.lockSolid;
+    const joinVisual = isActive ? smoothstep(clamp01(((targetHudState.lockAmount || 0) - 0.56) / 0.34)) : 0;
+    const displayW = target.width + (58 - target.width) * joinVisual;
+    const displayH = target.height + (58 - target.height) * joinVisual;
+    const displayCenterX = target.centerX + (reticleState.x - target.centerX) * joinVisual;
+    const displayCenterY = target.centerY + (reticleState.y - target.centerY) * joinVisual;
+    poolEntry.el.style.transform = `translate(${(displayCenterX - displayW * 0.5).toFixed(1)}px, ${(displayCenterY - displayH * 0.5).toFixed(1)}px)`;
+    poolEntry.el.style.width = `${displayW.toFixed(1)}px`;
+    poolEntry.el.style.height = `${displayH.toFixed(1)}px`;
     poolEntry.el.classList.toggle('active', isActive);
     poolEntry.el.classList.toggle('tracking', isTracking);
     poolEntry.el.classList.toggle('locked', isLocked);
@@ -14136,7 +14173,7 @@ window.addEventListener('resize', () => {
   }
   if (typeof reticleState !== 'undefined') {
     reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, reticleState.visible ? reticleState.x : window.innerWidth * 0.5));
-    reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, reticleState.visible ? reticleState.y : window.innerHeight * 0.43));
+    reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, reticleState.visible ? reticleState.y : window.innerHeight * RETICLE_SCREEN_Y_RATIO));
     reticleState.vx = 0;
     reticleState.vy = 0;
     if (typeof mouseFlightState !== 'undefined') {
