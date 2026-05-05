@@ -1739,6 +1739,95 @@
     max-height: min(86vh, 980px);
     overflow: auto;
   }
+  .features-popup {
+    position: fixed;
+    inset: 0;
+    z-index: 10020;
+    display: grid;
+    place-items: center;
+    padding: max(18px, var(--safe-top)) max(18px, var(--safe-right)) max(18px, var(--safe-bottom)) max(18px, var(--safe-left));
+    background: radial-gradient(circle at 50% 20%, rgba(90, 174, 255, 0.18), rgba(5, 8, 14, 0.78) 58%, rgba(2, 3, 6, 0.9));
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  .features-popup.is-visible { opacity: 1; pointer-events: auto; }
+  .features-popup-card {
+    width: min(640px, calc(100vw - 36px));
+    max-height: min(82vh, 760px);
+    overflow: auto;
+    border-radius: 26px;
+    padding: 24px;
+    font-family: var(--game-font-ui);
+    color: #fff0ce;
+  }
+  .features-popup-kicker {
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgba(116, 239, 255, 0.78);
+    margin-bottom: 8px;
+  }
+  .features-popup h2 {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 46px);
+    line-height: 0.96;
+    letter-spacing: -0.04em;
+  }
+  .features-popup-subtitle {
+    margin: 10px 0 18px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 226, 170, 0.78);
+  }
+  .features-popup-list {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 18px;
+    padding: 0;
+    list-style: none;
+  }
+  .features-popup-list li {
+    padding: 12px 13px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    background: rgba(255,255,255,0.045);
+  }
+  .features-popup-list strong {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff8df;
+    margin-bottom: 4px;
+  }
+  .features-popup-list span {
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    letter-spacing: 0.03em;
+    color: rgba(255, 240, 214, 0.76);
+  }
+  .features-popup-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  .features-popup-btn {
+    border: 1px solid rgba(255, 215, 150, 0.28);
+    background: linear-gradient(180deg, rgba(255, 215, 150, 0.2), rgba(255, 180, 80, 0.12));
+    color: #fff4d6;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font: 700 11px/1 var(--game-font-ui);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1785,7 +1874,7 @@
         <div class="hud-stack-line"><span class="hud-subtle">GEAR <span id="gear" class="ok">DOWN</span></span></div>
       </div>
       <div class="hud-stat-chip hud-track-chip" id="hud-hull-chip">
-        <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span></div>
+        <div class="hud-track-head"><span class="hud-label">HULL</span><span class="hud-value big" id="hull-pct">100</span><span class="hud-unit">%</span><span class="hud-subtle"> · SHD <span id="shield-pct">0</span>%</span></div>
         <div class="bar hud-mini-track"><div id="hull-bar" style="width:100%;background:#63d27a;"></div></div>
       </div>
       <div class="hud-stat-chip hud-track-chip" id="hud-ammo-chip">
@@ -1897,6 +1986,17 @@
     </div>
     <p class="meta">KEYBOARD · CONTROLLER · TOUCH · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
     <div class="cta">CLICK, TAP, PRESS ANY KEY, OR PRESS A ON CONTROLLER TO FLY</div>
+  </div>
+</div>
+<div id="features-popup" class="features-popup" aria-hidden="true">
+  <div class="game-dialog-chrome features-popup-card" role="dialog" aria-modal="true" aria-labelledby="features-popup-title">
+    <div class="features-popup-kicker" id="features-popup-version">LATEST FEATURES</div>
+    <h2 id="features-popup-title">Welcome back, pilot</h2>
+    <p class="features-popup-subtitle" id="features-popup-subtitle">Loading latest feature notes…</p>
+    <ul class="features-popup-list" id="features-popup-list"></ul>
+    <div class="features-popup-actions">
+      <button type="button" class="features-popup-btn" id="features-popup-close">Ready to fly</button>
+    </div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -7392,6 +7492,7 @@ for (let i = 0; i < 8; i++) {
   missileGroup.add(mesh);
   combatState.missiles.push({
     mesh,
+    flare,
     pos: new THREE.Vector3(),
     vel: new THREE.Vector3(),
     target: null,
@@ -7400,6 +7501,11 @@ for (let i = 0; i < 8; i++) {
     active: false,
     side: 1,
     smokeTimer: 0,
+    launchAge: 0,
+    ignitionDelay: 0.32,
+    engineLit: false,
+    launchForward: new THREE.Vector3(0, 0, -1),
+    dropDir: new THREE.Vector3(0, -1, 0),
   });
 }
 const muzzleFlashPool = new ParticlePool(scene, {
@@ -7646,6 +7752,9 @@ function deactivateMissile(m) {
   m.target = null;
   m.targetId = '';
   m.smokeTimer = 0;
+  m.launchAge = 0;
+  m.engineLit = false;
+  if (m.flare && m.flare.material) m.flare.material.opacity = 0;
   m.mesh.visible = false;
 }
 
@@ -7699,18 +7808,25 @@ function fireMissile() {
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const anchor = side < 0 ? (jet.userData.missileL || jet.userData.gunL) : (jet.userData.missileR || jet.userData.gunR);
   missile.pos.copy(anchor || _combatTmpB.set(side * 4.0, -0.35, 0.4)).applyQuaternion(plane.quat).add(plane.pos);
-  missile.vel.copy(forward).multiplyScalar(230).addScaledVector(plane.vel, 0.82);
+  const dropDir = _combatTmpC.set(0, -1, 0).applyQuaternion(plane.quat).normalize();
+  missile.vel.copy(plane.vel).addScaledVector(forward, 38).addScaledVector(dropDir, 18);
   missile.target = getMissileTarget();
   missile.targetId = missile.target ? missile.target.id : '';
-  missile.life = 6.2;
+  missile.life = 6.8;
   missile.active = true;
   missile.side = side;
+  missile.launchAge = 0;
+  missile.ignitionDelay = 0.30 + Math.random() * 0.08;
+  missile.engineLit = false;
+  missile.launchForward.copy(forward);
+  missile.dropDir.copy(dropDir);
+  if (missile.flare && missile.flare.material) missile.flare.material.opacity = 0;
   missile.mesh.visible = true;
   missile.mesh.position.copy(missile.pos);
   missile.mesh.quaternion.setFromUnitVectors(_missileForward, forward);
-  muzzleFlashPool.emitCluster(missile.pos, 8, 0.3, 0.18, 0.45, 0.9);
-  if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 180, maxMs: 120, volume: 0.72, rate: 0.72 });
-  if (typeof flashStatus === 'function') flashStatus(missile.target ? `MISSILE AWAY · ${missile.target.label}` : 'MISSILE AWAY · DUMB FIRE', 'panel ok', 1.0);
+  muzzleFlashPool.emitCluster(missile.pos, 4, 0.18, 0.10, 0.26, 0.42);
+  if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 180, maxMs: 90, volume: 0.42, rate: 0.58 });
+  if (typeof flashStatus === 'function') flashStatus(missile.target ? `MISSILE DROPPED · ${missile.target.label}` : 'MISSILE DROPPED · DUMB FIRE', 'panel ok', 0.85);
   return true;
 }
 
@@ -7835,6 +7951,59 @@ function awardCombatMissiles(amount, source = 'supply') {
     combatState.lastSupplyAwardAt = performance.now();
   }
   return gained;
+}
+
+function awardPlayerShield(amount, source = 'upgrade') {
+  if (!plane || !Number.isFinite(amount) || amount <= 0) return 0;
+  plane.shieldMax = Math.max(50, plane.shieldMax || 50);
+  const before = plane.shield || 0;
+  plane.shield = Math.min(plane.shieldMax, before + amount);
+  const gained = Math.max(0, plane.shield - before);
+  if (gained > 0) plane.shieldPulse = Math.min(1.8, (plane.shieldPulse || 0) + 1.1);
+  return gained;
+}
+
+function formatPracticeReward(reward) {
+  if (!reward) return 'AMMO CACHE';
+  if (reward.type === 'missile') return `+${reward.amount || 1} MISSILE`;
+  if (reward.type === 'shield') return `+${reward.amount || 20}% SHIELD`;
+  if (reward.type === 'alien') return `ALIEN PULSE ${reward.amount || 18}S`;
+  if (reward.type === 'repair') return `+${reward.amount || 8}% HULL`;
+  return `+${reward.amount || 30} AMMO`;
+}
+
+function grantPracticeReward(reward, label = 'TARGET') {
+  if (!reward) return '';
+  let msg = formatPracticeReward(reward);
+  if (reward.type === 'missile') {
+    const gained = awardCombatMissiles(reward.amount || 1, 'target');
+    msg = gained > 0 ? `+${gained} MSL` : 'MSL BAY FULL';
+  } else if (reward.type === 'shield') {
+    const gained = awardPlayerShield(reward.amount || 20, 'target');
+    msg = gained > 0 ? `+${Math.round(gained)}% SHIELD` : 'SHIELD FULL';
+  } else if (reward.type === 'alien') {
+    activateAlienWeapon(reward.amount || 18);
+    msg = `ALIEN PULSE ${reward.amount || 18}S`;
+  } else if (reward.type === 'repair') {
+    const before = plane.health;
+    plane.health = Math.min(100, plane.health + (reward.amount || 8));
+    msg = `+${Math.round(plane.health - before)}% HULL`;
+  } else {
+    const gained = awardCombatAmmo(reward.amount || 30, 'target');
+    msg = gained > 0 ? `+${Math.round(gained)} AMMO` : 'AMMO FULL';
+  }
+  if (typeof flashStatus === 'function') flashStatus(`${label} UPGRADE · ${msg}`, 'panel ok', 1.35);
+  return msg;
+}
+
+function getNextPracticeRewardInfo() {
+  const course = window.__practiceRingCourse;
+  if (!course || !course.enabled || !course.activeCount) return null;
+  const activeCount = course.activeCount || course.length || 0;
+  const idx = Math.max(0, Math.min(activeCount - 1, course.nextIndex || 0));
+  const ring = course[idx];
+  if (!ring) return null;
+  return { course, ring, index: idx, remaining: Math.max(1, idx + 1), reward: ring.userData.upgradeReward || null };
 }
 
 function combatSupplyEarnActive() {
@@ -8174,21 +8343,42 @@ function updateCombat(dt) {
       deactivateMissile(m);
       continue;
     }
-    const target = m.target && m.target.destructible && m.target.destructible.alive ? m.target : null;
+    m.launchAge = (m.launchAge || 0) + dt;
+    if (!m.engineLit && m.launchAge >= (m.ignitionDelay || 0.32)) {
+      m.engineLit = true;
+      const igniteDir = m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward.clone().normalize() : _combatTmpB.copy(m.vel).normalize();
+      const igniteVel = igniteDir.clone().multiplyScalar(255).addScaledVector(plane.vel, 0.35);
+      m.vel.lerp(igniteVel, 0.86);
+      if (m.flare && m.flare.material) m.flare.material.opacity = 0.78;
+      impactBlastPool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.2), 5, 0.55, 0.08, 0.24, 0.68);
+      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.4), 3, 0.85, 0.10, 0.76, 0.9);
+      if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 120, maxMs: 130, volume: 0.78, rate: 1.55 });
+    }
+    const target = m.engineLit && m.target && m.target.destructible && m.target.destructible.alive ? m.target : null;
     if (target && target.object) {
       target.object.getWorldPosition(_combatTmpC);
       if (target.velocity) _combatTmpC.addScaledVector(target.velocity, 0.22 + targetHudState.lockAmount * 0.28);
       const desired = _combatTmpC.sub(m.pos).normalize();
       const speed = Math.max(180, m.vel.length());
       m.vel.lerp(desired.multiplyScalar(285), Math.min(1, dt * (2.2 + (targetHudState.lockAmount || 0) * 2.2))).normalize().multiplyScalar(Math.max(speed, 245));
+    } else if (m.engineLit) {
+      const dumbDir = m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward.clone().normalize() : _combatTmpB.copy(m.vel).normalize();
+      m.vel.lerp(dumbDir.multiplyScalar(Math.max(245, m.vel.length() + dt * 80)), Math.min(1, dt * 1.8));
+    } else {
+      m.vel.addScaledVector(m.dropDir || _combatTmpC.set(0, -1, 0), 28 * dt);
+      m.vel.addScaledVector(m.launchForward || _combatTmpB.set(0, 0, -1), 12 * dt);
     }
     m.pos.addScaledVector(m.vel, dt);
     m.mesh.position.copy(m.pos);
-    m.mesh.quaternion.setFromUnitVectors(_missileForward, _combatTmpB.copy(m.vel).normalize());
-    m.smokeTimer -= dt;
-    if (m.smokeTimer <= 0) {
-      m.smokeTimer = 0.045;
-      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.0), 1, 0.72, 0.08, 0.62, 0.82);
+    const visualDir = m.engineLit ? _combatTmpB.copy(m.vel).normalize() : (m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward : _combatTmpB.copy(m.vel).normalize());
+    m.mesh.quaternion.setFromUnitVectors(_missileForward, visualDir);
+    if (m.flare && m.flare.material) m.flare.material.opacity = m.engineLit ? (0.58 + Math.sin(performance.now() * 0.03) * 0.16) : 0;
+    if (m.engineLit) {
+      m.smokeTimer -= dt;
+      if (m.smokeTimer <= 0) {
+        m.smokeTimer = 0.045;
+        explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.0), 1, 0.72, 0.08, 0.62, 0.82);
+      }
     }
     const groundH = (m.pos.x * m.pos.x + m.pos.z * m.pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(m.pos.x, m.pos.z);
     if (m.pos.y <= groundH + 0.2) {
@@ -10040,8 +10230,12 @@ const plane = {
   onGround: initialSpawnProfile.onGround,
   crashed: false,
   // Graduated damage model. health is 0..100; crashed = (health <= 0).
+  // Shields are upgrade-earned ablative protection before hull damage.
   // Damage buckets feed smoke state + flight-model instability.
   health: 100,
+  shield: 0,
+  shieldMax: 50,
+  shieldPulse: 0,
   damage: {
     airframe: 0,    // 0..1, general hull integrity loss
     engine: 0,      // 0..1, engine efficiency loss (→ more dark smoke)
@@ -10076,8 +10270,16 @@ function shapeControlInput(value, expo = 0.32) {
 // `kind` is one of 'airframe', 'engine', 'leftWing', 'rightWing'; amount in 0..1.
 function damagePlane(amount, kind = 'airframe', opts = {}) {
   if (plane.crashed) return false;
-  const a = Math.max(0, Math.min(1, amount));
+  let a = Math.max(0, Math.min(1, amount));
   if (a <= 0) return false;
+  if (plane.shield > 0) {
+    const shieldAbsorb = Math.min(plane.shield, a * 100);
+    plane.shield = Math.max(0, plane.shield - shieldAbsorb);
+    plane.shieldPulse = Math.min(1.8, (plane.shieldPulse || 0) + 1.0);
+    a = Math.max(0, a - shieldAbsorb / 100);
+    if (typeof flashStatus === 'function') flashStatus(`SHIELD HIT · ${Math.round(plane.shield)}%`, 'panel warn', 0.65);
+    if (a <= 0.001) return false;
+  }
   plane.health = Math.max(0, plane.health - a * 100);
   if (plane.damage[kind] != null) {
     plane.damage[kind] = Math.min(1, plane.damage[kind] + a);
@@ -10109,6 +10311,8 @@ function damagePlane(amount, kind = 'airframe', opts = {}) {
 }
 function healPlane(resetAll = true) {
   plane.health = 100;
+  plane.shield = 0;
+  plane.shieldPulse = 0;
   plane.damage.airframe = 0;
   plane.damage.engine = 0;
   plane.damage.leftWing = 0;
@@ -12313,6 +12517,7 @@ const $gear = document.getElementById('gear');
 const $crosshair = document.getElementById('crosshair');
 const $targetOverlay = document.getElementById('target-overlay');
 const $hullPct = document.getElementById('hull-pct');
+const $shieldPct = document.getElementById('shield-pct');
 const $hullBar = document.getElementById('hull-bar');
 const $ammoVal = document.getElementById('ammo-val');
 const $ammoMax = document.getElementById('ammo-max');
@@ -13245,6 +13450,65 @@ function flashStatus(text, className = 'panel ok', duration = 1.2) {
   transientStatus.timer = duration;
 }
 
+const latestFeaturesFallback = {
+  version: 'dev',
+  title: 'Welcome back, pilot',
+  subtitle: 'New combat training upgrades are live.',
+  features: [
+    { title: 'Target upgrade course', description: 'Fly target gates in sequence to earn ammo, missiles, shields, and alien pulse time.' },
+    { title: 'Missile rail drop', description: 'Wing missiles drop clear before their motors light.' },
+    { title: 'UFO damage feedback', description: 'Damaged alien ships now flicker, spark, and trail smoke.' },
+  ],
+};
+function closeFeaturesPopup() {
+  const popup = document.getElementById('features-popup');
+  if (!popup) return;
+  popup.classList.remove('is-visible');
+  popup.setAttribute('aria-hidden', 'true');
+  try { renderer.domElement.focus(); } catch {}
+}
+function renderFeaturesPopup(data) {
+  const popup = document.getElementById('features-popup');
+  const titleEl = document.getElementById('features-popup-title');
+  const subtitleEl = document.getElementById('features-popup-subtitle');
+  const versionEl = document.getElementById('features-popup-version');
+  const listEl = document.getElementById('features-popup-list');
+  const closeBtn = document.getElementById('features-popup-close');
+  if (!popup || !listEl) return;
+  const info = data && typeof data === 'object' ? data : latestFeaturesFallback;
+  const version = String(info.version || 'dev');
+  const storageKey = `ships-latest-features-seen-${version}`;
+  try {
+    if (localStorage.getItem(storageKey) === '1') return;
+  } catch {}
+  if (titleEl) titleEl.textContent = info.title || latestFeaturesFallback.title;
+  if (subtitleEl) subtitleEl.textContent = info.subtitle || latestFeaturesFallback.subtitle;
+  if (versionEl) versionEl.textContent = `LATEST FEATURES · ${version}`;
+  listEl.replaceChildren();
+  const features = Array.isArray(info.features) && info.features.length ? info.features : latestFeaturesFallback.features;
+  for (const feature of features.slice(0, 8)) {
+    const item = document.createElement('li');
+    const heading = document.createElement('strong');
+    const body = document.createElement('span');
+    heading.textContent = feature.title || 'Feature';
+    body.textContent = feature.description || '';
+    item.append(heading, body);
+    listEl.appendChild(item);
+  }
+  const dismiss = () => {
+    try { localStorage.setItem(storageKey, '1'); } catch {}
+    closeFeaturesPopup();
+  };
+  if (closeBtn) closeBtn.onclick = dismiss;
+  popup.addEventListener('click', (e) => { if (e.target === popup) dismiss(); }, { once: true });
+  popup.classList.add('is-visible');
+  popup.setAttribute('aria-hidden', 'false');
+}
+fetch('latest-features.json', { cache: 'no-store' })
+  .then((res) => res.ok ? res.json() : latestFeaturesFallback)
+  .then(renderFeaturesPopup)
+  .catch(() => renderFeaturesPopup(latestFeaturesFallback));
+
 let vsSmoothed = 0;
 let gSmoothed = 1;
 let lastVel = new THREE.Vector3();
@@ -13368,14 +13632,15 @@ function updateCourseDirectorHUD() {
     ? 'LEVEL'
     : (vertical > 0 ? 'CLIMB' : 'DESCEND');
   $courseDirector.classList.remove('is-hidden');
-  if ($courseTitle) $courseTitle.textContent = course.completedRuns > 0 ? `RUN ${course.completedRuns + 1}` : 'PRACTICE';
-  if ($courseNext) $courseNext.textContent = `${index + 1}/${course.activeCount}`;
+  const rewardLabel = formatPracticeReward(ring.userData.upgradeReward || null);
+  if ($courseTitle) $courseTitle.textContent = course.completedRuns > 0 ? `TARGET RUN ${course.completedRuns + 1}` : 'TARGET COURSE';
+  if ($courseNext) $courseNext.textContent = `TGT ${index + 1}/${course.activeCount}`;
   if ($courseRange) $courseRange.textContent = distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)}KM` : `${Math.round(distanceM)}M`;
   if ($courseTurn) $courseTurn.textContent = turnLabel;
   if ($courseAlt) $courseAlt.textContent = altLabel;
   if ($courseCue) {
     const closure = forwardDist < -20 ? 'TURN BACK' : (distanceM < 90 ? 'COMMIT' : 'FOLLOW THE BLUE LINE');
-    $courseCue.textContent = `${closure} · ${Math.round(Math.abs(lateral))}M ${turnLabel}`;
+    $courseCue.textContent = `${closure} · NEXT REWARD ${rewardLabel} · ${Math.round(Math.abs(lateral))}M ${turnLabel}`;
   }
 }
 function getLocalRaceEntry() {
@@ -13543,10 +13808,18 @@ function updateHUD(dt = 1 / 60) {
   // Hull + ammo readouts
   if ($hullPct) {
     const pct = Math.max(0, Math.round(plane.health));
+    const shd = Math.max(0, Math.round((plane.shield || 0) / Math.max(1, plane.shieldMax || 50) * 100));
+    plane.shieldPulse = Math.max(0, (plane.shieldPulse || 0) - dt * 1.6);
     $hullPct.textContent = pct;
+    if ($shieldPct) {
+      $shieldPct.textContent = shd;
+      $shieldPct.className = shd > 55 ? 'ok' : shd > 0 ? 'warn' : '';
+    }
     if ($hullBar) {
-      $hullBar.style.width = pct + '%';
-      $hullBar.style.background = pct > 65 ? '#63d27a' : pct > 30 ? '#ffd56b' : '#ff6f6f';
+      const barPct = plane.shield > 0 ? shd : pct;
+      $hullBar.style.width = barPct + '%';
+      $hullBar.style.background = plane.shield > 0 ? '#74efff' : pct > 65 ? '#63d27a' : pct > 30 ? '#ffd56b' : '#ff6f6f';
+      $hullBar.style.boxShadow = plane.shieldPulse > 0 ? '0 0 14px rgba(116,239,255,0.85)' : '';
     }
     $hullPct.className = pct > 65 ? 'ok' : pct > 30 ? 'warn' : 'err';
   }
@@ -13558,11 +13831,14 @@ function updateHUD(dt = 1 / 60) {
     if ($ammoMax) $ammoMax.textContent = combatState.ammoMax;
     if ($missileVal) $missileVal.textContent = msl;
     if ($supplyVal) {
+      const rewardInfo = getNextPracticeRewardInfo();
       const earnActive = combatSupplyEarnActive();
       const missileProgress = combatState.missilesAmmo >= combatState.missilesMax
         ? 1
         : clamp01(combatState.missileEarnBank || 0);
-      if (combatState.ammo >= combatState.ammoMax && combatState.missilesAmmo >= combatState.missilesMax) {
+      if (rewardInfo) {
+        $supplyVal.textContent = `TGT ${rewardInfo.index + 1}: ${formatPracticeReward(rewardInfo.reward)}`;
+      } else if (combatState.ammo >= combatState.ammoMax && combatState.missilesAmmo >= combatState.missilesMax) {
         $supplyVal.textContent = 'FULL';
       } else if (!earnActive) {
         $supplyVal.textContent = 'IDLE';
@@ -14232,8 +14508,13 @@ function updateGateScoring(dt) {
       }
 
       playGateChime(score.streak);
-      if (combatState) combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + 20);
-      if (plane.health < 100) plane.health = Math.min(100, plane.health + 2);
+      const upgradeMsg = practiceCourse
+        ? grantPracticeReward(ring.userData.upgradeReward || { type: 'ammo', amount: 30 }, gateLabel)
+        : '';
+      if (!practiceCourse) {
+        if (combatState) combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + 20);
+        if (plane.health < 100) plane.health = Math.min(100, plane.health + 2);
+      }
 
       if (ring.material && ring.material.emissive) {
         const origCol = ring.material.emissive.clone();
@@ -14257,7 +14538,7 @@ function updateGateScoring(dt) {
             gateAccent
           );
         } else if (ring.userData.gateLabel) {
-          window.showComboBanner(gateLabel, `+${pts} · ${score.points} TOTAL`, gateAccent);
+          window.showComboBanner(gateLabel, `${upgradeMsg ? upgradeMsg + ' · ' : ''}+${pts} · ${score.points} TOTAL`, gateAccent);
         } else if (score.streak === 3) {
           window.showComboBanner('TRIPLE!', `+${pts}`, '#ffcc66');
         } else if (score.streak === 5) {
@@ -14824,6 +15105,8 @@ function spawnTraffic(file, pathFn, opts) {
     aiBlend: 0,
     evasivePhase: opts.evasivePhase || 0,
     beamSmoothed: 0,
+    damageSmokeTimer: 0,
+    shieldFailTimer: 0,
     velocity: new THREE.Vector3(),
     prevPosition: new THREE.Vector3(),
     child: null,
@@ -15151,6 +15434,34 @@ function updateTraffic(dt) {
     }
     if (t.prevPosition) t.prevPosition.copy(pos);
     t.group.position.copy(pos);
+    if (isUfo && t.destructible) {
+      const hullRatio = clamp01((t.destructible.health || 0) / Math.max(1, t.destructible.maxHealth || 1));
+      const shieldRatio = clamp01((t.destructible.shield || 0) / Math.max(1, t.destructible.shieldMax || 1));
+      const damaged = hullRatio < 0.82;
+      const critical = hullRatio < 0.42 || (damaged && shieldRatio <= 0.02);
+      if (damaged) {
+        t.damageSmokeTimer -= dt;
+        const cadence = critical ? 0.045 : 0.09;
+        if (t.damageSmokeTimer <= 0) {
+          t.damageSmokeTimer = cadence;
+          const trailDir = (t.velocity && t.velocity.lengthSq() > 1)
+            ? t.velocity.clone().normalize().multiplyScalar(-1)
+            : new THREE.Vector3(Math.sin(nowMs * 0.001), -0.08, Math.cos(nowMs * 0.001)).normalize();
+          const smokePos = pos.clone()
+            .addScaledVector(trailDir, 4.8 + (critical ? 2.4 : 0))
+            .add(new THREE.Vector3((Math.random() - 0.5) * 2.2, -0.35 + Math.random() * 0.9, (Math.random() - 0.5) * 2.2));
+          explosionSmokePool.emitCluster(smokePos, critical ? 2 : 1, critical ? 1.25 : 0.78, 0.12, critical ? 1.45 : 1.05, critical ? 1.35 : 0.95);
+        }
+      }
+      if (shieldRatio < 0.35 || (t.destructible.shieldPulse || 0) > 0.25) {
+        t.shieldFailTimer -= dt;
+        if (t.shieldFailTimer <= 0) {
+          t.shieldFailTimer = shieldRatio > 0 ? 0.13 : 0.075;
+          const sparkPos = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 8.8, (Math.random() - 0.5) * 2.4, (Math.random() - 0.5) * 8.8));
+          impactSparkPool.emitCluster(sparkPos, shieldRatio > 0 ? 2 : 4, shieldRatio > 0 ? 0.55 : 0.82, 0.08, 0.28, shieldRatio > 0 ? 0.65 : 0.95);
+        }
+      }
+    }
     t.pitchSmoothed += (pitch - t.pitchSmoothed) * Math.min(1, dt * 2.2);
     t.group.rotation.set(t.pitchSmoothed, yaw, 0);
     // Smooth bank so traffic follows curved legs with a readable roll. UFO
@@ -15178,12 +15489,15 @@ function updateTraffic(dt) {
           const shield = t.child.userData.shieldMesh;
           if (shield && shield.material) {
             const shieldRatio = clamp01((destructible.shield || 0) / Math.max(1, destructible.shieldMax || 1));
+            const hullRatio = clamp01((destructible.health || 0) / Math.max(1, destructible.maxHealth || 1));
             const hitPulse = clamp01(destructible.shieldPulse || 0);
-            const opacity = Math.max(hitPulse * 0.42, shieldRatio > 0 ? 0.035 + shieldRatio * 0.045 : 0);
+            const failing = shieldRatio < 0.34 || hullRatio < 0.66;
+            const glitch = failing ? Math.max(0, Math.sin(pulseT * 6.4 + (t.evasivePhase || 0))) : 0;
+            const opacity = Math.max(hitPulse * 0.42, shieldRatio > 0 ? 0.035 + shieldRatio * 0.045 : 0, failing ? glitch * 0.16 : 0);
             shield.visible = opacity > 0.012;
             shield.material.opacity = opacity;
-            shield.material.color.setHex(destructible.shield > 0 ? 0x74efff : 0xff8c6a);
-            const s = 1 + hitPulse * 0.16 + Math.sin(pulseT * 1.4) * 0.015;
+            shield.material.color.setHex(destructible.shield > 0 ? (failing && glitch > 0.55 ? 0xffd36a : 0x74efff) : 0xff8c6a);
+            const s = 1 + hitPulse * 0.16 + Math.sin(pulseT * (failing ? 3.4 : 1.4)) * (failing ? 0.035 : 0.015) + glitch * 0.05;
             shield.scale.set(1.18 * s, 0.48 * s, 1.18 * s);
           }
         }
@@ -15595,7 +15909,9 @@ function applyPracticeRingCourseTuning() {
   course.enabled = enabled;
 }
 (function addPracticeRingCourse() {
-  const ringGeo = new THREE.TorusGeometry(24, 1.35, 14, 56);
+  const ringGeo = new THREE.TorusGeometry(28, 1.35, 14, 64);
+  const targetInnerGeo = new THREE.TorusGeometry(12, 0.45, 8, 48);
+  const targetBarGeo = new THREE.BoxGeometry(46, 0.7, 0.7);
   const theme = getPracticeRingTheme('cyan');
   const ringMat = new THREE.MeshStandardMaterial({
     color: theme.color,
@@ -15606,18 +15922,38 @@ function applyPracticeRingCourseTuning() {
     transparent: true,
     opacity: 0.92,
   });
+  const targetMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.42,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
+  });
   const points = [
-    new THREE.Vector3(220, 88, -380),
-    new THREE.Vector3(340, 118, -620),
-    new THREE.Vector3(210, 146, -860),
-    new THREE.Vector3(10, 176, -1060),
-    new THREE.Vector3(-190, 198, -1260),
-    new THREE.Vector3(-320, 166, -1480),
+    new THREE.Vector3(240, 96, -430),
+    new THREE.Vector3(520, 142, -900),
+    new THREE.Vector3(260, 178, -1390),
+    new THREE.Vector3(-140, 214, -1840),
+    new THREE.Vector3(-520, 204, -2320),
+    new THREE.Vector3(-210, 252, -2860),
+    new THREE.Vector3(270, 284, -3380),
+    new THREE.Vector3(650, 246, -3980),
+  ];
+  const rewards = [
+    { type: 'ammo', amount: 45 },
+    { type: 'shield', amount: 25 },
+    { type: 'missile', amount: 1 },
+    { type: 'repair', amount: 10 },
+    { type: 'ammo', amount: 60 },
+    { type: 'shield', amount: 35 },
+    { type: 'alien', amount: 18 },
+    { type: 'missile', amount: 1 },
   ];
   const course = [];
   course.basePoints = points.map(p => p.clone());
   course.anchorPoint = points[0].clone();
-  course.baseGateRadius = 26;
+  course.baseGateRadius = 30;
   course.nextIndex = 0;
   course.completedRuns = 0;
   course.pathLines = [];
@@ -15642,13 +15978,22 @@ function applyPracticeRingCourseTuning() {
     ring.userData.baseY = pos.y;
     ring.userData.phase = i * 0.9;
     ring.userData.spinRate = 0.3 + i * 0.05;
-    ring.userData.label = `PRACTICE RING ${i + 1}`;
+    ring.userData.label = `UPGRADE TARGET ${i + 1}`;
+    ring.userData.upgradeReward = rewards[i % rewards.length];
     ring.userData.__courseIndex = i;
-    ring.userData.__baseGateRadius = 26;
+    ring.userData.__baseGateRadius = 30;
     ring.userData.__baseEmissiveInt = 0.65;
     ring.userData.__baseOpacity = 0.92;
+    const inner = new THREE.Mesh(targetInnerGeo, targetMat.clone());
+    const barH = new THREE.Mesh(targetBarGeo, targetMat.clone());
+    const barV = new THREE.Mesh(targetBarGeo, targetMat.clone());
+    barV.rotation.z = Math.PI / 2;
+    inner.renderOrder = 4;
+    barH.renderOrder = 4;
+    barV.renderOrder = 4;
+    ring.add(inner, barH, barV);
     scene.add(ring);
-    registerGate(ring, { radius: 26, points: 160, kind: 'practice', label: ring.userData.label });
+    registerGate(ring, { radius: 30, points: 180, kind: 'practice', label: ring.userData.label });
     course.push(ring);
   }
   for (let i = 0; i < points.length - 1; i++) {
@@ -15869,7 +16214,7 @@ function updatePracticeRingCourse(dt) {
     fxaa: true, shadowsOn: true, shadowQuality: 'high', shadowDistance: 320,
     dof: true, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, ambientFxDensity: 1.12,
     waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94,
-    practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 6, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
+    practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 8, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
     controlPreset: 'casual',
     flightAccel: 0.96, topSpeedKts: 540, liftAssist: 1.06, idlePower: 1.0, pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
@@ -15941,7 +16286,7 @@ function updatePracticeRingCourse(dt) {
       title: 'TRAINING',
       note: 'clean / forgiving',
       practiceRingEnabled: true,
-      practiceRingCount: 6,
+      practiceRingCount: 8,
       practiceRingScale: 1.0,
       practiceRingGlow: 1.0,
       practiceRingColor: 'cyan',
