@@ -38,11 +38,11 @@ async function fileInfo(absPath, relPath) {
 
 function collectReferencedAssets(html) {
   const assets = new Set();
-  const literalAssetRe = /["'`]((?:\.\/)?(?:audio|models)\/[^"'`]+?\.(?:glb|gltf|bin|png|jpg|jpeg|webp|mp3|wav|ogg))(?:[?#][^"'`]*)?["'`]/gi;
+  const literalAssetRe = /["'`]((?:\.\/)?(?:(?:audio|models)\/[^"'`]+?|[\w .-]+?)\.(?:glb|gltf|bin|png|jpg|jpeg|webp|mp3|wav|ogg))(?:[?#][^"'`]*)?["'`]/gi;
   let match;
   while ((match = literalAssetRe.exec(html))) {
     const rel = match[1].replace(/^\.\//, '');
-    if (!rel.includes('${')) assets.add(rel);
+    if (!rel.includes('${') && !/^https?:\/\//i.test(rel) && !rel.startsWith('data:')) assets.add(rel);
   }
 
   // The stunt plane texture is template-built in flight-sim3.html:
@@ -64,15 +64,12 @@ function buildEncodedDocument(html, sourceHash) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<meta name="x-build-format" content="encoded-document-bootstrap">
+<meta name="x-build-format" content="encoded-dom-bootstrap">
 <meta name="x-source-sha256" content="${sourceHash}">
 <title>Canyon Flight Sim</title>
-<!-- Keep the decoded document script ahead of any visible body chrome. During
-     parser-time document.write(), earlier body nodes can survive and look
-     like a stuck loading screen after the real game boots. -->
 <script>(()=>{"use strict";const p=[
 ${chunkList}
-];const b=atob(p.join(""));const n=b.length;const u=new Uint8Array(n);for(let i=0;i<n;i++)u[i]=b.charCodeAt(i);const h=new TextDecoder().decode(u);document.open();document.write(h);document.close();})();</script>
+];function decode(){const b=atob(p.join(""));const n=b.length;const u=new Uint8Array(n);for(let i=0;i<n;i++)u[i]=b.charCodeAt(i);return new TextDecoder().decode(u)}function copyAttrs(from,to){for(const attr of from.attributes)to.setAttribute(attr.name,attr.value)}function loadScript(spec){return new Promise((resolve,reject)=>{const s=document.createElement("script");for(const [k,v]of spec.attrs)s.setAttribute(k,v);s.async=false;if(spec.src){s.onload=resolve;s.onerror=()=>reject(new Error("Failed to load "+spec.src));s.src=spec.src;document.head.appendChild(s)}else{s.textContent=spec.text;document.body.appendChild(s);resolve()}})}(async()=>{const parsed=new DOMParser().parseFromString(decode(),"text/html");const scriptSpecs=[...parsed.scripts].map(s=>({src:s.src||s.getAttribute("src")||"",text:s.textContent||"",attrs:[...s.attributes].filter(a=>a.name!=="src").map(a=>[a.name,a.value])}));for(const s of [...parsed.scripts])s.remove();copyAttrs(parsed.documentElement,document.documentElement);document.head.replaceChildren(...parsed.head.childNodes);document.body.replaceChildren(...parsed.body.childNodes);for(const spec of scriptSpecs)await loadScript(spec)})().catch(err=>{console.error("[bootstrap]",err);document.body.innerHTML='<pre style="white-space:pre-wrap;color:#fca;background:#120b0b;padding:16px">Game failed to boot: '+String(err&&err.message||err).replace(/[<&]/g,c=>c==="<"?"&lt;":"&amp;")+"</pre>"})})();</script>
 </head>
 <body></body>
 </html>
@@ -139,14 +136,14 @@ async function main() {
     name: 'ships-flight-sim',
     entry: 'game.html',
     source: sourceName,
-    format: 'encoded-document-bootstrap',
+    format: 'encoded-dom-bootstrap',
     generatedAt: new Date().toISOString(),
     sourceBytes: sourceBuffer.length,
     sourceSha256: sourceHash,
     outputs: [gameInfo, indexInfo],
     assets: copiedAssets,
     assetBytes: totalAssetBytes,
-    note: 'This hides readable source from casual view by shipping an encoded document bootstrap. Browser-delivered JavaScript cannot be made secret; do not place credentials or private logic in client code.',
+    note: 'This hides readable source from casual view by shipping an encoded DOM bootstrap. Browser-delivered JavaScript cannot be made secret; do not place credentials or private logic in client code.',
   };
   await writeFile(outManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
@@ -158,7 +155,7 @@ Build command: bun run build
 
 Deploy the contents of this dist/ directory to a static host. index.html redirects to game.html and preserves query/hash params.
 
-This package intentionally ships game.html as an encoded document bootstrap so the readable source is not casually visible in View Source. It is obfuscation, not security: any browser-delivered app can still be decoded by a determined user. Keep secrets and private server logic out of client-side files.
+This package intentionally ships game.html as an encoded DOM bootstrap so the readable source is not casually visible in View Source. It is obfuscation, not security: any browser-delivered app can still be decoded by a determined user. Keep secrets and private server logic out of client-side files.
 
 Generated: ${manifest.generatedAt}
 Source SHA-256: ${sourceHash}

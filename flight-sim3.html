@@ -1924,23 +1924,38 @@ const bootParams = new URLSearchParams(bootParamSource);
 const DEBUG_UI = bootParams.get('debug') === '1';
 const AUTOPILOT_UI = DEBUG_UI || bootParams.get('autopilot') === '1';
 const ENABLE_FLOATING_TARGET = DEBUG_UI || bootParams.get('floatingtarget') === '1';
-let MULTIPLAYER_URL = (() => {
-  const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-  const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const hostUrl = hostIsLocal
-    ? `${hostProto}//${location.hostname}:8787`
-    : `${hostProto}//${location.host}`;
-  try {
-    return bootParams.get('mp') || localStorage.getItem('flight_mp_url') || (hostIsLocal ? '' : hostUrl);
-  } catch {
-    return bootParams.get('mp') || (hostIsLocal ? '' : hostUrl);
-  }
-})();
+const MULTIPLAYER_URL_KEY = 'flight_mp_url';
 const MULTIPLAYER_CALLSIGN_KEY = 'flight_mp_callsign';
 const MULTIPLAYER_ROOM_KEY = 'flight_mp_room';
 const PLAYER_SPAWN_KEY = 'flight_spawn_mode';
 const PLAYER_SPAWN_EXPLICIT_KEY = 'flight_spawn_mode_explicit';
 const DEFAULT_SPAWN_MODE = 'runway36';
+function defaultMultiplayerUrl() {
+  const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+  const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return hostIsLocal ? `${hostProto}//${location.hostname}:8787` : `${hostProto}//${location.host}`;
+}
+function normalizeMultiplayerUrl(value) {
+  return String(value || '').trim();
+}
+let MULTIPLAYER_URL = (() => {
+  const explicitMp = bootParams.get('mp');
+  if (explicitMp != null) return normalizeMultiplayerUrl(explicitMp);
+  try {
+    // Live static hosts like Netlify do not provide a websocket endpoint by
+    // default. Keep multiplayer opt-in; otherwise Chrome logs repeated failed
+    // wss://<site>/ attempts and the player is still solo anyway.
+    const stored = normalizeMultiplayerUrl(localStorage.getItem(MULTIPLAYER_URL_KEY));
+    const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    if (!hostIsLocal && stored === defaultMultiplayerUrl()) {
+      localStorage.removeItem(MULTIPLAYER_URL_KEY);
+      return '';
+    }
+    return stored;
+  } catch {
+    return '';
+  }
+})();
 let MULTIPLAYER_ROOM = (() => {
   try {
     return bootParams.get('room') || localStorage.getItem(MULTIPLAYER_ROOM_KEY) || 'default';
@@ -5114,7 +5129,7 @@ bootLog.step('damage decals', typeof spawnDamageDecal === 'function' && spawnDam
   spawnDamageDecal.length > 0 ? '6 sprite slots' : 'STUB (IIFE did not run — check for earlier errors)');
 
 const multiplayerState = {
-  enabled: false,
+  enabled: !!MULTIPLAYER_URL,
   connected: false,
   connecting: false,
   ws: null,
@@ -5122,6 +5137,7 @@ const multiplayerState = {
   remotePlayers: new Map(),
   sendTimer: 0,
   reconnectAt: 0,
+  failedAttempts: 0,
 };
 const MP_RACE_BEST_KEY = 'flight_mp_race_best_ms';
 const multiplayerRaceState = {
@@ -5318,10 +5334,10 @@ function setRemotePlayerCallsign(rec, text) {
 }
 
 function applyMultiplayerUrl(url, reconnect = true) {
-  MULTIPLAYER_URL = String(url || '').trim();
+  MULTIPLAYER_URL = normalizeMultiplayerUrl(url);
   try {
-    if (MULTIPLAYER_URL) localStorage.setItem('flight_mp_url', MULTIPLAYER_URL);
-    else localStorage.removeItem('flight_mp_url');
+    if (MULTIPLAYER_URL) localStorage.setItem(MULTIPLAYER_URL_KEY, MULTIPLAYER_URL);
+    else localStorage.removeItem(MULTIPLAYER_URL_KEY);
   } catch {}
   if (multiplayerState.ws) {
     try { multiplayerState.ws.close(); } catch {}
@@ -5329,6 +5345,7 @@ function applyMultiplayerUrl(url, reconnect = true) {
   }
   multiplayerState.connected = false;
   multiplayerState.connecting = false;
+  multiplayerState.failedAttempts = 0;
   multiplayerState.enabled = !!MULTIPLAYER_URL;
   multiplayerState.reconnectAt = reconnect && MULTIPLAYER_URL ? 0 : Date.now() + 2000;
   for (const t of traffic || []) {
@@ -5364,11 +5381,7 @@ function setPlayerSpawnMode(mode) {
 
 function syncMultiplayerSetupUI() {
   try {
-    const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-    const hostProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const hostUrl = hostIsLocal
-      ? `${hostProto}//${location.hostname}:8787`
-      : `${hostProto}//${location.host}`;
+    const hostUrl = defaultMultiplayerUrl();
     if (mpCallsignInput) mpCallsignInput.value = playerProfileState.callsign;
     if (mpUrlInput) {
       mpUrlInput.value = MULTIPLAYER_URL;
@@ -5387,7 +5400,7 @@ function syncMultiplayerSetupUI() {
       });
     }
     if (mpSetupNote) {
-      const trafficLine = hostIsLocal ? 'Leave server blank for SOLO.' : 'Live deployments default the server to this host.';
+      const trafficLine = 'Leave server blank for SOLO. Enter a websocket URL only when a multiplayer server is running.';
       mpSetupNote.textContent = `${trafficLine} Spawn: ${SPAWN_OPTIONS.find(opt => opt.key === playerProfileState.spawnMode)?.label || 'RWY 36'} · Callsign: ${playerProfileState.callsign}.`;
     }
   } catch (err) {
@@ -5542,6 +5555,7 @@ function connectMultiplayer() {
       multiplayerState.connecting = false;
       multiplayerState.connected = true;
       multiplayerState.enabled = true;
+      multiplayerState.failedAttempts = 0;
       multiplayerState.sendTimer = 0;
       ws.send(JSON.stringify({
         type: 'join',
@@ -5556,7 +5570,13 @@ function connectMultiplayer() {
       multiplayerState.ws = null;
       multiplayerState.connected = false;
       multiplayerState.connecting = false;
-      multiplayerState.reconnectAt = Date.now() + 2000;
+      multiplayerState.failedAttempts += 1;
+      if (multiplayerState.failedAttempts >= 3) {
+        multiplayerState.enabled = false;
+        multiplayerState.reconnectAt = Infinity;
+      } else {
+        multiplayerState.reconnectAt = Date.now() + Math.min(15000, 2000 * multiplayerState.failedAttempts);
+      }
       syncMultiplayerIndicator();
     });
     ws.addEventListener('error', () => {
@@ -5566,7 +5586,8 @@ function connectMultiplayer() {
     multiplayerState.ws = null;
     multiplayerState.connected = false;
     multiplayerState.connecting = false;
-    multiplayerState.reconnectAt = Date.now() + 2000;
+    multiplayerState.failedAttempts += 1;
+    multiplayerState.reconnectAt = multiplayerState.failedAttempts >= 3 ? Infinity : Date.now() + Math.min(15000, 2000 * multiplayerState.failedAttempts);
     syncMultiplayerIndicator();
   }
 }
@@ -5586,8 +5607,8 @@ function syncMultiplayerIndicator() {
     $mpInd.textContent = `${tag} · LINK`;
     $mpInd.className = 'hud-chip warn';
   } else {
-    $mpInd.textContent = `${tag} · OFF`; 
-    $mpInd.className = 'hud-chip warn';
+    $mpInd.textContent = `${tag} · ${multiplayerState.failedAttempts >= 3 ? 'SOLO' : 'OFF'}`; 
+    $mpInd.className = multiplayerState.failedAttempts >= 3 ? 'hud-chip' : 'hud-chip warn';
   }
 }
 
@@ -5602,7 +5623,7 @@ function sendMultiplayerState() {
 }
 
 function updateMultiplayer(dt) {
-  if (MULTIPLAYER_URL && !multiplayerState.connected && !multiplayerState.connecting && Date.now() >= multiplayerState.reconnectAt) {
+  if (MULTIPLAYER_URL && multiplayerState.enabled !== false && !multiplayerState.connected && !multiplayerState.connecting && Date.now() >= multiplayerState.reconnectAt) {
     connectMultiplayer();
   }
   for (const [id, rec] of multiplayerState.remotePlayers) {
@@ -9450,11 +9471,20 @@ const crashFinalMusic = {
   source: null,
   routed: false,
   triggered: false,
+  unavailable: false,
+  warnedUnavailable: false,
+  warnUnavailable(reason) {
+    this.unavailable = true;
+    if (this.warnedUnavailable) return;
+    this.warnedUnavailable = true;
+    console.warn('[finalMusic] unavailable:', reason && reason.message || reason || 'final.mp3 failed to load');
+  },
   ensure() {
     if (this.el) return this.el;
     const el = new Audio('final.mp3');
     el.preload = 'auto';
     el.loop = false;
+    el.addEventListener('error', () => this.warnUnavailable('final.mp3 failed to load'));
     this.el = el;
     return el;
   },
@@ -9471,7 +9501,7 @@ const crashFinalMusic = {
     }
   },
   play() {
-    if (this.triggered) return;
+    if (this.triggered || this.unavailable) return;
     this.triggered = true;
     const el = this.ensure();
     if (audio.ctx && audio.ctx.state === 'suspended') {
@@ -9482,10 +9512,10 @@ const crashFinalMusic = {
       el.currentTime = 0;
       const p = el.play();
       if (p && typeof p.catch === 'function') {
-        p.catch(err => console.warn('[finalMusic] play failed:', err && err.message || err));
+        p.catch(err => this.warnUnavailable(err));
       }
     } catch (err) {
-      console.warn('[finalMusic] play threw:', err && err.message || err);
+      this.warnUnavailable(err);
     }
   },
   stop() {
