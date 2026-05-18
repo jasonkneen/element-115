@@ -1074,6 +1074,105 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
+  .review-panel-shell .review-leaderboard-entry {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 215, 150, 0.28);
+    background:
+      linear-gradient(180deg, rgba(255, 204, 102, 0.12), rgba(255, 255, 255, 0.04)),
+      rgba(0, 0, 0, 0.14);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+      0 14px 34px rgba(0, 0, 0, 0.18);
+  }
+  .review-panel-shell .review-leaderboard-entry.is-unsaved {
+    border-color: rgba(255, 224, 160, 0.52);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+      0 0 24px rgba(255, 204, 102, 0.14),
+      0 14px 34px rgba(0, 0, 0, 0.2);
+  }
+  .review-panel-shell .review-leaderboard-entry.is-saved {
+    border-color: rgba(110, 255, 160, 0.35);
+    background:
+      linear-gradient(180deg, rgba(107, 255, 163, 0.10), rgba(255, 255, 255, 0.035)),
+      rgba(0, 0, 0, 0.14);
+  }
+  .review-panel-shell .review-leaderboard-callout {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .review-panel-shell .review-leaderboard-callout strong,
+  .review-panel-shell .review-leaderboard-callout span {
+    display: block;
+    text-transform: uppercase;
+  }
+  .review-panel-shell .review-leaderboard-callout strong {
+    color: #fff4d6;
+    font-size: 14px;
+    line-height: 1.05;
+    letter-spacing: 0.08em;
+  }
+  .review-panel-shell .review-leaderboard-callout span {
+    margin-top: 5px;
+    color: rgba(255, 231, 176, 0.72);
+    font-size: 9px;
+    line-height: 1.3;
+    letter-spacing: 0.14em;
+  }
+  .review-panel-shell .review-leaderboard-score {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 215, 150, 0.24);
+    border-radius: 999px;
+    padding: 7px 9px;
+    background: rgba(0, 0, 0, 0.22);
+    color: #ffdf9d;
+    font: 900 10px/1 var(--game-font-ui);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .review-panel-shell .review-leaderboard-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .review-panel-shell .review-leaderboard-name-input {
+    min-width: 0;
+    min-height: 42px;
+    border: 1px solid rgba(255, 232, 180, 0.42);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.38);
+    color: #fff4d6;
+    padding: 10px 11px;
+    font: 900 13px/1 var(--game-font-ui);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    outline: none;
+  }
+  .review-panel-shell .review-leaderboard-name-input::placeholder {
+    color: rgba(255, 231, 176, 0.54);
+  }
+  .review-panel-shell .review-leaderboard-name-input:focus {
+    border-color: rgba(255, 236, 190, 0.9);
+    box-shadow: 0 0 0 3px rgba(255, 204, 102, 0.16), 0 0 24px rgba(255, 204, 102, 0.14);
+  }
+  .review-panel-shell button.review-leaderboard-save {
+    min-height: 42px;
+    padding: 10px 13px;
+    border-color: rgba(255, 232, 180, 0.48);
+    background: linear-gradient(180deg, rgba(255, 220, 122, 0.22), rgba(255, 177, 66, 0.14));
+    color: #fff4d6;
+    font-weight: 900;
+  }
+  .review-panel-shell .review-leaderboard-list {
+    margin-top: 2px;
+  }
   .mission-banner-shell {
     font-family: var(--game-font-ui);
     border-radius: 20px;
@@ -12243,8 +12342,25 @@ function syncReplayUI() {
       replay.ui.awardsWrap.appendChild(pill);
     });
   }
+  if (reviewVisible && !replay.ui.reviewWasVisible) {
+    replay.ui.leaderboardSaved = false;
+    if (replay.ui.leaderboardWrap) {
+      replay.ui.leaderboardWrap.classList.add('is-unsaved');
+      replay.ui.leaderboardWrap.classList.remove('is-saved');
+    }
+    setTimeout(() => {
+      if (!replay.ui || !replay.ui.leaderboardInput || !document.body.classList.contains('review-open')) return;
+      replay.ui.leaderboardInput.focus({ preventScroll: true });
+      replay.ui.leaderboardInput.select();
+    }, 80);
+  }
+  replay.ui.reviewWasVisible = reviewVisible;
   if (replay.ui.leaderboardList) renderLocalLeaderboard(replay.ui.leaderboardList);
-  if (replay.ui.leaderboardScore) replay.ui.leaderboardScore.textContent = summary ? `SUBMIT ${summary.score || 0} PTS` : 'SUBMIT SCORE';
+  if (replay.ui.leaderboardScore) {
+    replay.ui.leaderboardScore.textContent = replay.ui.leaderboardSaved
+      ? 'SCORE SAVED'
+      : (summary ? `${summary.score || 0} PTS` : 'SCORE');
+  }
 }
 function replayBuildUI() {
   const hud = document.getElementById('hud');
@@ -12282,34 +12398,63 @@ function replayBuildUI() {
   panel.appendChild(awardsWrap);
 
   const leaderboardWrap = document.createElement('div');
-  leaderboardWrap.style.cssText = 'margin-top:10px;padding:10px;border-radius:14px;border:1px solid rgba(255,215,150,.14);background:rgba(255,255,255,.035);';
-  const leaderboardHead = document.createElement('div');
-  leaderboardHead.textContent = 'LOCAL LEADERBOARD';
-  leaderboardHead.style.cssText = 'font:900 11px/1 var(--game-font-ui);letter-spacing:.18em;color:#fff0c8;margin-bottom:8px;';
+  leaderboardWrap.className = 'review-leaderboard-entry is-unsaved';
+  const leaderboardCallout = document.createElement('div');
+  leaderboardCallout.className = 'review-leaderboard-callout';
+  const leaderboardCopy = document.createElement('div');
+  const leaderboardHead = document.createElement('strong');
+  leaderboardHead.textContent = 'ENTER NAME FOR LEADERBOARD';
+  const leaderboardHint = document.createElement('span');
+  leaderboardHint.textContent = 'LOCAL TOP 10 · ENTER TO SAVE';
+  leaderboardCopy.append(leaderboardHead, leaderboardHint);
+  const leaderboardScore = document.createElement('div');
+  leaderboardScore.className = 'review-leaderboard-score';
+  leaderboardScore.textContent = 'SCORE';
+  leaderboardCallout.append(leaderboardCopy, leaderboardScore);
   const leaderboardForm = document.createElement('div');
-  leaderboardForm.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:6px;margin-bottom:8px;';
+  leaderboardForm.className = 'review-leaderboard-form';
   const leaderboardInput = document.createElement('input');
   leaderboardInput.type = 'text';
   leaderboardInput.maxLength = 14;
-  leaderboardInput.placeholder = 'YOUR NAME';
-  leaderboardInput.style.cssText = 'min-width:0;border:1px solid rgba(255,215,150,.24);border-radius:10px;background:rgba(0,0,0,.24);color:#fff4d6;padding:8px 9px;font:800 11px var(--game-font-ui);letter-spacing:.12em;text-transform:uppercase;';
+  leaderboardInput.placeholder = 'TYPE NAME';
+  leaderboardInput.autocomplete = 'nickname';
+  leaderboardInput.inputMode = 'text';
+  leaderboardInput.setAttribute('aria-label', 'Leaderboard name');
+  leaderboardInput.className = 'review-leaderboard-name-input';
   try { leaderboardInput.value = localStorage.getItem('ships-last-leaderboard-name') || ''; } catch {}
   const leaderboardBtn = document.createElement('button');
   leaderboardBtn.type = 'button';
-  leaderboardBtn.textContent = 'SAVE';
-  const leaderboardScore = document.createElement('div');
-  leaderboardScore.textContent = 'SUBMIT SCORE';
-  leaderboardScore.style.cssText = 'font:800 10px var(--game-font-ui);letter-spacing:.14em;color:#ffdf9d;margin-bottom:6px;';
+  leaderboardBtn.className = 'review-leaderboard-save';
+  leaderboardBtn.textContent = 'SAVE SCORE';
   const leaderboardList = document.createElement('div');
+  leaderboardList.className = 'review-leaderboard-list';
   leaderboardForm.append(leaderboardInput, leaderboardBtn);
-  leaderboardWrap.append(leaderboardHead, leaderboardScore, leaderboardForm, leaderboardList);
-  leaderboardBtn.addEventListener('click', () => {
+  leaderboardWrap.append(leaderboardCallout, leaderboardForm, leaderboardList);
+  const submitLeaderboard = () => {
     const summary = missionDebriefState.summary || captureMissionDebrief(plane.crashed ? (missionDebriefState.reason || 'TERRAIN IMPACT') : 'LANDING COMPLETE');
     saveLocalLeaderboardEntry(leaderboardInput.value, summary);
     try { localStorage.setItem('ships-last-leaderboard-name', leaderboardInput.value || 'PILOT'); } catch {}
+    replay.ui.leaderboardSaved = true;
+    leaderboardWrap.classList.remove('is-unsaved');
+    leaderboardWrap.classList.add('is-saved');
+    leaderboardScore.textContent = 'SCORE SAVED';
     renderLocalLeaderboard(leaderboardList);
     if (typeof flashStatus === 'function') flashStatus('LEADERBOARD SAVED', 'panel ok', 1.0);
+  };
+  leaderboardInput.addEventListener('input', () => {
+    replay.ui.leaderboardSaved = false;
+    leaderboardWrap.classList.add('is-unsaved');
+    leaderboardWrap.classList.remove('is-saved');
+    const summary = missionDebriefState.summary || captureMissionDebrief(plane.crashed ? (missionDebriefState.reason || 'TERRAIN IMPACT') : 'LANDING COMPLETE');
+    leaderboardScore.textContent = summary ? `${summary.score || 0} PTS` : 'SCORE';
   });
+  leaderboardInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitLeaderboard();
+    }
+  });
+  leaderboardBtn.addEventListener('click', submitLeaderboard);
   panel.appendChild(leaderboardWrap);
 
   const playRow = document.createElement('div');
@@ -12361,7 +12506,7 @@ function replayBuildUI() {
   modeDetails.appendChild(modeWrap);
   panel.appendChild(modeDetails);
   hud.appendChild(panel);
-  replay.ui = { panel, playBtn, resetBtn, modeButtons, modeDetails, modeSummary, subline, gradeValue, gradeLabel, summaryGrid, awardsWrap, leaderboardInput, leaderboardBtn, leaderboardScore, leaderboardList };
+  replay.ui = { panel, playBtn, resetBtn, modeButtons, modeDetails, modeSummary, subline, gradeValue, gradeLabel, summaryGrid, awardsWrap, leaderboardWrap, leaderboardInput, leaderboardBtn, leaderboardScore, leaderboardList, leaderboardSaved: false, reviewWasVisible: false };
 }
 replayBuildUI();
 bootLog.step('flight replay', true, `buffer ${REPLAY_MAX} frames (${REPLAY_SECONDS}s @ ${REPLAY_FPS}fps)`);
