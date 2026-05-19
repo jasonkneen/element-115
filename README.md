@@ -1,4 +1,4 @@
-# Ships Flight Sim
+# Element-115
 
 A browser-based 3D flight simulator with realistic physics, multiple flyable planes, tweakable parameters, and optional multiplayer support.
 
@@ -6,9 +6,9 @@ A browser-based 3D flight simulator with realistic physics, multiple flyable pla
 
 ## Features
 - Real-time aerodynamics and flight model (pitch/roll/yaw authority, stalls, ground handling)
-- Multiple aircraft: F-14, A-10 Warthog, prop planes, stunt planes, drones
+- Multiple aircraft: F-14, prop planes, stunt planes, drones
 - In-browser plane tweaks and world designer tools
-- Autopilot and self-evolving AI features
+- Autopilot support
 - Multiplayer server support (ghosts, rooms)
 - Static deploy ready (Netlify/Vercel)
 

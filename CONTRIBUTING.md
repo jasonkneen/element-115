@@ -1,4 +1,4 @@
-# Contributing to Ships Flight Sim
+# Contributing to Element-115
 
 Thanks for your interest! This is a personal flight sim project. Contributions are welcome for:
 
