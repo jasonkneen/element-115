@@ -2,7 +2,8 @@
 
 A browser-based 3D flight simulator with realistic physics, multiple flyable planes, tweakable parameters, and optional multiplayer support.
 
-![Flight Sim](flight-sim3.html)
+<img width="900" height="513" alt="6Jm01kXskK9mjQY9" src="https://github.com/user-attachments/assets/a49d8c5a-2a03-41b7-9368-a6d20db65509" />
+
 
 ## Features
 - Real-time aerodynamics and flight model (pitch/roll/yaw authority, stalls, ground handling)
