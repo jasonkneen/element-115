@@ -7254,7 +7254,23 @@ class ParticlePool {
   constructor(scene, opts) {
     this.max = opts.max || 200;
     this.tex = opts.texture;
-    this.particles = [];
+    
+    // Pre-allocate circular buffer pool to avoid runtime object creation and array resizing GC
+    this.pool = [];
+    for (let i = 0; i < this.max; i++) {
+      this.pool.push({
+        active: false,
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        hasVel: false,
+        life: 0,
+        maxLife: 0,
+        sizeMul: 1,
+        rollPhase: 0,
+      });
+    }
+    this.writeIndex = 0;
+
     this.geo = new THREE.BufferGeometry();
     this.positions = new Float32Array(this.max * 3);
     this.alphas = new Float32Array(this.max);
@@ -7297,30 +7313,36 @@ class ParticlePool {
     this.growth = opts.growth || 1.0;
   }
 
-  // Emit a single particle. `vel` is optional: a THREE.Vector3 in world
-  // space that gets integrated each frame so the puff drifts after
-  // emission. Drag dampens it toward zero so puffs don't fly to infinity.
+  // Emit a single particle. Recycling the oldest slot in the circular buffer in-place.
   emit(pos, lifeMul = 1.0, sizeMul = 1.0, vel) {
-    if (this.particles.length >= this.max) this.particles.shift();
-    this.particles.push({
-      pos: pos.clone(),
-      vel: vel ? vel.clone() : null,
-      life: this.lifeBase * lifeMul,
-      maxLife: this.lifeBase * lifeMul,
-      sizeMul,
-      rollPhase: Math.random() * Math.PI * 2,    // for gentle billow wobble
-    });
+    const p = this.pool[this.writeIndex];
+    p.active = true;
+    p.pos.copy(pos);
+    if (vel) {
+      p.vel.copy(vel);
+      p.hasVel = true;
+    } else {
+      p.hasVel = false;
+    }
+    p.life = this.lifeBase * lifeMul;
+    p.maxLife = this.lifeBase * lifeMul;
+    p.sizeMul = sizeMul;
+    p.rollPhase = Math.random() * Math.PI * 2;
+
+    this.writeIndex = (this.writeIndex + 1) % this.max;
   }
 
-  // Helper: emit a CLUSTER of N particles around `pos` with small
-  // spherical offsets and velocities, optionally biased upward. Makes a
-  // single "event" read as a fluffy puff rather than a dot. `driftUp`
-  // is a scalar in world units/sec — small positive value makes the
-  // cluster rise slightly like warm exhaust.
+  // Helper: emit a CLUSTER of N particles using static scratch vectors
   emitCluster(pos, count, spread, driftUp, lifeMul = 1.0, sizeMul = 1.0) {
+    if (!ParticlePool._clusterPos) {
+      ParticlePool._clusterPos = new THREE.Vector3();
+      ParticlePool._clusterVel = new THREE.Vector3();
+    }
+    const cPos = ParticlePool._clusterPos;
+    const cVel = ParticlePool._clusterVel;
+    
     const r = spread;
     for (let k = 0; k < count; k++) {
-      // Random point inside a sphere
       const u = Math.random(), v = Math.random(), w = Math.random();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
@@ -7328,53 +7350,61 @@ class ParticlePool {
       const ox = rad * Math.sin(phi) * Math.cos(theta);
       const oy = rad * Math.sin(phi) * Math.sin(theta);
       const oz = rad * Math.cos(phi);
-      const p = pos.clone();
-      p.x += ox; p.y += oy; p.z += oz;
-      // Velocity: outward from centre + upward bias
+      
+      cPos.copy(pos);
+      cPos.x += ox; cPos.y += oy; cPos.z += oz;
+      
       const velScale = 0.15 + Math.random() * 0.35;
-      const vel = new THREE.Vector3(
+      cVel.set(
         ox * velScale,
         (oy * velScale) + (driftUp || 0) * (0.6 + Math.random() * 0.8),
         oz * velScale
       );
-      // Size jitter so each puff looks slightly different
+      
       const sizeJitter = 0.75 + Math.random() * 0.5;
-      this.emit(p, lifeMul * (0.8 + Math.random() * 0.4),
-                sizeMul * sizeJitter, vel);
+      this.emit(cPos, lifeMul * (0.8 + Math.random() * 0.4), sizeMul * sizeJitter, cVel);
     }
   }
 
   update(dt) {
-    // Integrate velocity + mild drag so puffs drift then settle.
-    const dragK = Math.pow(0.6, dt);  // ~40% of velocity lost per second
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
+    const dragK = Math.pow(0.6, dt);
+    let activeParticles = 0;
+    
+    for (let i = 0; i < this.max; i++) {
+      const p = this.pool[i];
+      if (!p.active) continue;
+      
       p.life -= dt;
-      if (p.life <= 0) { this.particles.splice(i, 1); continue; }
-      if (p.vel) {
+      if (p.life <= 0) {
+        p.active = false;
+        continue;
+      }
+      
+      if (p.hasVel) {
         p.pos.x += p.vel.x * dt;
         p.pos.y += p.vel.y * dt;
         p.pos.z += p.vel.z * dt;
         p.vel.multiplyScalar(dragK);
       }
+      
+      const t = 1 - p.life / p.maxLife;
+      this.positions[activeParticles * 3] = p.pos.x;
+      this.positions[activeParticles * 3 + 1] = p.pos.y;
+      this.positions[activeParticles * 3 + 2] = p.pos.z;
+      this.alphas[activeParticles] = (1 - t) * (1 - t);
+      this.sizes[activeParticles] = this.baseSize * p.sizeMul * (1 + t * this.growth);
+      
+      activeParticles++;
     }
-    for (let i = 0; i < this.max; i++) {
-      if (i < this.particles.length) {
-        const p = this.particles[i];
-        const t = 1 - p.life / p.maxLife; // 0→1 as it ages
-        this.positions[i * 3] = p.pos.x;
-        this.positions[i * 3 + 1] = p.pos.y;
-        this.positions[i * 3 + 2] = p.pos.z;
-        this.alphas[i] = (1 - t) * (1 - t);  // ease-out fade
-        this.sizes[i] = this.baseSize * p.sizeMul * (1 + t * this.growth);
-      } else {
-        this.alphas[i] = 0;
-      }
+    
+    for (let i = activeParticles; i < this.max; i++) {
+      this.alphas[i] = 0;
     }
+    
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.alpha.needsUpdate = true;
     this.geo.attributes.psize.needsUpdate = true;
-    this.geo.setDrawRange(0, this.particles.length);
+    this.geo.setDrawRange(0, activeParticles);
   }
 }
 
@@ -10555,6 +10585,8 @@ const plane = {
   pos: initialSpawnProfile.pos.clone(),
   vel: initialSpawnProfile.vel.clone(),
   quat: initialSpawnProfile.quat.clone(),
+  prevPos: initialSpawnProfile.pos.clone(),
+  prevQuat: initialSpawnProfile.quat.clone(),
   angVel: new THREE.Vector3(),       // local pitch/yaw/roll rates
   throttle: initialSpawnProfile.throttle,
   throttleTarget: initialSpawnProfile.throttle,
@@ -10774,6 +10806,9 @@ function resetPlane() {
   plane.pos.copy(spawn.pos);
   plane.vel.copy(spawn.vel);
   plane.quat.copy(spawn.quat);
+  plane.prevPos.copy(spawn.pos);
+  plane.prevQuat.copy(spawn.quat);
+  physicsAccumulator = 0;
   plane.angVel.set(0, 0, 0);
   plane.throttle = spawn.throttle;
   plane.throttleTarget = spawn.throttle;
@@ -10900,6 +10935,37 @@ function updateInputLatches(dt) {
     }
   } else racePressed = false;
 }
+// Pre-allocated static scratch objects for updatePhysics to avoid garbage collector pressure
+const _physFwd = new THREE.Vector3();
+const _physUp = new THREE.Vector3();
+const _physRight = new THREE.Vector3();
+const _physInvQ = new THREE.Quaternion();
+const _physLocalVel = new THREE.Vector3();
+const _physRightWorld = new THREE.Vector3();
+const _physWorldUpLocal = new THREE.Vector3();
+const _physEuler = new THREE.Euler();
+const _physQuat = new THREE.Quaternion();
+const _physLift = new THREE.Vector3();
+const _physSlipDamping = new THREE.Vector3();
+const _physDrag = new THREE.Vector3();
+const _physThrust = new THREE.Vector3();
+const _physGravity = new THREE.Vector3(0, -GRAVITY, 0);
+const _physAccel = new THREE.Vector3();
+const _physHoriz = new THREE.Vector3();
+
+// Pre-allocated static scratch objects for visual updates
+const _visFwd = new THREE.Vector3();
+const _visUp = new THREE.Vector3();
+const _visRight = new THREE.Vector3();
+const _visSplashCenter = new THREE.Vector3();
+const _visCamFwd = new THREE.Vector3();
+const _visCamUp = new THREE.Vector3();
+const _visCamRight = new THREE.Vector3();
+const _visHeroFwd = new THREE.Vector3();
+const _visHeroUp = new THREE.Vector3();
+const _visHeroRight = new THREE.Vector3();
+const _visLocalVel = new THREE.Vector3();
+const _visInvQ = new THREE.Quaternion();
 
 function updatePhysics(dt) {
   if (plane.crashed) return;
@@ -10941,12 +11007,12 @@ function updatePhysics(dt) {
   else plane.gear += (plane.gearTarget - plane.gear) * Math.min(1, dt * 1.8);
 
   // ----- Forces & rotations -----
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+  const forward = _physFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+  const up = _physUp.set(0, 1, 0).applyQuaternion(plane.quat);
+  const right = _physRight.set(1, 0, 0).applyQuaternion(plane.quat);
 
-  const invQ = plane.quat.clone().invert();
-  const localVel = plane.vel.clone().applyQuaternion(invQ);
+  const invQ = _physInvQ.copy(plane.quat).invert();
+  const localVel = _physLocalVel.copy(plane.vel).applyQuaternion(invQ);
   const forwardSpeed = -localVel.z;        // m/s-ish along nose
   const speed = plane.vel.length();
 
@@ -11056,7 +11122,7 @@ function updatePhysics(dt) {
   // In this sim, negative angVel.y yaws the nose right, so we want:
   //   banked right (rightWorld.y < 0) → angVel.y negative → nose right ✓
   // which means yaw contribution has the SAME sign as rightWorld.y.
-  const rightWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+  const rightWorld = _physRightWorld.set(1, 0, 0).applyQuaternion(plane.quat);
   const bankSign = rightWorld.y;            // negative when banked right
   const bankAmount = Math.abs(bankSign);    // 0..1
   if (bankAmount > 0.17 && q > 25) {
@@ -11070,7 +11136,7 @@ function updatePhysics(dt) {
 
   // Self-correcting stability (dihedral, weathervane)
   // Level roll restore
-  const worldUpLocal = new THREE.Vector3(0, 1, 0).applyQuaternion(invQ);
+  const worldUpLocal = _physWorldUpLocal.set(0, 1, 0).applyQuaternion(invQ);
   plane.angVel.z += -worldUpLocal.x * 0.6 * selfLevelTune * authRoll * dt;
   // Weathervane: yaw toward velocity
   plane.angVel.y += -localVel.x * 0.002 * weathervaneTune * authYaw * dt;
@@ -11135,7 +11201,7 @@ function updatePhysics(dt) {
   }
 
   // Integrate rotation
-  const dQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+  const dQ = _physQuat.setFromEuler(_physEuler.set(
     plane.angVel.x * dt, plane.angVel.y * dt, plane.angVel.z * dt, 'XYZ'
   ));
   plane.quat.multiply(dQ).normalize();
@@ -11177,13 +11243,13 @@ function updatePhysics(dt) {
   const accelTune = scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0;
   const topSpeedTuneKts = scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 720;
   const liftMag = LIFT_K * liftTune * v * v * cl * groundEffect;
-  const lift = up.clone().multiplyScalar(liftMag);
+  const lift = _physLift.copy(up).multiplyScalar(liftMag);
   // Arcade-realistic sideslip: the aircraft can skid, but the fuselage
   // gradually weathervanes back into the airflow. This keeps rudder and
   // banked turns expressive without the plane feeling like it is sliding
   // sideways through the canyon.
   const slipSpeed = localVel.x;
-  const slipDamping = right.clone().multiplyScalar(-slipSpeed * Math.min(1.25, q / 42) * (0.68 + bankAmount * 0.32));
+  const slipDamping = _physSlipDamping.copy(right).multiplyScalar(-slipSpeed * Math.min(1.25, q / 42) * (0.68 + bankAmount * 0.32));
   const loadFactor = Math.max(0, liftMag / Math.max(0.001, GRAVITY));
   const turnRateStress = Math.max(0, Math.abs(plane.angVel.y) + Math.abs(plane.angVel.z) * 0.35 - 0.22);
   const turnEnergyBleed = Math.max(0, loadFactor - 1.05) * Math.max(0, bankAmount - 0.18) * 0.040
@@ -11199,11 +11265,12 @@ function updatePhysics(dt) {
     ? 1 + Math.pow((topSpeedRatio - 0.92) / 0.08, 2) * 1.45
     : 1;
   const dragMag = cd * speed * speed * speedLimiterDrag;
-  const drag = speed > 0.01
-    ? plane.vel.clone().normalize().multiplyScalar(-dragMag)
-    : new THREE.Vector3();
-  if (turnEnergyBleed > 0 && speed > 0.01) {
-    drag.addScaledVector(plane.vel.clone().normalize(), -speed * speed * turnEnergyBleed);
+  const drag = _physDrag.set(0, 0, 0);
+  if (speed > 0.01) {
+    drag.copy(plane.vel).normalize().multiplyScalar(-dragMag);
+    if (turnEnergyBleed > 0) {
+      drag.addScaledVector(plane.vel, -speed * turnEnergyBleed);
+    }
   }
 
   // Thrust
@@ -11230,10 +11297,10 @@ function updatePhysics(dt) {
   const takeoffBoost = plane.onGround
     ? 1.78
     : (q < 76 && plane.throttle > 0.74 ? 1.22 : 1.0);
-  const thrust = forward.clone().multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST * 1.28 * accelTune * takeoffBoost);
+  const thrust = _physThrust.copy(forward).multiplyScalar(effectiveThrottleWithSurge * MAX_THRUST * 1.28 * accelTune * takeoffBoost);
 
   // Gravity
-  const gravity = new THREE.Vector3(0, -GRAVITY, 0);
+  const gravity = _physGravity;
 
   // --- STALL PROTECTION / AUTO-TRIM ---
   // When the plane is slow AND high-alpha AND falling, the pilot might
@@ -11246,7 +11313,7 @@ function updatePhysics(dt) {
     plane.angVel.x += -1.6 * Math.max(0.3, urgency) * dt;  // force nose down
   }
 
-  const accel = new THREE.Vector3()
+  const accel = _physAccel.set(0, 0, 0)
     .add(thrust)
     .add(lift)
     .add(slipDamping)
@@ -11326,7 +11393,7 @@ function updatePhysics(dt) {
       const vertVel = plane.vel.y;
       const wasAirborne = !plane.onGround;
       const runwayTouchdown = Math.abs(plane.pos.x) < 24 && Math.abs(plane.pos.z) < 214;
-      const touchdownForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+      const touchdownForward = forward;
       let touchdownHeading = Math.atan2(touchdownForward.x, -touchdownForward.z) * 180 / Math.PI;
       if (touchdownHeading < 0) touchdownHeading += 360;
       const headingErrorDeg = Math.min(
@@ -11389,7 +11456,7 @@ function updatePhysics(dt) {
         // Rolling friction + brake
         const brakeTune = scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0;
         const rollFric = 0.015 + plane.brake * 2.0 * brakeTune;
-        const horiz = new THREE.Vector3(plane.vel.x, 0, plane.vel.z);
+        const horiz = _physHoriz.set(plane.vel.x, 0, plane.vel.z);
         horiz.multiplyScalar(Math.max(0, 1 - rollFric * dt));
         plane.vel.x = horiz.x;
         plane.vel.z = horiz.z;
@@ -11409,7 +11476,7 @@ function updatePhysics(dt) {
         const TAILDRAGGER_PITCH = 0.225;   // ~13°, extra tail-down stance
         const isTaildragger = !!plane.fixedGear;
         if (speed < TAIL_LIFT_SPEED) {
-          const euler = new THREE.Euler().setFromQuaternion(plane.quat, 'YXZ');
+          const euler = _physEuler.setFromQuaternion(plane.quat, 'YXZ');
           // Roll always decays on ground
           euler.z *= Math.max(0, 1 - dt * 4);
           // Pitch: lerp toward the ground-attitude target
@@ -11460,13 +11527,13 @@ function updatePhysics(dt) {
 //  JET VISUAL UPDATE — gear animation, afterburner
 // =============================================================
 function updateJetVisual() {
-  // Keep the visible aircraft mesh locked to the current plane state.
-  // During flight-review replay, replayPreStep() already writes the
-  // recorded frame into plane.pos/plane.quat before this runs, so the
-  // jet should still follow plane state here rather than freezing at
-  // the crash/stop position.
-  jet.position.copy(plane.pos);
-  jet.quaternion.copy(plane.quat);
+  if (replay.playing) {
+    jet.position.copy(plane.pos);
+    jet.quaternion.copy(plane.quat);
+  } else {
+    jet.position.lerpVectors(plane.prevPos, plane.pos, physicsAlpha);
+    jet.quaternion.copy(plane.prevQuat).slerp(plane.quat, physicsAlpha);
+  }
 
   // Gear rotations (1 = down, 0 = up)
   const g = plane.gear;
@@ -11502,7 +11569,8 @@ function updateJetVisual() {
   if (noseWheel) noseWheel.rotation.x -= wheelSpinStep * 1.04;
 
   // Aero flex + control-surface motion.
-  const flexLocalVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+  const invQ = _visInvQ.copy(plane.quat).invert();
+  const flexLocalVel = _visLocalVel.copy(plane.vel).applyQuaternion(invQ);
   const wingLoad = clamp01(Math.abs(plane.angVel.z) * 0.34 + Math.abs(flexLocalVel.x) / 28 + Math.abs(flexLocalVel.y) / 38);
 
   const aileronTarget = Math.max(-0.45, Math.min(0.45, -plane.angVel.z * 0.18 - flexLocalVel.x * 0.012));
@@ -11654,8 +11722,8 @@ function updateJetVisual() {
     ? Math.min(0.6, 0.10 + nightFactor * 0.45 + (plane.onGround ? 0.10 : 0))
     : 0;
   if (jet.userData.landingRigs) {
-    const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-    const rightWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+    const forwardWorld = _visFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+    const rightWorld = _visRight.set(1, 0, 0).applyQuaternion(plane.quat);
     for (const rig of jet.userData.landingRigs) {
       rig.light.intensity = landingIntensity;
       rig.light.distance = 260 + nightFactor * 180;
@@ -11665,7 +11733,7 @@ function updateJetVisual() {
       rig.beam.scale.setScalar(0.8 + beamOpacity * 1.4);
       rig.beam.visible = beamOpacity > 0.01;
 
-      const splashCenter = plane.pos.clone()
+      const splashCenter = _visSplashCenter.copy(plane.pos)
         .addScaledVector(forwardWorld, 54)
         .addScaledVector(rightWorld, rig.side * 2.6);
       const splashGround = (splashCenter.x * splashCenter.x + splashCenter.z * splashCenter.z < AIRFIELD_FLAT_R2)
@@ -11703,9 +11771,9 @@ function updateJetVisual() {
   airframeFillRig.spot.visible = airframeFillActive;
   airframeFillRig.fill.visible = airframeFillActive;
   if (airframeFillActive) {
-    const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const camForward = _visCamFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    const camUp = _visCamUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    const camRight = _visCamRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
     airframeFillRig.spot.position.copy(camera.position)
       .addScaledVector(camForward, 6.5)
       .addScaledVector(camUp, 1.6)
@@ -11725,9 +11793,9 @@ function updateJetVisual() {
   replayHeroRig.spot.visible = heroActive;
   replayHeroRig.fill.visible = heroActive;
   if (heroActive) {
-    const heroForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-    const heroUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
-    const heroRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
+    const heroForward = _visHeroFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+    const heroUp = _visHeroUp.set(0, 1, 0).applyQuaternion(plane.quat);
+    const heroRight = _visHeroRight.set(1, 0, 0).applyQuaternion(plane.quat);
     replayHeroRig.spot.position.copy(plane.pos)
       .addScaledVector(heroUp, replay.playing ? 7.2 : 4.8)
       .addScaledVector(heroRight, replay.playing ? 5.8 : 2.5)
@@ -12977,17 +13045,17 @@ function updateCamera(dt) {
   // Stable chase camera: keep the camera locked behind and above the plane.
   // Mouse now flies the aircraft via the reticle instead of orbiting the camera.
   const offsetRotated = camLocalOffset.clone();
-  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
-  const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
-  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(jet.quaternion);
+  const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(jet.quaternion);
+  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(jet.quaternion);
   let followQuat = camera.userData.followQuat;
   if (!(followQuat instanceof THREE.Quaternion)) {
-    followQuat = plane.quat.clone();
+    followQuat = jet.quaternion.clone();
     camera.userData.followQuat = followQuat;
   }
   const cameraLagTune = scene.userData.__cameraLag != null ? scene.userData.__cameraLag : 1.0;
   const quatCatchup = 1 - Math.exp(-((plane.onGround ? 18.0 : 10.8) / cameraLagTune) * dt);
-  followQuat.slerp(plane.quat, quatCatchup);
+  followQuat.slerp(jet.quaternion, quatCatchup);
   const delayedForward = new THREE.Vector3(0, 0, -1).applyQuaternion(followQuat).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
 
@@ -13051,7 +13119,7 @@ function updateCamera(dt) {
     ? rawHeight
     : prevHeightState + (rawHeight - prevHeightState) * heightBlend;
   camera.userData.verticalHeightState = height;
-  const desired = plane.pos.clone()
+  const desired = jet.position.clone()
     .addScaledVector(delayedForward, -backDist)
     .addScaledVector(worldUp, height);
 
@@ -13075,21 +13143,21 @@ function updateCamera(dt) {
     : prevFocusState + (rawFocusYOffset - prevFocusState) * focusBlend;
   camera.userData.focusYOffsetState = focusYOffset;
   const lookForward = delayedForward.clone().lerp(planeForward, 0.38 + maneuverReveal * 0.14).normalize();
-  const lookTarget = plane.pos.clone()
+  const lookTarget = jet.position.clone()
     .addScaledVector(lookForward, lookDist)
     .addScaledVector(worldUp, focusYOffset);
 
   const blendedUp = worldUp;
   camera.up.copy(blendedUp);
-  const cameraGroundH = getHeight(plane.pos.x, plane.pos.z);
-  const lowFastFov = clamp01(1 - Math.max(0, plane.pos.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 34) / 100) * 1.2;
+  const cameraGroundH = getHeight(jet.position.x, jet.position.z);
+  const lowFastFov = clamp01(1 - Math.max(0, jet.position.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 34) / 100) * 1.2;
   const speedFov = clamp01((speedKtsForCamera - 42) / 190) * 4.5 + clamp01((speedKtsForCamera - 150) / 280) * 2.0;
   applyCameraLensFov(CAMERA_BASE_FOV + speedFov + lowFastFov + maneuverReveal * 1.3, Math.min(1, dt * 4.4));
 
   camera.lookAt(lookTarget);
   camera.userData.focusTarget = lookTarget.clone();
-  camera.userData.cameraHeightOffset = camera.position.y - plane.pos.y;
-  camera.userData.cameraFocusYOffset = lookTarget.y - plane.pos.y;
+  camera.userData.cameraHeightOffset = camera.position.y - jet.position.y;
+  camera.userData.cameraFocusYOffset = lookTarget.y - jet.position.y;
 }
 
 // =============================================================
@@ -13209,8 +13277,8 @@ const landingCompleteState = {
   bonusPoints: 0,
   result: null,
 };
-const RETICLE_SCREEN_Y_RATIO = 0.52;
-const RETICLE_GUN_Y_OFFSET_PX = 54;
+const RETICLE_SCREEN_Y_RATIO = 0.46;
+const RETICLE_GUN_Y_OFFSET_PX = -35;
 const reticleState = {
   x: window.innerWidth * 0.5,
   y: window.innerHeight * RETICLE_SCREEN_Y_RATIO,
@@ -13502,10 +13570,10 @@ function getGunReticleScreenPoint() {
   if (!jet.userData.gunL || !jet.userData.gunR) return null;
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
-  _hudWorldA.copy(jet.userData.gunL).applyQuaternion(plane.quat).add(plane.pos);
-  _hudWorldB.copy(jet.userData.gunR).applyQuaternion(plane.quat).add(plane.pos);
+  _hudWorldA.copy(jet.userData.gunL).applyQuaternion(jet.quaternion).add(jet.position);
+  _hudWorldB.copy(jet.userData.gunR).applyQuaternion(jet.quaternion).add(jet.position);
   _hudWorldC.copy(_hudWorldA).add(_hudWorldB).multiplyScalar(0.5);
-  _hudDirA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  _hudDirA.set(0, 0, -1).applyQuaternion(jet.quaternion).normalize();
   _hudNdcA.copy(_hudWorldC).addScaledVector(_hudDirA, 900).project(camera);
   if (!Number.isFinite(_hudNdcA.x) || !Number.isFinite(_hudNdcA.y) || _hudNdcA.z < -1 || _hudNdcA.z > 1) return null;
   return {
@@ -13609,8 +13677,18 @@ function updateReticleHud(dt = 1 / 60) {
     return;
   }
 
-  reticleState.x = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x));
-  reticleState.y = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y));
+  const targetX = Math.max(24, Math.min(window.innerWidth - 24, basePoint.x));
+  const targetY = Math.max(24, Math.min(window.innerHeight - 24, basePoint.y));
+
+  if (!reticleState.visible) {
+    reticleState.x = targetX;
+    reticleState.y = targetY;
+  } else {
+    // 15.0 provides a sweet-spot combination of responsive aiming and satisfying fluid lag.
+    const f = 1 - Math.exp(-15.0 * dt);
+    reticleState.x += (targetX - reticleState.x) * f;
+    reticleState.y += (targetY - reticleState.y) * f;
+  }
   reticleState.vx = 0;
   reticleState.vy = 0;
   reticleState.visible = true;
@@ -13706,7 +13784,17 @@ function updateTargetHud(dt = 1 / 60) {
   }) || null;
   active = reticleThreat || selectedVisible || (selectedCandidate ? makeGuidedTargetHudEntry(selectedCandidate, camForward, camRight, camUp) : null);
   targetHudState.selectedVisible = !!active;
-  const displayTargets = active ? [active] : [];
+  const displayTargets = [];
+  if (active) {
+    displayTargets.push(active);
+  }
+  for (const v of visible) {
+    if (active && v.id === active.id) continue;
+    displayTargets.push(v);
+  }
+  if (displayTargets.length > TARGET_BOX_LIMIT) {
+    displayTargets.length = TARGET_BOX_LIMIT;
+  }
   targetHudState.visibleCount = displayTargets.length;
   targetHudState.activeTarget = active || null;
   targetHudState.activeId = active ? active.id : '';
@@ -13818,15 +13906,17 @@ function updateTargetHud(dt = 1 / 60) {
     const hullPct = d && d.maxHealth ? Math.round((d.health / Math.max(1, d.maxHealth)) * 100) : 100;
     poolEntry.el.classList.toggle('shield-hit', !!(d && (d.shieldPulse || 0) > 0.08));
     poolEntry.el.classList.toggle('damaged', !!(d && hullPct < 100));
-    poolEntry.el.style.opacity = targetBoxLocked ? '1' : isTracking ? '0.96' : isActive ? '0.78' : '0.42';
+    poolEntry.el.style.opacity = targetBoxLocked ? '1' : isTracking ? '0.96' : isActive ? '0.78' : '0.35';
     const lockPct = isActive ? Math.round(targetHudState.lockAmount * 100) : 0;
-    poolEntry.tag.textContent = targetBoxLocked
-      ? `${target.label} · ${target.type} · LOCK`
-      : isTracking
-        ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
-        : `${target.label} · ${target.type} · ${target.guidanceLabel || (target.offscreenCue ? 'STEER' : 'IN FRONT')}`;
-    poolEntry.readout.style.display = isActive ? 'block' : 'none';
-    const damageLine = d ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
+    poolEntry.tag.textContent = isActive
+      ? (targetBoxLocked
+          ? `${target.label} · ${target.type} · LOCK`
+          : isTracking
+            ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
+            : `${target.label} · ${target.type} · ${target.guidanceLabel || (target.offscreenCue ? 'STEER' : 'IN FRONT')}`)
+      : `${target.label} · ${target.type}`;
+    poolEntry.readout.style.display = 'block';
+    const damageLine = (isActive && d) ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
     poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
   }
 }
@@ -14495,59 +14585,145 @@ function updateMultiplayerRaceHUD() {
     });
   }
 }
+// Pre-allocated static scratch objects for updateHUD to avoid garbage collector pressure
+const _hudFwd = new THREE.Vector3();
+const _hudInvQ = new THREE.Quaternion();
+const _hudLocalVel = new THREE.Vector3();
+const _hudAccel = new THREE.Vector3();
+const _hudPlaneUp = new THREE.Vector3();
+const _hudEuler = new THREE.Euler();
+
+const hudCache = {
+  speed: -1,
+  alt: -1,
+  hdg: '',
+  vs: 9999,
+  aoa: '',
+  aoaClass: '',
+  gforce: '',
+  gearText: '',
+  gearClass: '',
+  hullPct: -1,
+  hullClass: '',
+  shieldPct: -1,
+  shieldClass: '',
+  hullBarWidth: '',
+  hullBarBg: '',
+  hullBarShadow: '',
+  ammoVal: -1,
+  ammoMax: -1,
+  missileVal: -1,
+  supplyVal: '',
+  weaponModeText: '',
+  weaponModeClass: '',
+  ammoBarWidth: '',
+  ammoBarBg: '',
+  scoreVal: -1,
+  scoreStreak: '',
+  aeroChipHidden: null,
+  ammoChipHidden: null,
+  devInfoText: '',
+  inputDebug1: '',
+  inputDebug2: '',
+  inputDebug3: '',
+  inputDebug4: '',
+  inputDebug5: '',
+  aiBallTransform: '',
+  aiRollText: '',
+  throttleVal: -1,
+  throttleBarWidth: '',
+  abStatusText: '',
+  abStatusClass: ''
+};
+
 function updateHUD(dt = 1 / 60) {
   // Speed — m/s * ~1.94 = knots
   const sp = plane.vel.length() * 1.94;
-  $speed.textContent = Math.min(999, Math.round(sp));
+  const spRound = Math.min(999, Math.round(sp));
+  if (hudCache.speed !== spRound) {
+    hudCache.speed = spRound;
+    $speed.textContent = spRound;
+  }
 
   // Altitude in feet (y in m × 3.28), clamped to realistic ceiling
-  // __altitude_clamp__ — prevents physics overflow from displaying impossible values
-  // Climb stage ceiling: 3000 ft per playbook
   const rawFt = plane.pos.y * 3.28;
   const ft = Math.max(0, Math.min(3000, Math.round(rawFt)));
-  $alt.textContent = ft;
+  if (hudCache.alt !== ft) {
+    hudCache.alt = ft;
+    $alt.textContent = ft;
+  }
 
   // Heading from forward vector
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+  const fwd = _hudFwd.set(0, 0, -1).applyQuaternion(plane.quat);
   let hdg = Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI;
   if (hdg < 0) hdg += 360;
-  $hdg.textContent = String(Math.round(hdg)).padStart(3, '0');
+  const hdgStr = String(Math.round(hdg)).padStart(3, '0');
+  if (hudCache.hdg !== hdgStr) {
+    hudCache.hdg = hdgStr;
+    $hdg.textContent = hdgStr;
+  }
 
   // Vertical speed
   vsSmoothed += (plane.vel.y * 197 - vsSmoothed) * 0.1;
-  $vs.textContent = Math.round(vsSmoothed);
+  const vsRound = Math.round(vsSmoothed);
+  if (hudCache.vs !== vsRound) {
+    hudCache.vs = vsRound;
+    $vs.textContent = vsRound;
+  }
 
   // AoA
-  const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+  const invQ = _hudInvQ.copy(plane.quat).invert();
+  const localVel = _hudLocalVel.copy(plane.vel).applyQuaternion(invQ);
   const fwdSpd = -localVel.z;
   const aoa = fwdSpd > 1 ? Math.atan2(-localVel.y, fwdSpd) * 180 / Math.PI : 0;
-  $aoa.textContent = aoa.toFixed(1);
-  if (Math.abs(aoa) > 17) $aoa.className = 'warn';
-  else $aoa.className = '';
+  const aoaStr = aoa.toFixed(1);
+  if (hudCache.aoa !== aoaStr) {
+    hudCache.aoa = aoaStr;
+    $aoa.textContent = aoaStr;
+  }
+  const aoaClass = Math.abs(aoa) > 17 ? 'warn' : '';
+  if (hudCache.aoaClass !== aoaClass) {
+    hudCache.aoaClass = aoaClass;
+    $aoa.className = aoaClass;
+  }
+
   const terrH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
     ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
   const aglFt = Math.max(0, (plane.pos.y - terrH) * 3.28);
   updateFlightPhase(sp, aglFt, aoa);
 
   // G-force estimate: lift acceleration / g (smoothed)
-  // Approx via rate of change of velocity perpendicular to motion
-  const accel = plane.vel.clone().sub(lastVel).divideScalar(Math.max(0.001, 1/60));
-  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quat);
+  const accel = _hudAccel.copy(plane.vel).sub(lastVel).divideScalar(0.016666666666666666);
+  const planeUp = _hudPlaneUp.set(0, 1, 0).applyQuaternion(plane.quat);
   const gInst = (accel.dot(planeUp) / GRAVITY) + Math.cos(aoa * Math.PI / 180);
   gSmoothed += (gInst - gSmoothed) * 0.15;
-  $gforce.textContent = gSmoothed.toFixed(1);
+  const gStr = gSmoothed.toFixed(1);
+  if (hudCache.gforce !== gStr) {
+    hudCache.gforce = gStr;
+    $gforce.textContent = gStr;
+  }
   lastVel.copy(plane.vel);
 
   // Gear status
+  let gearText = '';
+  let gearClass = '';
   if (plane.fixedGear) {
-    $gear.textContent = 'FIXED';
-    $gear.className = 'ok';
+    gearText = 'FIXED';
+    gearClass = 'ok';
   } else if (plane.gear > 0.95) {
-    $gear.textContent = 'DOWN'; $gear.className = 'ok';
+    gearText = 'DOWN'; gearClass = 'ok';
   } else if (plane.gear < 0.05) {
-    $gear.textContent = 'UP'; $gear.className = '';
+    gearText = 'UP'; gearClass = '';
   } else {
-    $gear.textContent = 'MOVING'; $gear.className = 'warn';
+    gearText = 'MOVING'; gearClass = 'warn';
+  }
+  if (hudCache.gearText !== gearText) {
+    hudCache.gearText = gearText;
+    $gear.textContent = gearText;
+  }
+  if (hudCache.gearClass !== gearClass) {
+    hudCache.gearClass = gearClass;
+    $gear.className = gearClass;
   }
 
   // Hull + ammo readouts
@@ -14555,94 +14731,174 @@ function updateHUD(dt = 1 / 60) {
     const pct = Math.max(0, Math.round(plane.health));
     const shd = Math.max(0, Math.round((plane.shield || 0) / Math.max(1, plane.shieldMax || 50) * 100));
     plane.shieldPulse = Math.max(0, (plane.shieldPulse || 0) - dt * 1.6);
-    $hullPct.textContent = pct;
+    
+    if (hudCache.hullPct !== pct) {
+      hudCache.hullPct = pct;
+      $hullPct.textContent = pct;
+      const pctClass = pct > 65 ? 'ok' : pct > 30 ? 'warn' : 'err';
+      if (hudCache.hullClass !== pctClass) {
+        hudCache.hullClass = pctClass;
+        $hullPct.className = pctClass;
+      }
+    }
     if ($shieldPct) {
-      $shieldPct.textContent = shd;
-      $shieldPct.className = shd > 55 ? 'ok' : shd > 0 ? 'warn' : '';
+      if (hudCache.shieldPct !== shd) {
+        hudCache.shieldPct = shd;
+        $shieldPct.textContent = shd;
+      }
+      const shdClass = shd > 55 ? 'ok' : shd > 0 ? 'warn' : '';
+      if (hudCache.shieldClass !== shdClass) {
+        hudCache.shieldClass = shdClass;
+        $shieldPct.className = shdClass;
+      }
     }
     if ($hullBar) {
       const barPct = plane.shield > 0 ? shd : pct;
-      $hullBar.style.width = barPct + '%';
-      $hullBar.style.background = plane.shield > 0 ? '#74efff' : pct > 65 ? '#63d27a' : pct > 30 ? '#ffd56b' : '#ff6f6f';
-      $hullBar.style.boxShadow = plane.shieldPulse > 0 ? '0 0 14px rgba(116,239,255,0.85)' : '';
+      const barWidthStr = barPct + '%';
+      if (hudCache.hullBarWidth !== barWidthStr) {
+        hudCache.hullBarWidth = barWidthStr;
+        $hullBar.style.width = barWidthStr;
+      }
+      const barBg = plane.shield > 0 ? '#74efff' : pct > 65 ? '#63d27a' : pct > 30 ? '#ffd56b' : '#ff6f6f';
+      if (hudCache.hullBarBg !== barBg) {
+        hudCache.hullBarBg = barBg;
+        $hullBar.style.background = barBg;
+      }
+      const barShadow = plane.shieldPulse > 0 ? '0 0 14px rgba(116,239,255,0.85)' : '';
+      if (hudCache.hullBarShadow !== barShadow) {
+        hudCache.hullBarShadow = barShadow;
+        $hullBar.style.boxShadow = barShadow;
+      }
     }
-    $hullPct.className = pct > 65 ? 'ok' : pct > 30 ? 'warn' : 'err';
   }
   if ($ammoVal) {
     const a = Math.floor(combatState.ammo);
     const msl = Math.floor(combatState.missilesAmmo);
     const alienLeft = Math.max(0, (combatState.alienWeaponUntil - performance.now()) / 1000);
-    $ammoVal.textContent = a;
-    if ($ammoMax) $ammoMax.textContent = combatState.ammoMax;
-    if ($missileVal) $missileVal.textContent = msl;
+    if (hudCache.ammoVal !== a) {
+      hudCache.ammoVal = a;
+      $ammoVal.textContent = a;
+    }
+    if ($ammoMax && hudCache.ammoMax !== combatState.ammoMax) {
+      hudCache.ammoMax = combatState.ammoMax;
+      $ammoMax.textContent = combatState.ammoMax;
+    }
+    if ($missileVal && hudCache.missileVal !== msl) {
+      hudCache.missileVal = msl;
+      $missileVal.textContent = msl;
+    }
     if ($supplyVal) {
       const rewardInfo = getNextPracticeRewardInfo();
       const earnActive = combatSupplyEarnActive();
       const missileProgress = combatState.missilesAmmo >= combatState.missilesMax
         ? 1
         : clamp01(combatState.missileEarnBank || 0);
+      let supplyText = '';
       if (rewardInfo) {
-        $supplyVal.textContent = `TGT ${rewardInfo.index + 1}: ${formatPracticeReward(rewardInfo.reward)}`;
+        supplyText = `TGT ${rewardInfo.index + 1}: ${formatPracticeReward(rewardInfo.reward)}`;
       } else if (combatState.ammo >= combatState.ammoMax && combatState.missilesAmmo >= combatState.missilesMax) {
-        $supplyVal.textContent = 'FULL';
+        supplyText = 'FULL';
       } else if (!earnActive) {
-        $supplyVal.textContent = 'IDLE';
+        supplyText = 'IDLE';
       } else if (combatState.missilesAmmo < combatState.missilesMax) {
-        $supplyVal.textContent = `MSL ${Math.round(missileProgress * 100)}%`;
+        supplyText = `MSL ${Math.round(missileProgress * 100)}%`;
       } else {
-        $supplyVal.textContent = 'AMMO';
+        supplyText = 'AMMO';
+      }
+      if (hudCache.supplyVal !== supplyText) {
+        hudCache.supplyVal = supplyText;
+        $supplyVal.textContent = supplyText;
       }
     }
     if ($weaponMode) {
       const heatPct = Math.round((combatState.heat || 0) * 100);
+      let modeText = '';
+      let modeClass = '';
       if (performance.now() < (combatState.overheatedUntil || 0)) {
-        $weaponMode.textContent = `OVERHEATED · COOLING ${heatPct}%`;
-        $weaponMode.className = 'hud-subtle warn';
+        modeText = `OVERHEATED · COOLING ${heatPct}%`;
+        modeClass = 'hud-subtle warn';
       } else if (alienLeft > 0) {
-        $weaponMode.textContent = `ALIEN PULSE ${Math.ceil(alienLeft)}S · HEAT ${heatPct}%`;
-        $weaponMode.className = 'hud-subtle ok';
+        modeText = `ALIEN PULSE ${Math.ceil(alienLeft)}S · HEAT ${heatPct}%`;
+        modeClass = 'hud-subtle ok';
       } else {
         const lockPct = Math.round((targetHudState.lockAmount || 0) * 100);
-        if (targetHudState.lockSolid) $weaponMode.textContent = `MSL LOCK · ${targetHudState.activeLabel || 'TARGET'} · HEAT ${heatPct}%`;
-        else if ((targetHudState.lockAmount || 0) > 0.35) $weaponMode.textContent = `MSL TRACK ${lockPct}% · ${targetHudState.activeLabel || 'TARGET'} · HEAT ${heatPct}%`;
-        else if (targetHudState.selectedLabel) $weaponMode.textContent = `TGT ${targetHudState.selectedLabel} · C CYCLE · HEAT ${heatPct}%`;
-        else $weaponMode.textContent = `C TARGET · X MSL · HEAT ${heatPct}%`;
-        $weaponMode.className = 'hud-subtle';
+        if (targetHudState.lockSolid) modeText = `MSL LOCK · ${targetHudState.activeLabel || 'TARGET'} · HEAT ${heatPct}%`;
+        else if ((targetHudState.lockAmount || 0) > 0.35) modeText = `MSL TRACK ${lockPct}% · ${targetHudState.activeLabel || 'TARGET'} · HEAT ${heatPct}%`;
+        else if (targetHudState.selectedLabel) modeText = `TGT ${targetHudState.selectedLabel} · C CYCLE · HEAT ${heatPct}%`;
+        else modeText = `C TARGET · X MSL · HEAT ${heatPct}%`;
+        modeClass = 'hud-subtle';
+      }
+      if (hudCache.weaponModeText !== modeText) {
+        hudCache.weaponModeText = modeText;
+        $weaponMode.textContent = modeText;
+      }
+      if (hudCache.weaponModeClass !== modeClass) {
+        hudCache.weaponModeClass = modeClass;
+        $weaponMode.className = modeClass;
       }
     }
     if ($ammoBar) {
-      $ammoBar.style.width = (a / combatState.ammoMax * 100).toFixed(0) + '%';
-      $ammoBar.style.background = alienLeft > 0 ? '#74efff' : a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
+      const barWidth = (a / combatState.ammoMax * 100).toFixed(0) + '%';
+      const barBg = alienLeft > 0 ? '#74efff' : a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
+      if (hudCache.ammoBarWidth !== barWidth) {
+        hudCache.ammoBarWidth = barWidth;
+        $ammoBar.style.width = barWidth;
+      }
+      if (hudCache.ammoBarBg !== barBg) {
+        hudCache.ammoBarBg = barBg;
+        $ammoBar.style.background = barBg;
+      }
     }
   }
   if ($scoreVal && window.__gameScore) {
     const pts = window.__gameScore.points || 0;
     const prevPts = Number($scoreVal.dataset.prevScore || 0);
-    $scoreVal.textContent = pts;
-    $scoreVal.dataset.prevScore = String(pts);
-    if ($scoreChip && pts > prevPts) {
-      $scoreChip.classList.remove('score-pop');
-      void $scoreChip.offsetWidth;
-      $scoreChip.classList.add('score-pop');
+    if (hudCache.scoreVal !== pts) {
+      hudCache.scoreVal = pts;
+      $scoreVal.textContent = pts;
+      $scoreVal.dataset.prevScore = String(pts);
+      if ($scoreChip && pts > prevPts) {
+        $scoreChip.classList.remove('score-pop');
+        void $scoreChip.offsetWidth;
+        $scoreChip.classList.add('score-pop');
+      }
     }
-    if ($scoreStreak) $scoreStreak.textContent = `${window.__gameScore.streak}× · B ${window.__gameScore.banked || 0} / RISK ${window.__gameScore.unbanked || 0}`;
+    const streakText = `${window.__gameScore.streak}× · B ${window.__gameScore.banked || 0} / RISK ${window.__gameScore.unbanked || 0}`;
+    if (hudCache.scoreStreak !== streakText) {
+      hudCache.scoreStreak = streakText;
+      if ($scoreStreak) $scoreStreak.textContent = streakText;
+    }
   }
   const combatRecent = (performance.now() - (combatState.lastFiredAt || 0)) < 7000;
   const combatVisible = combatRecent || combatState.fireHeld || combatState.missiles.some(m => m.active) || alienWeaponActive() || (targetHudState.lockAmount || 0) > 0.18 || (combatState.kills || 0) > 0 || plane.crashed;
-  if ($aeroChip) $aeroChip.classList.toggle('is-hidden', !combatVisible && plane.onGround && sp < 40);
-  if ($ammoChip) $ammoChip.classList.toggle('is-hidden', !combatVisible);
+  const aeroChipHidden = !combatVisible && plane.onGround && sp < 40;
+  if ($aeroChip) {
+    if (hudCache.aeroChipHidden !== aeroChipHidden) {
+      hudCache.aeroChipHidden = aeroChipHidden;
+      $aeroChip.classList.toggle('is-hidden', aeroChipHidden);
+    }
+  }
+  const ammoChipHidden = !combatVisible;
+  if ($ammoChip) {
+    if (hudCache.ammoChipHidden !== ammoChipHidden) {
+      hudCache.ammoChipHidden = ammoChipHidden;
+      $ammoChip.classList.toggle('is-hidden', ammoChipHidden);
+    }
+  }
   if ($scoreChip) $scoreChip.classList.remove('is-hidden');
 
   // ——— Dev overlay: show prop count, fixed-gear, world-rev, throttle ———
-  // This makes it trivial to see whether the prop fallback fired and
-  // whether the plane config flags are set as expected.
   if (typeof _devInfo !== 'undefined' && _devInfo) {
     const propCnt = (plane.props && plane.props.length) || 0;
-    _devInfo.textContent =
+    const devInfoText =
       `PROP ${propCnt}×  ·  FIXED-GEAR ${plane.fixedGear ? 'Y' : 'N'}  ·  ` +
       `THR ${Math.round(plane.throttle * 100)}%  ·  ` +
       `SPD ${(plane.vel.length()*1.94).toFixed(0)}kt  ·  ` +
       `POS ${plane.pos.x.toFixed(0)},${plane.pos.y.toFixed(0)},${plane.pos.z.toFixed(0)}`;
+    if (hudCache.devInfoText !== devInfoText) {
+      hudCache.devInfoText = devInfoText;
+      _devInfo.textContent = devInfoText;
+    }
   }
 
   if (_inputDebugLine1 && _inputDebugLine2 && _inputDebugLine3 && _inputDebugLine4 && _inputDebugLine5) {
@@ -14652,25 +14908,36 @@ function updateHUD(dt = 1 / 60) {
     const activeLabel = gamepadState.connected ? `#${gamepadState.index}` : 'NONE';
     const axisSummary = (gamepadState.axesRaw || []).slice(0, 6).map((v, i) => `A${i}:${v >= 0 ? '+' : ''}${v.toFixed(2)}`).join('  ');
     const buttonSummary = (gamepadState.buttonsRaw || []).slice(0, 10).map((v, i) => `B${i}:${v.toFixed(2)}`).join('  ');
-    _inputDebugLine1.textContent = `PADS ${gamepadState.padCount || 0} · ACTIVE ${activeLabel} · MAP ${gamepadState.mapping || '—'}`;
-    _inputDebugLine2.textContent = `FOCUS ${focusLabel} · SECURE ${secureLabel} · ${visibilityLabel}`;
-    _inputDebugLine3.textContent = `ID ${gamepadState.id || '—'}`;
-    _inputDebugLine4.textContent = `AX ${axisSummary || '—'}`;
-    _inputDebugLine5.textContent = `BTN ${buttonSummary || '—'}`;
+    
+    const dbg1 = `PADS ${gamepadState.padCount || 0} · ACTIVE ${activeLabel} · MAP ${gamepadState.mapping || '—'}`;
+    const dbg2 = `FOCUS ${focusLabel} · SECURE ${secureLabel} · ${visibilityLabel}`;
+    const dbg3 = `ID ${gamepadState.id || '—'}`;
+    const dbg4 = `AX ${axisSummary || '—'}`;
+    const dbg5 = `BTN ${buttonSummary || '—'}`;
+    
+    if (hudCache.inputDebug1 !== dbg1) { hudCache.inputDebug1 = dbg1; _inputDebugLine1.textContent = dbg1; }
+    if (hudCache.inputDebug2 !== dbg2) { hudCache.inputDebug2 = dbg2; _inputDebugLine2.textContent = dbg2; }
+    if (hudCache.inputDebug3 !== dbg3) { hudCache.inputDebug3 = dbg3; _inputDebugLine3.textContent = dbg3; }
+    if (hudCache.inputDebug4 !== dbg4) { hudCache.inputDebug4 = dbg4; _inputDebugLine4.textContent = dbg4; }
+    if (hudCache.inputDebug5 !== dbg5) { hudCache.inputDebug5 = dbg5; _inputDebugLine5.textContent = dbg5; }
   }
 
   // ——— Attitude indicator (artificial horizon) ———
-  // Pitch shifts the horizon ball vertically (~3px per degree, clamped to
-  // the bezel); roll rotates the whole inner ball. Extract Euler from the
-  // plane's quaternion in YXZ order (yaw-pitch-roll) so the axes match.
   if (typeof _aiBall !== 'undefined' && _aiBall) {
-    const euler = new THREE.Euler().setFromQuaternion(plane.quat, 'YXZ');
+    const euler = _hudEuler.setFromQuaternion(plane.quat, 'YXZ');
     const pitchDeg = euler.x * 180 / Math.PI;
     const rollDeg  = euler.z * 180 / Math.PI;
     const pitchPx  = Math.max(-55, Math.min(55, pitchDeg * 2.2));
-    _aiBall.style.transform = `translateY(${pitchPx}px) rotate(${-rollDeg}deg)`;
-    if (_aiRollText) _aiRollText.textContent =
-      `P ${pitchDeg.toFixed(0)}° · R ${rollDeg.toFixed(0)}°`;
+    const trans = `translateY(${pitchPx}px) rotate(${-rollDeg}deg)`;
+    if (hudCache.aiBallTransform !== trans) {
+      hudCache.aiBallTransform = trans;
+      _aiBall.style.transform = trans;
+    }
+    const rollText = `P ${pitchDeg.toFixed(0)}° · R ${rollDeg.toFixed(0)}°`;
+    if (hudCache.aiRollText !== rollText) {
+      hudCache.aiRollText = rollText;
+      if (_aiRollText) _aiRollText.textContent = rollText;
+    }
   }
 
   const tp = Math.round(plane.throttle * 100);
@@ -14696,15 +14963,25 @@ function updateHUD(dt = 1 / 60) {
 // =============================================================
 let lastTime = 0;
 let running = false;
-const MAX_PHYSICS_STEP = 1 / 90;
+const FIXED_PHYSICS_STEP = 1 / 120; // 120Hz physics update rate
+let physicsAccumulator = 0;
+let physicsAlpha = 1.0;
 
 function updateLivePhysicsSmooth(dt) {
-  let remaining = Math.max(0, Math.min(0.05, dt));
-  while (remaining > 0.00001) {
-    const stepDt = Math.min(MAX_PHYSICS_STEP, remaining);
-    updatePhysics(stepDt);
-    remaining -= stepDt;
+  // Cap dt to prevent the "spiral of death" if frame rate drops significantly
+  const dtCapped = Math.min(0.08, dt);
+  physicsAccumulator += dtCapped;
+  
+  while (physicsAccumulator >= FIXED_PHYSICS_STEP) {
+    plane.prevPos.copy(plane.pos);
+    plane.prevQuat.copy(plane.quat);
+    
+    updatePhysics(FIXED_PHYSICS_STEP);
+    
+    physicsAccumulator -= FIXED_PHYSICS_STEP;
   }
+  
+  physicsAlpha = physicsAccumulator / FIXED_PHYSICS_STEP;
 }
 
 function animate(now) {
