@@ -3179,14 +3179,24 @@ const CHUNK_RES = 60;
 const RENDER_RADIUS = 3;          // 7×7 high-detail chunks
 const FAR_CHUNK_SIZE = 1800;      // 3× high-detail size
 const FAR_CHUNK_RES = 36;         // low-res
-const FAR_RADIUS = 4;             // 9×9 far chunks → covers ~16.2 km
+let FAR_RADIUS = 4;               // 9×9 far chunks → covers ~16.2 km (driven by gfx.renderDistance)
 const ROCKS_PER_CHUNK = 160;
+// HORIZON ring — a 3rd, ultra-coarse, clutter-free LOD tier for dramatic distance.
+// 3× the far-chunk size at half its resolution. HORIZON_RADIUS is 0 by default (no
+// horizon ring, identical to the original world) and only grows when gfx.renderDistance
+// exceeds 1.0 — so the feature is fully opt-in via the slider and costs nothing at default.
+const HORIZON_CHUNK_SIZE = 5400;
+const HORIZON_CHUNK_RES = 24;
+let HORIZON_RADIUS = 0;
 const chunks = new Map();
 const farChunks = new Map();
+const horizonChunks = new Map();
 const pendingChunkBuilds = [];
 const pendingChunkKeys = new Set();
 const pendingFarChunkBuilds = [];
 const pendingFarChunkKeys = new Set();
+const pendingHorizonBuilds = [];
+const pendingHorizonKeys = new Set();
 const chunkKey = (cx, cz) => `${cx},${cz}`;
 
 function queueChunkBuild(list, set, map, cx, cz, priority = 0) {
@@ -3209,18 +3219,36 @@ function trimPendingChunkBuilds(list, set, wanted) {
   }
 }
 
-function processChunkBuildQueues(nearBudget = 1, farBudget = 1) {
+// Time-budgeted chunk builder. Builds at least one near + one far chunk per call
+// (so the world always makes progress), then keeps going only while under the ms
+// budget and below the hard cap. A weak CPU naturally builds fewer chunks/frame
+// (smoother) and a fast CPU more (faster fill) — replaces the old fixed counts
+// that handed slow machines the exact same multi-ms makeChunk hitch as the M3.
+function processChunkBuildQueues(maxMs = 2.5, hardCap = 6) {
+  const start = performance.now();
   if (pendingChunkBuilds.length > 1) pendingChunkBuilds.sort((a, b) => a.priority - b.priority);
-  while (nearBudget-- > 0 && pendingChunkBuilds.length) {
+  let built = 0;
+  while (pendingChunkBuilds.length && (built === 0 || (built < hardCap && performance.now() - start < maxMs))) {
     const job = pendingChunkBuilds.shift();
     pendingChunkKeys.delete(job.key);
     if (!chunks.has(job.key)) chunks.set(job.key, makeChunk(job.cx, job.cz));
+    built++;
   }
   if (pendingFarChunkBuilds.length > 1) pendingFarChunkBuilds.sort((a, b) => a.priority - b.priority);
-  while (farBudget-- > 0 && pendingFarChunkBuilds.length) {
+  let builtFar = 0;
+  while (pendingFarChunkBuilds.length && (builtFar === 0 || (builtFar < hardCap && performance.now() - start < maxMs))) {
     const job = pendingFarChunkBuilds.shift();
     pendingFarChunkKeys.delete(job.key);
     if (!farChunks.has(job.key)) farChunks.set(job.key, makeFarChunk(job.cx, job.cz));
+    builtFar++;
+  }
+  if (pendingHorizonBuilds.length > 1) pendingHorizonBuilds.sort((a, b) => a.priority - b.priority);
+  let builtHor = 0;
+  while (pendingHorizonBuilds.length && (builtHor === 0 || (builtHor < hardCap && performance.now() - start < maxMs))) {
+    const job = pendingHorizonBuilds.shift();
+    pendingHorizonKeys.delete(job.key);
+    if (!horizonChunks.has(job.key)) horizonChunks.set(job.key, makeHorizonChunk(job.cx, job.cz));
+    builtHor++;
   }
 }
 
@@ -3253,7 +3281,54 @@ const rockGeo = (() => {
   g.computeVertexNormals();
   return g;
 })();
+
+function applyDistanceCulling(material, defaultCullDistance = 450.0) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uCameraPosition = {
+      get value() { return camera ? camera.position : new THREE.Vector3(); }
+    };
+    shader.uniforms.uCullDistance = {
+      get value() {
+        if (typeof window !== 'undefined' && window.gfx && window.gfx.floraCullDistance != null) {
+          return window.gfx.floraCullDistance * (defaultCullDistance / 450.0);
+        }
+        return defaultCullDistance;
+      }
+    };
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+       uniform vec3 uCameraPosition;
+       uniform float uCullDistance;
+      `
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `
+      #include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 instanceWorldPos = (modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 )).xyz;
+        float distToCam = distance(instanceWorldPos, uCameraPosition);
+        if (distToCam > uCullDistance) {
+          transformed = vec3(0.0);
+        } else {
+          float fadeStart = uCullDistance * 0.85;
+          if (distToCam > fadeStart) {
+            float fadeFactor = 1.0 - ((distToCam - fadeStart) / (uCullDistance - fadeStart));
+            transformed *= fadeFactor;
+          }
+        }
+      #endif
+      `
+    );
+  };
+}
+
 const rockMat = new THREE.MeshLambertMaterial({ color: 0x9c6840 });
+applyDistanceCulling(rockMat, 350.0);
+
 
 // =============================================================
 //  PROCEDURAL FLORA & BOULDERS — stylised low-poly, instanced,
@@ -3384,9 +3459,12 @@ const boulderGeo = buildBoulderGeo();
 
 // Shared material — vertex colors, lighter response so pines read green
 const floraMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+applyDistanceCulling(floraMat, 500.0);
 const floraMatLow = new THREE.MeshPhongMaterial({
   vertexColors: true, flatShading: true, shininess: 0
 });
+applyDistanceCulling(floraMatLow, 500.0);
+
 
 function makeChunk(cx, cz) {
   const group = new THREE.Group();
@@ -3612,7 +3690,10 @@ function updateChunks(px, pz) {
     if (!wanted.has(key)) {
       scene.remove(c.group);
       c.geo.dispose();
-      // sandMat + rockGeo + rockMat are shared across chunks — don't dispose
+      // sandMat + rockGeo + rockMat are shared across chunks — don't dispose them.
+      // But each InstancedMesh (rocks + up to 4 flora) owns a per-chunk instanceMatrix
+      // GPU buffer; dispose() frees that buffer (shared geometry/material untouched).
+      c.group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
       chunks.delete(key);
     }
   }
@@ -3719,7 +3800,101 @@ function updateFarChunks(px, pz) {
     if (!wanted.has(key)) {
       scene.remove(c.mesh);
       c.geo.dispose();
+      // makeFarChunk clones the shared sand material per chunk (for polygonOffset),
+      // so this clone is unique to this chunk — dispose it to free its program ref.
+      if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
       farChunks.delete(key);
+    }
+  }
+}
+
+// =============================================================
+//  HORIZON CHUNKS — 3rd LOD tier: 3× far size, half res, clutter-free,
+//  heavy fog tint. Only active when gfx.renderDistance > 1.0 pushes
+//  HORIZON_RADIUS above 0; at default render distance this is a no-op.
+// =============================================================
+function makeHorizonChunk(cx, cz) {
+  const lowPoly = (typeof styleMode !== 'undefined') && styleMode.current === 'lowpoly';
+  const sandM = lowPoly ? sandMatLowPoly : sandMat;
+
+  const geo = new THREE.PlaneGeometry(HORIZON_CHUNK_SIZE, HORIZON_CHUNK_SIZE, HORIZON_CHUNK_RES, HORIZON_CHUNK_RES);
+  geo.rotateX(-Math.PI / 2);
+
+  const cxW = (cx + 0.5) * HORIZON_CHUNK_SIZE;
+  const czW = (cz + 0.5) * HORIZON_CHUNK_SIZE;
+
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const tmp = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    const h = getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+    pos.setY(i, h);
+    strataColor(h, tmp);
+    // Heavy atmospheric desaturation — these tiles sit 15-24 km out, deep in fog.
+    tmp.lerp(scene.fog.color, 0.20);
+    colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geo, sandM);
+  // Sit below the far tier (which sits below near) so the coarsest grid never pokes
+  // through finer LOD; heavy fog hides the offset at this range.
+  mesh.position.set(cxW, -16.0, czW);
+  mesh.material = mesh.material.clone();
+  mesh.material.polygonOffset = true;
+  mesh.material.polygonOffsetFactor = 2;
+  mesh.material.polygonOffsetUnits = 8;
+  // Pin this clone's fog ceiling to the horizon extent so the tile stays visible to
+  // its own range regardless of the shared material's current fog (which tracks the
+  // far ring). Guards against the clone being fogged to invisible at 15-24 km.
+  if (mesh.material.uniforms && mesh.material.uniforms.fogFar) {
+    mesh.material.uniforms.fogFar.value = Math.max(mesh.material.uniforms.fogFar.value || 0, (HORIZON_RADIUS + 0.5) * HORIZON_CHUNK_SIZE);
+  }
+  mesh.renderOrder = -2;
+  scene.add(mesh);
+  return { mesh, geo };
+}
+
+function disposeAllHorizonChunks() {
+  for (const [, c] of horizonChunks) {
+    scene.remove(c.mesh); c.geo.dispose();
+    if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+  }
+  horizonChunks.clear();
+  pendingHorizonBuilds.length = 0; pendingHorizonKeys.clear();
+}
+
+function updateHorizonChunks(px, pz) {
+  if (HORIZON_RADIUS <= 0) { if (horizonChunks.size || pendingHorizonBuilds.length) disposeAllHorizonChunks(); return; }
+  const pcx = Math.floor(px / HORIZON_CHUNK_SIZE);
+  const pcz = Math.floor(pz / HORIZON_CHUNK_SIZE);
+  const wanted = new Set();
+
+  // Skip horizon chunks fully inside the FAR ring (same axis-aligned cull as far↔near).
+  const farHalfExtent = (FAR_RADIUS + 0.5) * FAR_CHUNK_SIZE;
+  const horHalf = HORIZON_CHUNK_SIZE / 2;
+  const safety = 180;
+
+  for (let dz = -HORIZON_RADIUS; dz <= HORIZON_RADIUS; dz++) {
+    for (let dx = -HORIZON_RADIUS; dx <= HORIZON_RADIUS; dx++) {
+      const cx = pcx + dx, cz = pcz + dz;
+      const cxW = (cx + 0.5) * HORIZON_CHUNK_SIZE;
+      const czW = (cz + 0.5) * HORIZON_CHUNK_SIZE;
+      if (Math.abs(cxW - px) + horHalf + safety < farHalfExtent &&
+          Math.abs(czW - pz) + horHalf + safety < farHalfExtent) continue;
+      const key = chunkKey(cx, cz);
+      wanted.add(key);
+      if (!horizonChunks.has(key)) queueChunkBuild(pendingHorizonBuilds, pendingHorizonKeys, horizonChunks, cx, cz, Math.abs(dx) + Math.abs(dz));
+    }
+  }
+  trimPendingChunkBuilds(pendingHorizonBuilds, pendingHorizonKeys, wanted);
+  for (const [key, c] of horizonChunks) {
+    if (!wanted.has(key)) {
+      scene.remove(c.mesh); c.geo.dispose();
+      if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+      horizonChunks.delete(key);
     }
   }
 }
@@ -3728,13 +3903,18 @@ function updateFarChunks(px, pz) {
 //  RUNWAY + TOWER
 // =============================================================
 const airfieldNightFx = {
-  edgeMeshes: [],
-  approachMeshes: [],
+  edgeInst: null,            // InstancedMesh — runway edge lights (uniform pulse)
+  edgePositions: [],         // per-instance Vector3 base positions
+  approachInst: null,        // InstancedMesh — approach lights (sequenced pulse, varying width)
+  approachData: [],          // per-instance { pos, width, sequence }
   edgeMaterial: null,
   approachMaterial: null,
   beacon: null,
   beaconMaterial: null,
 };
+const _airfieldLightMat4 = new THREE.Matrix4();
+const _airfieldLightScale = new THREE.Vector3();
+const _airfieldLightQuat = new THREE.Quaternion();
 const airfieldAmbientState = {
   windsock: null,
   windsockPole: null,
@@ -4256,7 +4436,9 @@ function buildAirfield() {
   airfieldNightFx.beacon = beacon;
   airfieldNightFx.beaconMaterial = beacon.material;
 
-  // Runway edge lights
+  // Runway edge lights — one InstancedMesh (42 instances) instead of 42 draw calls.
+  // The night-FX pulse (uniform across edge lights) is applied via per-instance
+  // matrices in updateRunwayLights, gated on airfield proximity so it's free when away.
   const lightMat = new THREE.MeshBasicMaterial({
     color: 0xffe499,
     transparent: true,
@@ -4264,20 +4446,25 @@ function buildAirfield() {
     toneMapped: false,
   });
   airfieldNightFx.edgeMaterial = lightMat;
+  const edgePositions = [];
   for (let z = -200; z <= 200; z += 20) {
-    const lw = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), lightMat);
-    lw.position.set(-15, 0.3, z);
-    lw.userData.baseScale = 1;
-    g.add(lw);
-    airfieldNightFx.edgeMeshes.push(lw);
-    const le = lw.clone();
-    le.position.x = 15;
-    le.userData.baseScale = 1;
-    g.add(le);
-    airfieldNightFx.edgeMeshes.push(le);
+    edgePositions.push(new THREE.Vector3(-15, 0.3, z));
+    edgePositions.push(new THREE.Vector3(15, 0.3, z));
   }
+  const edgeInst = new THREE.InstancedMesh(new THREE.SphereGeometry(0.25, 6, 6), lightMat, edgePositions.length);
+  edgeInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  for (let i = 0; i < edgePositions.length; i++) {
+    _airfieldLightMat4.compose(edgePositions[i], _airfieldLightQuat.identity(), _airfieldLightScale.set(1, 1, 1));
+    edgeInst.setMatrixAt(i, _airfieldLightMat4);
+  }
+  edgeInst.instanceMatrix.needsUpdate = true;
+  g.add(edgeInst);
+  airfieldNightFx.edgeInst = edgeInst;
+  airfieldNightFx.edgePositions = edgePositions;
 
-  // Approach lights — extending past runway ends, helps spot field from air
+  // Approach lights — one InstancedMesh (16 instances). Each light's width varies
+  // (w = 1 + i*0.4), so we use a UNIT box and bake width into the instance matrix's
+  // X scale; the sequenced "rabbit" pulse is applied per-instance in updateRunwayLights.
   const approachMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
@@ -4285,23 +4472,22 @@ function buildAirfield() {
     toneMapped: false,
   });
   airfieldNightFx.approachMaterial = approachMat;
+  const approachData = [];
   for (let i = 1; i <= 8; i++) {
-    const z1 = -208 - i * 14;
-    const z2 = 208 + i * 14;
     const w = 1 + i * 0.4;
-    const a1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, 0.5), approachMat);
-    a1.position.set(0, 0.05, z1);
-    a1.userData.baseScale = 1;
-    a1.userData.sequence = i;
-    g.add(a1);
-    airfieldNightFx.approachMeshes.push(a1);
-    const a2 = a1.clone();
-    a2.position.z = z2;
-    a2.userData.baseScale = 1;
-    a2.userData.sequence = i;
-    g.add(a2);
-    airfieldNightFx.approachMeshes.push(a2);
+    approachData.push({ pos: new THREE.Vector3(0, 0.05, -208 - i * 14), width: w, sequence: i });
+    approachData.push({ pos: new THREE.Vector3(0, 0.05, 208 + i * 14), width: w, sequence: i });
   }
+  const approachInst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.1, 0.5), approachMat, approachData.length);
+  approachInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  for (let i = 0; i < approachData.length; i++) {
+    _airfieldLightMat4.compose(approachData[i].pos, _airfieldLightQuat.identity(), _airfieldLightScale.set(approachData[i].width, 1, 1));
+    approachInst.setMatrixAt(i, _airfieldLightMat4);
+  }
+  approachInst.instanceMatrix.needsUpdate = true;
+  g.add(approachInst);
+  airfieldNightFx.approachInst = approachInst;
+  airfieldNightFx.approachData = approachData;
 
   runway.receiveShadow = true;
   runway.castShadow = false;
@@ -4388,14 +4574,27 @@ function updateRunwayLights(nightFactor, twilight) {
   if (airfieldNightFx.approachMaterial) {
     airfieldNightFx.approachMaterial.opacity = 0.03 + nightGlow * 0.95;
   }
-  for (const mesh of airfieldNightFx.edgeMeshes) {
+  // Per-instance pulse — only rebuild matrices when near the airfield (the instanced
+  // lights are frustum-culled in cruise, so this work is skipped the rest of the time).
+  const nf = airfieldNightFx;
+  const nearField = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z) < (3200 * 3200);
+  if (nearField && nf.edgeInst) {
     const s = 0.72 + nightGlow * 1.05 * pulse;
-    mesh.scale.setScalar(s);
+    for (let i = 0; i < nf.edgePositions.length; i++) {
+      _airfieldLightMat4.compose(nf.edgePositions[i], _airfieldLightQuat.identity(), _airfieldLightScale.set(s, s, s));
+      nf.edgeInst.setMatrixAt(i, _airfieldLightMat4);
+    }
+    nf.edgeInst.instanceMatrix.needsUpdate = true;
   }
-  for (const mesh of airfieldNightFx.approachMeshes) {
-    const seqPulse = 0.82 + Math.max(0, Math.sin(pulseT * 1.9 - (mesh.userData.sequence || 0) * 0.72)) * 0.48;
-    const sx = 1 + nightGlow * 0.42 * seqPulse;
-    mesh.scale.set(sx, 1, 1 + nightGlow * 0.24 * seqPulse);
+  if (nearField && nf.approachInst) {
+    for (let i = 0; i < nf.approachData.length; i++) {
+      const d = nf.approachData[i];
+      const seqPulse = 0.82 + Math.max(0, Math.sin(pulseT * 1.9 - d.sequence * 0.72)) * 0.48;
+      const sx = (1 + nightGlow * 0.42 * seqPulse) * d.width;  // bake per-instance width into X scale
+      _airfieldLightMat4.compose(d.pos, _airfieldLightQuat.identity(), _airfieldLightScale.set(sx, 1, 1 + nightGlow * 0.24 * seqPulse));
+      nf.approachInst.setMatrixAt(i, _airfieldLightMat4);
+    }
+    nf.approachInst.instanceMatrix.needsUpdate = true;
   }
   for (const rig of airfieldAmbientState.apronFloods) {
     rig.light.intensity = nightGlow * 1.25;
@@ -6842,6 +7041,8 @@ const styleMode = { current: 'lowpoly' };
 const rockMatLowPoly = new THREE.MeshPhongMaterial({
   color: 0xc88555, flatShading: true, shininess: 0
 });
+applyDistanceCulling(rockMatLowPoly, 350.0);
+
 
 function applyAtmosphereProfile(profile) {
   scene.fog.near = profile.fogNear;
@@ -6975,9 +7176,11 @@ function applyBiome(name) {
   farChunks.clear();
   pendingFarChunkBuilds.length = 0;
   pendingFarChunkKeys.clear();
+  disposeAllHorizonChunks();
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
-  processChunkBuildQueues(16, 8);
+  updateHorizonChunks(plane.pos.x, plane.pos.z);
+  processChunkBuildQueues(10, 32); // biome regen: build the visible subset fast, stream the rest
 
   // HUD update
   if (typeof $biomeInd !== 'undefined' && $biomeInd) {
@@ -7472,6 +7675,10 @@ const combatState = {
   missiles: [],
   fireCooldown: 0,
   missileCooldown: 0,
+  // Mouse hold-to-fire gets its OWN flag so pollGamepadInput (which rewrites
+  // fireHeld every frame) can't clobber it. fireHeld is the aggregate (gamepad
+  // OR mouse) kept for HUD/visibility checks.
+  mouseFireHeld: false,
   shotsFired: 0,
   shotHits: 0,
   missilesFired: 0,
@@ -8543,7 +8750,7 @@ function updateCombat(dt) {
   // A quick double-tap of Space is reserved for missile launch; suppress
   // gun bursts briefly so the second tap reads as MSL rather than MG fire.
   const spaceGunHeld = keys['Space'] && combatNow >= (combatState.suppressSpaceGunsUntil || 0);
-  const firing = !plane.crashed && (spaceGunHeld || combatState.fireHeld);
+  const firing = !plane.crashed && (spaceGunHeld || combatState.mouseFireHeld || gamepadState.fire);
   if (firing && combatState.fireCooldown <= 0) {
     fireProjectileBurst();
     combatState.fireCooldown = alienWeaponActive() ? 0.055 : 0.115;
@@ -8910,6 +9117,14 @@ let greyTurnSmokeTimer = 0;
 let throatClearSmokeTimer = 0;
 let dirtyExhaustCoreTimer = 0;
 let contrailTimer = 0;
+// Reusable scratch vectors for updateAtmospheric — eliminates ~11 Vector3 + 1
+// Quaternion allocations every frame (the top steady-state GC source). Each var
+// has its own temp (no aliasing); emit/emitCluster/addPoint all copy/clone the
+// position internally, so reusing these across frames is safe.
+const _atmWlL = new THREE.Vector3(), _atmWlR = new THREE.Vector3(), _atmWlE = new THREE.Vector3();
+const _atmFwd = new THREE.Vector3(), _atmRight = new THREE.Vector3(), _atmTrailBack = new THREE.Vector3();
+const _atmWtL = new THREE.Vector3(), _atmWtR = new THREE.Vector3(), _atmWlCore = new THREE.Vector3();
+const _atmLocalVel = new THREE.Vector3(), _atmInvQ = new THREE.Quaternion();
 function updateAtmospheric(dt) {
   // Engine smoke stays near the cowling; healthy condensation trails come
   // from the real wing tips so hard manoeuvres read as wing vapor instead
@@ -8918,18 +9133,18 @@ function updateAtmospheric(dt) {
   const smokeRAnchor = jet.userData.engineSmokeR || jet.userData.wingtipR;
   const wingLAnchor = jet.userData.wingtipL || smokeLAnchor;
   const wingRAnchor = jet.userData.wingtipR || smokeRAnchor;
-  const wlL = smokeLAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
-  const wlR = smokeRAnchor.clone().applyQuaternion(plane.quat).add(plane.pos);
-  const wlE = jet.userData.engineExhaust.clone().applyQuaternion(plane.quat).add(plane.pos);
-  const forwardWorld = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-  const wingRightWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
-  const trailBack = forwardWorld.clone().multiplyScalar(-0.28);
-  const wtL = wingLAnchor.clone().applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, -0.45).add(trailBack);
-  const wtR = wingRAnchor.clone().applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, 0.45).add(trailBack);
-  const wlCore = wlL.clone().lerp(wlR, 0.5).addScaledVector(forwardWorld, -0.35);
+  const wlL = _atmWlL.copy(smokeLAnchor).applyQuaternion(plane.quat).add(plane.pos);
+  const wlR = _atmWlR.copy(smokeRAnchor).applyQuaternion(plane.quat).add(plane.pos);
+  const wlE = _atmWlE.copy(jet.userData.engineExhaust).applyQuaternion(plane.quat).add(plane.pos);
+  const forwardWorld = _atmFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+  const wingRightWorld = _atmRight.set(1, 0, 0).applyQuaternion(plane.quat);
+  const trailBack = _atmTrailBack.copy(forwardWorld).multiplyScalar(-0.28);
+  const wtL = _atmWtL.copy(wingLAnchor).applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, -0.45).add(trailBack);
+  const wtR = _atmWtR.copy(wingRAnchor).applyQuaternion(plane.quat).add(plane.pos).addScaledVector(wingRightWorld, 0.45).add(trailBack);
+  const wlCore = _atmWlCore.copy(wlL).lerp(wlR, 0.5).addScaledVector(forwardWorld, -0.35);
 
   const speed = plane.vel.length();
-  const localVel = plane.vel.clone().applyQuaternion(plane.quat.clone().invert());
+  const localVel = _atmLocalVel.copy(plane.vel).applyQuaternion(_atmInvQ.copy(plane.quat).invert());
   const fwdSpd = -localVel.z;
   const aoa = fwdSpd > 1 ? Math.atan2(-localVel.y, fwdSpd) : 0;
   const rollRate  = Math.abs(plane.angVel.z);
@@ -9456,10 +9671,22 @@ function updateTimeOfDay(dt = 0) {
   const fogEnabled = !scene.userData.__fogDisabled;
   const fogMul = 1 - (atmosphereDepth - 1) * 0.22;
   const farMul = 1 - (atmosphereDepth - 1) * 0.16;
+  // Render distance pushes the fog ceiling out in lockstep with FAR_RADIUS so the
+  // far-chunk ring edge stays hidden in fog (no hard pop-in). near is unchanged.
+  const renderDistance = Math.max(0.6, Math.min(2.0, scene.userData.__renderDistance != null ? scene.userData.__renderDistance : 1.0));
   const realFogNear = (280 + (1 - terrainFade) * 260) * fogMul;
-  const realFogFar = (4300 + terrainFade * 3200) * farMul;
+  let realFogFar = (4300 + terrainFade * 3200) * farMul * renderDistance;
   const lowFogNear = (420 + (1 - terrainFade) * 320) * fogMul;
-  const lowFogFar = (4000 + terrainFade * 2800) * farMul;
+  let lowFogFar = (4000 + terrainFade * 2800) * farMul * renderDistance;
+  // When the horizon ring is active (renderDistance > 1.0), push the fog ceiling out
+  // to ~0.9 of the horizon extent so the new far terrain is actually visible (and the
+  // ring edge still saturates in fog just before camera.far clips it). No-op otherwise.
+  const horizonExtent = scene.userData.__horizonExtent || 0;
+  if (horizonExtent > 0) {
+    const ringFog = horizonExtent * 0.9;
+    if (ringFog > realFogFar) realFogFar = ringFog;
+    if (ringFog > lowFogFar) lowFogFar = ringFog;
+  }
   const lowPoly = styleMode.current === 'lowpoly';
 
   scene.background.copy(todFog);
@@ -11526,7 +11753,16 @@ function updatePhysics(dt) {
 // =============================================================
 //  JET VISUAL UPDATE — gear animation, afterburner
 // =============================================================
+let _jetVisualLast = 0;
 function updateJetVisual() {
+  // Frame-rate-normalized blend factor for the cosmetic control-surface/wing-flex
+  // smoothing below. updateJetVisual runs once per RENDER frame (variable rate), so
+  // a bare per-frame constant would snap ~2.4x faster at 144fps than at 60fps. We
+  // measure dt internally (no call-site plumbing) and scale so the feel matches 60fps.
+  const _nowJV = performance.now();
+  const _jvDt = _jetVisualLast ? Math.min(0.1, Math.max(0.001, (_nowJV - _jetVisualLast) / 1000)) : (1 / 60);
+  _jetVisualLast = _nowJV;
+  const _jvBlend = (f) => Math.min(1, f * _jvDt * 60);
   if (replay.playing) {
     jet.position.copy(plane.pos);
     jet.quaternion.copy(plane.quat);
@@ -11579,11 +11815,11 @@ function updateJetVisual() {
   const shakeTarget = (!plane.crashed && plane.throttle > 0.15)
     ? (0.02 + plane.throttle * 0.03 + plane.damage.engine * 0.04)
     : 0;
-  aeroFlexState.wingBend += (((plane.onGround ? 0.05 : 0.16) + wingLoad * (plane.onGround ? 0.05 : 0.28)) - aeroFlexState.wingBend) * 0.12;
-  aeroFlexState.aileron += (aileronTarget - aeroFlexState.aileron) * 0.18;
-  aeroFlexState.elevator += (elevatorTarget - aeroFlexState.elevator) * 0.16;
-  aeroFlexState.rudder += (rudderTarget - aeroFlexState.rudder) * 0.16;
-  aeroFlexState.shake += (shakeTarget - aeroFlexState.shake) * 0.14;
+  aeroFlexState.wingBend += (((plane.onGround ? 0.05 : 0.16) + wingLoad * (plane.onGround ? 0.05 : 0.28)) - aeroFlexState.wingBend) * _jvBlend(0.12);
+  aeroFlexState.aileron += (aileronTarget - aeroFlexState.aileron) * _jvBlend(0.18);
+  aeroFlexState.elevator += (elevatorTarget - aeroFlexState.elevator) * _jvBlend(0.16);
+  aeroFlexState.rudder += (rudderTarget - aeroFlexState.rudder) * _jvBlend(0.16);
+  aeroFlexState.shake += (shakeTarget - aeroFlexState.shake) * _jvBlend(0.14);
 
   for (const nav of [jet.userData.navRed, jet.userData.navGrn]) {
     if (!nav) continue;
@@ -12871,7 +13107,7 @@ function pollGamepadInput() {
   if (typeof syncTouchVirtualGamepad === 'function') syncTouchVirtualGamepad();
   if (!INPUT_FLAGS.gamepad || (!virtualGamepadInput.enabled && typeof navigator.getGamepads !== 'function')) {
     resetGamepadState();
-    combatState.fireHeld = false;
+    combatState.fireHeld = combatState.mouseFireHeld;
     syncInputIndicator();
     return gamepadState;
   }
@@ -12886,7 +13122,7 @@ function pollGamepadInput() {
   if (!pad) pad = pads.find(p => p && p.mapping === 'standard') || pads[0] || null;
   if (!pad) {
     resetGamepadState();
-    combatState.fireHeld = false;
+    combatState.fireHeld = combatState.mouseFireHeld;
     syncInputIndicator();
     return gamepadState;
   }
@@ -12932,7 +13168,7 @@ function pollGamepadInput() {
       gamepadState.fire || gamepadState.brake || gamepadState.gear || gamepadState.missile || gamepadState.lights || gamepadState.model || gamepadState.race || gamepadState.reset) {
     gamepadState.lastInputAt = performance.now();
   }
-  combatState.fireHeld = gamepadState.fire;
+  combatState.fireHeld = gamepadState.fire || combatState.mouseFireHeld;
   syncInputIndicator();
   return gamepadState;
 }
@@ -12949,7 +13185,7 @@ window.addEventListener('gamepadconnected', (e) => {
 window.addEventListener('gamepaddisconnected', (e) => {
   if (e.gamepad && e.gamepad.index === gamepadState.index) {
     resetGamepadState();
-    combatState.fireHeld = false;
+    combatState.fireHeld = combatState.mouseFireHeld;
     syncInputIndicator();
     if (typeof flashStatus === 'function') flashStatus('CONTROLLER DISCONNECTED · KEYBOARD ACTIVE', 'panel warn', 1.6);
   }
@@ -12973,7 +13209,7 @@ window.addEventListener('pointerdown', (e) => {
     }
     mouseFlightState.lastClientX = e.clientX;
     mouseFlightState.lastClientY = e.clientY;
-    combatState.fireHeld = true;
+    combatState.mouseFireHeld = true;
     return;
   }
   if (e.button === 2) {
@@ -13017,17 +13253,18 @@ window.addEventListener('pointermove', (e) => {
 
 window.addEventListener('pointerup', (e) => {
   if (!INPUT_FLAGS.mouseFlight) return;
-  if (e.button === 0) { combatState.fireHeld = false; return; }
+  if (e.button === 0) { combatState.mouseFireHeld = false; return; }
 }, true);
 window.addEventListener('pointercancel', () => {
   if (!INPUT_FLAGS.mouseFlight) return;
-  combatState.fireHeld = false;
+  combatState.mouseFireHeld = false;
 }, true);
 
 // Safety: if focus leaves the window, release fire and clear keys so no input
 // stays latched after alt-tab / modal focus changes.
 window.addEventListener('blur', () => {
   combatState.fireHeld = false;
+  combatState.mouseFireHeld = false;
   mouseFlightState.lastClientX = null;
   mouseFlightState.lastClientY = null;
   for (const k of Object.keys(keys)) keys[k] = false;
@@ -15019,7 +15256,8 @@ function animate(now) {
   updateJetVisual();
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
-  processChunkBuildQueues(2, 1);
+  updateHorizonChunks(plane.pos.x, plane.pos.z);
+  processChunkBuildQueues(2.5, 6);
   updateCamera(dt);
   updateAtmospheric(dt);
   updateShadow();
@@ -15066,7 +15304,8 @@ function animate(now) {
 // Initial chunk load before first frame
 updateChunks(plane.pos.x, plane.pos.z);
 updateFarChunks(plane.pos.x, plane.pos.z);
-processChunkBuildQueues(64, 96);
+updateHorizonChunks(plane.pos.x, plane.pos.z);
+processChunkBuildQueues(1e6, 512); // initial bulk load: build the whole starting ring before first frame
 updateTimeOfDay(0);
 updateJetVisual();
 updateSunShadowRig();
@@ -15078,6 +15317,11 @@ starField.position.copy(camera.position);
 updateLensFlare();
 updateDepthOfField();
 updateMotionBlurPostFX();
+// Pre-warm: compile shader programs for everything already in the scene during the
+// load screen, so the first interactive frame doesn't hitch on lazy compilation.
+// (Content created later — multiplayer planes, tracers, alternate clouds — still
+// compiles on first use; this flattens only the initial batch.)
+try { renderer.compile(scene, camera); } catch (e) {}
 renderScene();
 
 // =============================================================
@@ -17434,7 +17678,7 @@ function updatePracticeRingCourse(dt) {
   // motion-blur dialed down — full ultra blew them out by default.
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'high', shadowDistance: 320,
-    dof: true, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, ambientFxDensity: 1.12,
+    dof: true, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
     waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 8, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
@@ -17442,13 +17686,13 @@ function updatePracticeRingCourse(dt) {
     flightAccel: 1.28, topSpeedKts: 720, liftAssist: 1.06, idlePower: 1.0, pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
     brakeStrength: 1.10, pitchDamping: 1.14, rollDamping: 1.18, rudderDamping: 1.10, stallSoftness: 1.24, maneuverAssist: 1.18, selfLevel: 1.36, weathervaneYaw: 1.18, gearDrag: 1.02, groundEffectStrength: 1.08,
     cameraClimbReveal: 0.95, cameraDiveReveal: 1.0, cameraLag: 0.78,
-    fps: false, renderScale: 1.0, resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 0.40,
+    fps: false, renderScale: 1.0, resolutionScale: 1.0, adaptiveRes: true, renderDistance: 1.0, motionBlur: true, motionBlurAmount: 0.40,
   };
   const PRESETS = {
-    low:    { fxaa: true,  shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: true, motionBlurAmount: 0.52 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0 },
+    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -17456,6 +17700,18 @@ function updatePracticeRingCourse(dt) {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     if (saved && typeof saved === 'object') {
       Object.assign(gfx, saved);
+    } else {
+      // First run (no saved settings): pick a coarse starting tier so a phone or
+      // weak laptop doesn't open on detuned-ultra. GPU-string tiering is unreliable
+      // (masked in Safari; "Apple GPU" spans phones to M3 Max), so use coarse signals.
+      // Adaptive resolution is the real per-frame safety net; this just sets a sane
+      // starting point for the geometry/flora/shadow load (which adaptive res can't lower).
+      const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && window.matchMedia('(pointer:coarse)').matches);
+      const cores = navigator.hardwareConcurrency || 4;
+      if (mobile || cores <= 4) Object.assign(gfx, PRESETS.low);
+      else if (cores <= 8) Object.assign(gfx, PRESETS.medium);
+      // else: clearly capable desktop (>8 cores) → keep DEFAULTS (detuned ultra).
     }
   } catch {}
   if (gfx.motionBlurAmount == null) {
@@ -17476,7 +17732,11 @@ function updatePracticeRingCourse(dt) {
   if (gfx.practiceRingBob == null) gfx.practiceRingBob = DEFAULTS.practiceRingBob;
   if (gfx.practiceRingSpin == null) gfx.practiceRingSpin = DEFAULTS.practiceRingSpin;
   if (gfx.cameraLag == null) gfx.cameraLag = DEFAULTS.cameraLag;
+  if (gfx.floraCullDistance == null) gfx.floraCullDistance = DEFAULTS.floraCullDistance;
+  if (gfx.adaptiveRes == null) gfx.adaptiveRes = DEFAULTS.adaptiveRes;
+  if (gfx.renderDistance == null) gfx.renderDistance = DEFAULTS.renderDistance;
   window.gfx = gfx;
+
   window.__gfxParticleScale = () => gfx.particleScale;
 
   const save = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(gfx)); } catch {} };
@@ -17651,6 +17911,11 @@ function updatePracticeRingCourse(dt) {
   };
 
   let fpsDiv = null, fpsFrames = 0, fpsLast = performance.now(), fpsSmoothed = 60;
+  // Runtime-only adaptive-resolution state. NEVER persisted to gfx/localStorage —
+  // it only scales DOWN from the user's chosen renderScale/resolutionScale so the
+  // user's sliders stay the ceiling. Folded into applyRenderScale's setPixelRatio.
+  let adaptiveScale = 1.0, adaptiveCooldown = 0, adaptiveWarmup = 0, wasAdaptRunning = false;
+  const ADAPT_MIN = 0.6, ADAPT_STEP = 0.1, FPS_LOW = 55, FPS_GOOD = 58;
   function tickFps() {
     fpsFrames++;
     const now = performance.now();
@@ -17658,6 +17923,23 @@ function updatePracticeRingCourse(dt) {
       fpsSmoothed = fpsSmoothed * 0.6 + (fpsFrames * 1000 / (now - fpsLast)) * 0.4;
       fpsFrames = 0; fpsLast = now;
       if (fpsDiv && gfx.fps) fpsDiv.textContent = 'FPS ' + Math.round(fpsSmoothed);
+      // Adaptive resolution: drop fast when starved, raise slowly once the frame
+      // rate pins at the vsync cap. The [FPS_LOW, FPS_GOOD] gap is the hysteresis
+      // dead band; asymmetric cooldown (2 vs 6 half-seconds) settles up gently.
+      // On flight start, reset to full res and warm up (~6s) so the initial
+      // shader-compile / chunk-load spike doesn't trigger a spurious downscale
+      // on capable hardware that will hold 60fps once the load settles.
+      if (running && !wasAdaptRunning) { adaptiveScale = 1.0; adaptiveWarmup = 12; }
+      wasAdaptRunning = running;
+      if (gfx.adaptiveRes !== false && running) {
+        if (adaptiveWarmup > 0) { adaptiveWarmup--; }
+        else if (adaptiveCooldown > 0) { adaptiveCooldown--; }
+        else if (fpsSmoothed < FPS_LOW && adaptiveScale > ADAPT_MIN) {
+          adaptiveScale = Math.max(ADAPT_MIN, adaptiveScale - ADAPT_STEP); applyRenderScale(); adaptiveCooldown = 2;
+        } else if (fpsSmoothed >= FPS_GOOD && adaptiveScale < 1.0) {
+          adaptiveScale = Math.min(1.0, adaptiveScale + ADAPT_STEP); applyRenderScale(); adaptiveCooldown = 6;
+        }
+      }
     }
   }
 
@@ -17707,7 +17989,8 @@ function updatePracticeRingCourse(dt) {
   function applyRenderScale() {
     const ratio = Math.max(0.5, Math.min(1.0, gfx.renderScale));
     const supersample = Math.max(0.75, Math.min(1.35, gfx.resolutionScale || 1.0));
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample, 2.35));
+    if (gfx.adaptiveRes === false) adaptiveScale = 1.0; // disabling restores the user's full chosen resolution
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample * adaptiveScale, 2.35));
     renderer.setSize(window.innerWidth, window.innerHeight, true);
     if (postFX.composer) postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth, window.innerHeight);
@@ -17727,6 +18010,7 @@ function updatePracticeRingCourse(dt) {
   function applyTerrainClutter() {
     const density = Math.max(0.2, Math.min(1.6, gfx.floraDensity || 1.0));
     scene.userData.__floraDensity = density;
+    scene.userData.__floraCullDistance = gfx.floraCullDistance;
     for (const c of chunks.values()) {
       c.group.children.forEach(child => {
         if (!child.isInstancedMesh || child.userData.__densityGroup !== 'terrain-clutter') return;
@@ -17737,6 +18021,7 @@ function updatePracticeRingCourse(dt) {
       });
     }
   }
+
   function applyAmbientFx() {
     scene.userData.__ambientFxDensity = Math.max(0, Math.min(1.2, gfx.ambientFxDensity || 1.0));
   }
@@ -17765,6 +18050,20 @@ function updatePracticeRingCourse(dt) {
   }
   function applyWorldTuning() {
     scene.userData.__terrainFade = gfx.terrainFade;
+    // Render distance drives the far-chunk ring and the fog ceiling in lockstep
+    // (fog formula in updateTimeOfDay reads __renderDistance). rd 1.0 == stock.
+    const rd = Math.max(0.6, Math.min(2.0, gfx.renderDistance || 1.0));
+    scene.userData.__renderDistance = rd;
+    FAR_RADIUS = Math.round(4 * rd);
+    // Horizon ring: off at rd<=1.0 (HORIZON_RADIUS 0), grows 0->4 as rd 1.0->2.0.
+    // Drives the camera far-plane + fog ceiling (in updateTimeOfDay) so the extra
+    // distance is actually visible. Far-plane has negligible depth-precision cost
+    // here (near=0.8 dominates), so raising it for the horizon tier is safe.
+    HORIZON_RADIUS = Math.max(0, Math.round((rd - 1.0) * 4));
+    const horizonExtent = HORIZON_RADIUS > 0 ? (HORIZON_RADIUS + 0.5) * HORIZON_CHUNK_SIZE : 0;
+    scene.userData.__horizonExtent = horizonExtent;
+    camera.far = Math.max(14000, horizonExtent + 2400);
+    camera.updateProjectionMatrix();
     scene.userData.__nightLift = gfx.nightLift;
     scene.userData.__atmosphereDepth = Math.max(0.7, Math.min(1.25, gfx.atmosphereDepth || 1.0));
     scene.userData.__airframeFill = Math.max(0, Math.min(1.4, gfx.airframeFill || 0));
@@ -18118,7 +18417,9 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));
     advancedVisuals.body.appendChild(makeSliderRow('floraDensity', 0.2, 1.6, 0.05, 'GROUND DETAIL', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(makeSliderRow('floraCullDistance', 150, 800, 25, 'CULL RANGE', (v) => `${Math.round(v)}m`));
     advancedVisuals.body.appendChild(makeSliderRow('ambientFxDensity', 0, 1.2, 0.05, 'AMBIENT FX', (v) => `${Math.round(v * 100)}%`));
+
     advancedVisuals.body.appendChild(makeSliderRow('particleScale', 0.25, 1.5, 0.05, 'FX / PARTICLES'));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'PRACTICE RINGS'));
     const activePracticeRingMeta = isPracticeRingPresetKey(gfx.practiceRingPreset) ? PRACTICE_RING_PRESETS[gfx.practiceRingPreset] : null;
@@ -18156,8 +18457,10 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('airframeFill', 0, 1.4, 0.05, 'AIRFRAME FILL', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'PERFORMANCE'));
     advancedVisuals.body.appendChild(row('FPS meter', makeToggle('fps')));
+    advancedVisuals.body.appendChild(row('Adaptive resolution', makeToggle('adaptiveRes')));
     advancedVisuals.body.appendChild(makeSliderRow('renderScale', 0.5, 1.0, 0.05, 'RENDER SCALE'));
-    advancedVisuals.body.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'LOW preset now pushes low-poly readability/perf first. Shadow range, clouds, and ground detail are the safest live levers when tuning performance.'));
+    advancedVisuals.body.appendChild(makeSliderRow('renderDistance', 0.6, 2.0, 0.1, 'RENDER DISTANCE', (v) => `${Math.round(v * 100)}%`));
+    advancedVisuals.body.appendChild(el('div', { style: 'font-size:9px;opacity:0.48;margin-top:9px;line-height:1.45;' }, 'Adaptive resolution auto-scales render resolution down to hold ~60fps on weaker hardware (your sliders stay the ceiling). Render distance extends the far terrain + fog horizon. Shadow range, clouds, and ground detail are the safest live levers when tuning performance.'));
     panel.appendChild(advancedVisuals.wrap);
   };
   rebuild();
@@ -18341,7 +18644,9 @@ window.__ap = {
       flight_maneuver_assist: scene.userData.__flightManeuverAssist != null ? scene.userData.__flightManeuverAssist : 1.0,
       shadow_distance: scene.userData.__shadowDistance != null ? scene.userData.__shadowDistance : 230,
       flora_density: scene.userData.__floraDensity != null ? scene.userData.__floraDensity : 1.0,
+      flora_cull_distance: scene.userData.__floraCullDistance != null ? scene.userData.__floraCullDistance : 450,
       ambient_fx_density: scene.userData.__ambientFxDensity != null ? scene.userData.__ambientFxDensity : 1.0,
+
       cloud_style: typeof currentCloudStyle === 'function' ? currentCloudStyle() : 'soft',
       landing_training_count: window.__landingTraining ? window.__landingTraining.length : 0,
       practice_ring_count: window.__practiceRingCourse ? window.__practiceRingCourse.length : 0,
@@ -18724,7 +19029,8 @@ window.advanceTime = (ms = 16.7) => {
     updateJetVisual();
     updateChunks(plane.pos.x, plane.pos.z);
     updateFarChunks(plane.pos.x, plane.pos.z);
-    processChunkBuildQueues(2, 1);
+    updateHorizonChunks(plane.pos.x, plane.pos.z);
+    processChunkBuildQueues(2.5, 6);
     updateCamera(stepDt);
     updateAtmospheric(stepDt);
     updateShadow();

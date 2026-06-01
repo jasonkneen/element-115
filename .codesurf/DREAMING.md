@@ -1,100 +1,166 @@
-The file is clean and correct. Here is the full replacement content for `.codesurf/DREAMING.md`:
+# CodeSurf Workspace Memory — ships (Element-115)
 
----
-
-# CodeSurf Workspace Memory — ships
-
-*Generated 2026-05-20. Consolidates sessions and memory layers. Do not edit by hand — overwritten by next dreaming run.*
+*Generated: 2026-05-31*
 
 ---
 
 ## Overview
 
-`ships` is a Bun-based browser flight simulator (`element-115-flight-sim v0.1.0`) at `/Users/jkneen/Downloads/ships/`. It runs in a CodeSurf canvas workspace where multiple OpenClaw agents collaborate via `mcp__contex__*` tools. The sim itself is a single-file game (`flight-sim3.html`) served by two local servers; a separate OpenClaw Lead agent ("Ava") and a VibeClaw content pipeline also operate within this workspace context.
+Primary workspace at `/Users/jkneen/Downloads/ships` contains **Element-115**, a browser-based 3D arcade flight simulator built with Three.js. The entire game client is a single self-contained HTML file (`flight-sim3.html`). Optional Bun/Node backends handle live tweaks and WebSocket multiplayer. Netlify-ready build pipeline.
 
 ---
 
-## Durable Project Facts
+## Durable Facts
 
-### Repository Layout
-- Root holds all runnable files: `flight-sim3.html`, `plane-select.html`, `index.html` (redirect), `tweaks-server.mjs`, `multiplayer-server.mjs`, `autopilot.mjs`, `world-designer.mjs`, `self-evolve.mjs`
-- `models/` — 120 `.glb` plane/asset files (gitignored); all HTML references must use `models/<file>.glb` prefix
-- `archive/html/` — old prototypes; `archive/screenshots/` — PNGs; `archive/backups/` — `.bak` files
-- Runtime JSON state at root: `world-state.json` (world revision log), `latest-features.json` (version changelog), `feature-requests.json` (pending queue), `plane-tweaks.json`, `autopilot-skills.json`, `build-log.json`
+### Project Identity
 
-### Run Commands (Bun required ≥ 1.1.0)
-- `bun web` — static file server + tweaks endpoint on `:8765`
-- `bun mp` — multiplayer WebSocket server on `:8787`
-- `bun start` — both servers concurrently (via `concurrently`)
-- `bun autopilot` — `autopilot.mjs` tool
-- `bun designer` — `world-designer.mjs` tool
-- `bun evolve` — `self-evolve.mjs` tool
+- Canonical name: **Element-115** (rebranded 2026-05-23, commit `d9d2d09`)
+- Package: `element-115-flight-sim` v0.1.0
+- Main game file: `flight-sim3.html` — self-contained, no framework dependency; Three.js r128
+- Runtime / package manager: **bun** (≥ 1.1.0)
+- Deploy target: **Netlify** via `netlify.toml`; build output → `dist/`
+- License: MIT
 
-### Critical Constraints
-- `flight-sim3.html` **must remain at repo root** — `autopilot.mjs`, `world-designer.mjs`, and `self-evolve.mjs` all hardcode `path.resolve(process.cwd(), 'flight-sim3.html')`
-- `tweaks-server.mjs` serves from `process.cwd()` with path-traversal guard; subfolders like `models/` work without extra config
-- GLB model references inside HTML must use `models/<name>.glb` — no bare filenames
+### Key File Map
 
-### Game State
-- `world-state.json` currently at **revision 121** (last written 2026-04-18)
-- `latest-features.json` version **2026.05.05**; last feature set: target upgrade gates with reward callouts, real missile drop launch (motor lights after rail separation), damaged UFO visual feedback (flicker/sparks/smoke), player shields from course gates
+- `flight-sim3.html` — entire game client; dirty (uncommitted distance-culling pass)
+- `flight-sim3.html.bak` — backup of pre-dirty state
+- `tweaks-server.mjs` — live plane-tweaks HTTP backend on `:8765`
+- `multiplayer-server.mjs` — WebSocket room / race server on `:3000`
+- `autopilot.mjs` — autopilot tooling
+- `self-evolve.mjs` — experimental evolution tooling
+- `world-designer.mjs` — world design tooling
+- `HERMES_HANDOFF_RETICLE_TARGETING.md` — cross-session handoff for reticle/targeting work
+- `progress.md` — running improvement log since 2026-04-25
+- `plane-tweaks.json` — active tuning state
+- `world-state.json` — world state persistence
+- `feature-requests.json`, `latest-features.json` — feature tracking
+- `models/` — GLB plane meshes including `stunt_plane.glb`
+- `.mcp.json` — contex MCP config; port changed to `60768` (dirty, uncommitted)
 
-### Gameplay / Physics Primitives (added 2026-04-19)
-- Damage model: `plane.health` (0–100), `plane.damage.{airframe, engine, leftWing, rightWing}` (0–1 each), `plane.engineEvent` (0–1 transient) — replaced old binary `plane.crashed`
-- `damagePlane(amount, kind, opts)` applies graduated damage; `healPlane()` resets
-- `damageDestructible()` routes bullet hits through health; traffic planes spawn with `health: 3`
-- Smoke pools (`greyTurnSmokeL/R`, `dirtyExhaustCore`) are damage-driven, not maneuver-driven
-- Weather: `weather = { clouds: 0..1, storm: 0..1 }` — `clouds` scales `CLOUD_COUNT` at build time
-- Graphics panel: `P` key toggles; presets low/medium/high/ultra; persists in `localStorage.gfx-settings-v6`
-- HUD: `#hull-pct`, `#hull-bar`, `#shield-pct`, `#ammo-val`, `#ammo-max`, `#ammo-bar`, `#missile-val`, `#supply-val` elements
-- Damage decals: sprite pool of 6 attached to `jet`; `spawnDamageDecal(worldPos, intensity)` places scorch at random hull anchor
+### npm Scripts
 
----
+- `bun run start` — tweaks-server + multiplayer-server concurrently
+- `bun run build` — builds via `tools/build-game.mjs` → `dist/`
+- `bun run autopilot`, `bun run designer`, `bun run evolve` — experimental tooling
 
-## Active Subsystems (OpenClaw)
+### Settings Persistence
 
-### Lead Agent — "Ava"
-- ID: `9f5f3df9-2ed7-4efe-9d97-2114fe460a35`
-- Board ID: `c3f78d0c-abf3-45d5-898e-27cd1d95c0d1`
-- Status as of 2026-05-20: **healthy** — responding `HEARTBEAT_OK` on all polls
-- Reads config from `TOOLS.md` (BASE_URL localhost:19789, AUTH_TOKEN, BOARD_ID, AGENT_NAME, AGENT_ID)
-
-### MC Gateway Agent
-- Provider: `mc-gateway-894a3d5b-7faa-4c0a-a40f-69fbdee7b78d`
-- Status as of 2026-05-20: **FAILING** — connection refused on heartbeat polls; assistant turns failing before producing content
-- Not producing output; needs investigation
-
-### VibeClaw Article Generator Cron (`8b79f6d2`)
-- Runs on a recurring schedule (~every 2 hours observed)
-- Publishes 2 AI news articles per run via API (**NO GIT PUSH**)
-- Zero-fabrication rule: every factual claim requires ≥ 3 independent sources; skips publishing if sources insufficient
-- Fetches from The Verge AI section as primary seed, then searches for verification
-- Recent articles published (2026-05-19 to 2026-05-20): Nvidia Computex GB300/Vera Rubin chips, SSI $2B raise (Ilya Sutskever), AI inference cost trends, Physical Intelligence $400M robotics, synthetic data risks, OpenAI operator upgrades, Google I/O Gemini real-time, AI benchmark critique, Amazon Nova price-performance, slow AI case, OpenAI o3/o4-mini release, AI-native browsers (Arc/Dia)
-
-### Urgent Email Alert Cron (`4e55bac5`)
-- Runs periodically; executes `bash /Users/jkneen/clawd/scripts/email-alert-check.sh`
-- Reports only on script errors; if clean, replies `HEARTBEAT_OK`
-- Status: healthy as of 2026-05-20
-
-### Digest Cron (`f4ec2601`)
-- Daily; processes Gmail + Calendar summary
-- Last seen: 2026-05-19 09:45 UTC
+- Key: `gfx-settings-v5`; legacy v2/v3/v4 cleared on load/reset
+- Defaults: `flight_profile: trainer`, `control_preset: casual`, `flight_accel: 0.96`
+- Fog density per GFX preset: ultra=0.0006, high=0.0008, medium=0.0012, low=0.002
+- `floraCullDistance` per preset: low=250, medium=350, high=450, ultra=600, default=450
 
 ---
 
-## CodeSurf / Contex Protocol
+## Uncommitted Changes (as of 2026-05-31)
 
-Every agent session must open with:
-1. `mcp__contex__peer_set_state(tile_id=$CARD_ID, tile_type="terminal", status="idle", task="Ready")`
-2. `mcp__contex__peer_get_state(tile_id=$CARD_ID)`
+### `flight-sim3.html` — Distance Culling Pass
 
-File conflict rule: **never edit a file that a linked peer lists in their `files` array** — send `peer_send_message` first and wait.
+- Adds `applyDistanceCulling(material, defaultCullDistance)` injecting GLSL via `onBeforeCompile`
+- Culls instanced vertices beyond threshold with soft fade over last 15% of range
+- Applied to: `rockMat` (350), `floraMat` (500), `floraMatLow` (500), `rockMatLowPoly` (350)
+- New `floraCullDistance` GFX setting in DEFAULTS (450) and all four presets
+- `window.gfx.floraCullDistance` is the live runtime knob; shader reads it via getter uniform
+- Plumbed into `applyTerrainClutter()` via `scene.userData.__floraCullDistance`
+- **Status: browser-unverified; not committed. Blocking action: smoke-test in browser for pop-in and JS errors, then commit.**
 
-Key tool prefixes: `mcp__contex__peer_set_state`, `peer_get_state`, `peer_send_message`, `peer_read_messages`, `peer_add_todo`, `peer_complete_todo`, `canvas_create_tile`, `terminal_send_input`, `chat_send_message`.
+### `.mcp.json` — contex MCP port changed to `60768` (uncommitted)
+
+---
+
+## Recent Commit History
+
+- `27c98b2` — Optimize flight-sim performance and HUD *(most recent committed state)*
+- `f8d3e4d` — Replace flight simulator image with a new URL
+- `d9d2d09` — Rebrand project to Element-115
+- `5d54386` — Add README, CONTRIBUTING, LICENSE; update files
+
+The 2026-05-28 feature bundle (engine sound, fog toggle, screen shake, audio management, stall/spin animation, cloud fly-through, building collision detection) is committed in `27c98b2`.
 
 ---
 
 ## Open Threads
 
-- **MC Gateway is down** — `mc-gateway-894a3d5b` has been connection-refused across multiple polls as of 2026-05-20. Worth determining whether it's a stopped process, broken config, or decommissioned provider before spawning tasks that depend on it.
-- **world-state.json last at revision 121 (2026-04-18)** — last recorded world-revision activity was mid-April; `feature-requests.json` pending queue is empty.
+### High Priority
+
+- **Distance culling smoke-test + commit** — `applyDistanceCulling()` and `floraCullDistance` implemented but browser-unverified. Open `flight-sim3.html`, verify no pop-in and no JS errors, then commit all three dirty files together.
+
+### Active Feature Work
+
+- **Reticle / targeting HUD** — scaffolding present but not functional. Full spec in `HERMES_HANDOFF_RETICLE_TARGETING.md`. Needs: gun-line projection, target boxes, distance/speed/altitude readouts, telemetry keys. Gated behind `INPUT_FLAGS.mouseFlight`.
+  - Existing scaffold: `#target-overlay` CSS/markup, `reticleState`, `targetHudState`, `inferTargetTypeLabel()`, `ensureTargetHudPool()`, `$crosshair`/`$targetOverlay` refs
+- **Blast door concept** — low-poly dark reinforced metal with battle damage; deploys from island sides as rolling side armor, forming barriers around engines and land edges. Concept accepted 2026-05-31; no geometry implemented yet.
+
+### Known Bugs
+
+- **Free traffic kill at startup** — collision fires before player input; runway traffic path intersects parked player
+- **Mouse-aim resize corruption** — clamps normalized values as pixels after viewport/fullscreen changes
+
+---
+
+## Cross-Repo Activity (2026-05-31)
+
+### tinyworld (`/Users/jkneen/Documents/GitHub/tinyworld`)
+
+Active development session on 2026-05-31:
+
+- Room builder feature in progress: toggling individual wall segments of a box-frame room to support L/T/custom shapes; session exploring current room system in `index.html`
+- Wall material fix requested: walls should have repeating tiles matching the floor (not a flat panel); brightness reduction requested while keeping metallic look
+- Floor material animated transition: cold grey metallic → warm worn wood, animated over a few seconds
+- Save/load system: floating top-center Save/Load buttons; JSON world-state file; session implementing this
+- AI generation subsystem (`engine/world/26-ai-generation.js`) overhauled in prior session: bespoke natural-language requests via `customParts`, selected-object enhancement no longer hard-preserves seed type, startup race fixed
+- **Voxel seam shader fix** (committed): `engine/world/03-geometry-materials.js` and `engine/world/04-textures.js`; island side-backing clone carries seam shader hook; seam grid scale tightened to fine masonry tiles; browser-verified clean
+
+### Element-115 / ships (tinyworld lamp lighting fix, 2026-05-31)
+
+- Lamp placement + fake haze working; Three r128 light predicate too narrow for local light toggle
+- Fix: switched `updateSkyAndLighting` to check `light.isPointLight || light.isSpotLight` instead of broad `isLight`
+- Not yet verified whether placed-light root is correctly added to `placedLights[]`
+
+### Muxy (`/Users/jkneen/Documents/GitHub/muxy`)
+
+- **Codex chat path fix** (committed 2026-05-31): `codex exec` was running in human transcript mode; fix changes invocation to `codex exec --json --color never`; added JSONL event parser rendering only assistant deltas and tool events
+- Files: `Muxy/Models/ChatTabState.swift` (~line 87), `ChatProviderArgumentsTests.swift`
+- `npm test` focused passing; full iOS simulator build blocked in sandbox (CoreSimulator unavailable); Swift macOS build passes
+
+### OpenClicky (`/Users/jkneen/Documents/GitHub/openclicky`)
+
+- Wake-word audio ducking implemented (prior session): `cursor-buddy/CompanionManager.swift` (~line 192); on "Hey Clicky" activation captures current macOS output volume, drops to 8%, restores before reply audio plays
+- Smart natural-language agent-mode trigger added
+
+### Atomic-Chat (`/Users/jkneen/Documents/GitHub/Atomic-Chat`)
+
+- Codex sessions checking in (gpt-5.5); no substantive work observed in session evidence — only greetings and AGENTS.md bootstrap
+- AGENTS.md rules: never use emoji unless asked; verify model names from codebase before claiming invalid
+
+---
+
+## Agent Ecosystem
+
+### Healthy
+
+- **OpenClaw Lead (Ava)** — heartbeating normally 2026-05-31; board ID `c3f78d0c-abf3-45d5-898e-27cd1d95c0d1`; base URL `localhost:19789`, agent ID `9f5f3df9-2ed7-4efe-9d97-2114fe460a35`; no board task work last cycle
+
+### Failing — Persistent, Root Cause Uninvestigated
+
+- **MC Gateway `894a3d5b-7faa-4c0a-a40f-69fbdee7b78d`** — "connection refused" on every heartbeat; 5+ consecutive failures; assistant turns failing before producing content
+- **VibeClaw Wallpaper Generator** (`cron:85fa55d9`) — every cron turn fails before producing content; multiple consecutive failures 2026-05-31
+- **VibeClaw Skills Scout** (`cron:ebfe1571`) — every cron turn fails before producing content; at least 3 consecutive failures 2026-05-31
+- **VibeClaw Article Generator** (`cron:8b79f6d2`) — every cron turn fails before producing content
+
+All four silent failures likely share a common dependency or auth issue. No investigation done.
+
+### Degraded
+
+- **Tom Doerr Tweet Tracker** (`cron:cebd05e0`) — assistant turn fails before producing content in recent cycles; previously blocked by X login wall; Nitter alternatives down; `wacli` delivery sink broken (unauthenticated). No tweets delivered in multiple cycles.
+
+---
+
+## Memory References
+
+- `memory/project_ships_layout.md` — post-restructure path reference; why HTML stays at root; how to run via bun
+
+---
+
+*Auto-generated by CodeSurf daemon dreaming. Edit `.claude/CLAUDE.md` for authoritative instructions.*
