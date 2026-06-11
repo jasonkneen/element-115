@@ -1888,6 +1888,22 @@
     text-transform: uppercase;
     cursor: pointer;
   }
+
+  /* ===== PERF: no frosted glass over the live canvas =====
+     backdrop-filter on elements stacked above a WebGL canvas that redraws
+     every frame forces the compositor to re-blur every panel every frame.
+     Measured here at roughly HALF the total frame budget with the default
+     HUD (35 fps with blur vs ~60 fps without, identical scene). The
+     always-visible flight HUD drops the blur and gets a slightly more
+     opaque base color to keep text readable over bright sky; transient
+     overlays (dialogs, title screen, options, debrief) keep their frost
+     since they appear over static or paused moments. */
+  .thin-surface-hud-shell, #controls-help, .panel, .target-readout,
+  #throttle-wrap, .touch-pad, #hud-control-grid {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-color: rgba(10, 13, 20, 0.42);
+  }
 </style>
 </head>
 <body>
@@ -2356,6 +2372,8 @@ const AIRFIELD_SURFACE_Y = 0.08;
 const AIRFIELD_FLAT_RADIUS = 230;
 const AIRFIELD_FLAT_R2 = AIRFIELD_FLAT_RADIUS * AIRFIELD_FLAT_RADIUS;
 
+// NOTE: heightPrefetch clones this function (and its const-only closure) into a
+// Web Worker via .toString() — if it ever reads a mutable global, update there.
 function getHeight(x, z) {
   const dist = Math.sqrt(x * x + z * z);
 
@@ -2721,7 +2739,9 @@ renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// PCF + shadow.radius reads nearly identical to PCFSoft here but is markedly
+// cheaper per shadowed fragment (PCFSoft ignores radius and supersamples instead).
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
@@ -2770,8 +2790,10 @@ const MOTION_BLUR_SHADER = {
       float positionalStrength = edgeFalloff * strength * 0.018;
       vec4 accum = vec4(0.0);
       float total = 0.0;
-      for (int i = 0; i < 6; i++) {
-        float stepF = (float(i) + rand2(vUv * 8.0)) * 0.22;
+      // 4 iterations (9 taps with base) — the per-pixel jitter hides any banding
+      // at the strengths this pass runs at, and it's a full-screen bandwidth pass.
+      for (int i = 0; i < 4; i++) {
+        float stepF = (float(i) + rand2(vUv * 8.0)) * 0.33;
         vec2 offset = dir * positionalStrength * stepF;
         accum += texture2D(tDiffuse, clamp(vUv + offset, vec2(0.001), vec2(0.999)));
         accum += texture2D(tDiffuse, clamp(vUv - offset, vec2(0.001), vec2(0.999)));
@@ -2813,7 +2835,9 @@ function initPostFX() {
     }
 
     if (typeof THREE.UnrealBloomPass === 'function' && typeof THREE.Vector2 === 'function') {
-      postFX.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.28, 0.86);
+      // Half-res input: the bloom mip chain is bandwidth-bound and visually
+      // indistinguishable at half size for the soft strengths used here.
+      postFX.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.45, 0.28, 0.86);
       postFX.bloomPass.enabled = false;
       postFX.composer.addPass(postFX.bloomPass);
     }
@@ -2868,7 +2892,9 @@ function updateMotionBlurPostFX() {
   const blend = targetStrength < current ? 0.24 : 0.14;
   postFX.motionBlurPass.uniforms.strength.value = current + (targetStrength - current) * blend;
   postFX.motionBlurPass.uniforms.aspect.value = window.innerWidth / Math.max(1, window.innerHeight);
-  postFX.motionBlurPass.enabled = blurEnabled && postFX.motionBlurPass.uniforms.strength.value > 0.008;
+  // Skip the pass entirely below a visible strength — at <0.04 the blur is
+  // imperceptible but still costs a full-screen render-target pass.
+  postFX.motionBlurPass.enabled = blurEnabled && postFX.motionBlurPass.uniforms.strength.value > 0.04;
 }
 
 function renderScene() {
@@ -3199,16 +3225,20 @@ const pendingHorizonBuilds = [];
 const pendingHorizonKeys = new Set();
 const chunkKey = (cx, cz) => `${cx},${cz}`;
 
-function queueChunkBuild(list, set, map, cx, cz, priority = 0) {
+function queueChunkBuild(list, set, map, cx, cz, priority = 0, tier) {
   const key = chunkKey(cx, cz);
   if (map.has(key)) return;
   if (set.has(key)) {
     const existing = list.find(job => job.key === key);
     if (existing) existing.priority = Math.min(existing.priority, priority);
+    // Re-request on touch: dedupe in request() makes this free, and it
+    // recovers a job whose earlier worker request was lost.
+    if (tier) heightPrefetch.request(tier, cx, cz);
     return;
   }
   set.add(key);
   list.push({ key, cx, cz, priority });
+  if (tier) heightPrefetch.request(tier, cx, cz);
 }
 
 function trimPendingChunkBuilds(list, set, wanted) {
@@ -3219,37 +3249,131 @@ function trimPendingChunkBuilds(list, set, wanted) {
   }
 }
 
+// =============================================================
+//  HEIGHT PREFETCH — a Web Worker computes chunk height grids off-thread.
+//  Pure latency hiding: queued jobs whose grids have arrived skip the
+//  per-vertex getHeight pass (the bulk of a chunk build); jobs without
+//  grids build synchronously exactly as before, so worker failure or a
+//  blocked blob: CSP degrades to current behavior. getHeight's entire
+//  closure is immutable consts (SEED + noise helpers — no biome inputs),
+//  so cached grids never go stale; biome switches reuse them as-is.
+//  ONE worker: a 61×61 grid is ~45k noise evals (~1-3 ms in-worker), so the
+//  worst burst (~7 near + a few far jobs on a cell crossing) clears in a
+//  couple of frames — faster than the build budget drains the queue anyway.
+const heightPrefetch = (() => {
+  const TIERS = {
+    near: { size: CHUNK_SIZE, res: CHUNK_RES },
+    far:  { size: FAR_CHUNK_SIZE, res: FAR_CHUNK_RES },
+    hor:  { size: HORIZON_CHUNK_SIZE, res: HORIZON_CHUNK_RES },
+  };
+  const results = new Map();   // 'tier:cx,cz' -> Float32Array (grid, row-major, x fastest)
+  const inFlight = new Map();  // 'tier:cx,cz' -> request time (performance.now ms)
+  const MAX_RESULTS = 160;     // worst case ~1.2 MB; FIFO eviction
+  const DEFER_MS = 250;        // head job falls back to sync compute past this age
+  let worker = null;
+  try {
+    // Worker source is assembled from the live functions so the terrain math
+    // has exactly one definition. If getHeight ever grows a mutable input,
+    // this closure list must be revisited.
+    const src = [
+      `const SEED=${SEED},SEED_OX=${SEED_OX},SEED_OY=${SEED_OY};`,
+      `const hash2=${hash2.toString()};`,
+      `const smoothstep=${smoothstep.toString()};`,
+      `const clamp01=${clamp01.toString()};`,
+      `const smoothstepRange=${smoothstepRange.toString()};`,
+      vnoise.toString(),
+      fbm.toString(),
+      getHeight.toString(),
+      // Grid order matches PlaneGeometry(size,size,res,res).rotateX(-PI/2):
+      // i = iz*(res+1)+ix, local x/z = idx*(size/res) - size/2 (all steps are
+      // exact binary floats, fround keeps parity with the f32 position buffer).
+      'onmessage = (e) => {',
+      '  const { key, cx, cz, size, res } = e.data;',
+      '  const gw = res + 1, step = size / res, half = size / 2;',
+      '  const cxW = (cx + 0.5) * size, czW = (cz + 0.5) * size;',
+      '  const heights = new Float32Array(gw * gw);',
+      '  for (let iz = 0; iz < gw; iz++) {',
+      '    const lz = Math.fround(iz * step - half);',
+      '    for (let ix = 0; ix < gw; ix++) {',
+      '      heights[iz * gw + ix] = getHeight(cxW + Math.fround(ix * step - half), czW + lz);',
+      '    }',
+      '  }',
+      '  postMessage({ key, heights }, [heights.buffer]);',
+      '};',
+    ].join('\n');
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    worker.onmessage = (e) => {
+      const { key, heights } = e.data;
+      inFlight.delete(key);
+      // Results never trigger builds — only the pending queues do — so a grid
+      // arriving for a trimmed/evicted chunk just sits here until FIFO eviction.
+      if (results.size >= MAX_RESULTS) results.delete(results.keys().next().value);
+      results.set(key, heights);
+    };
+    worker.onerror = () => { worker = null; inFlight.clear(); }; // permanent sync fallback
+  } catch (e) { worker = null; }
+  return {
+    has(tier, key) { return results.has(tier + ':' + key); },
+    request(tier, cx, cz) {
+      if (!worker) return;
+      const key = tier + ':' + cx + ',' + cz;
+      if (results.has(key) || inFlight.has(key)) return;
+      inFlight.set(key, performance.now());
+      worker.postMessage({ key, cx, cz, size: TIERS[tier].size, res: TIERS[tier].res });
+    },
+    take(tier, key) {
+      const k = tier + ':' + key;
+      const h = results.get(k);
+      if (h) results.delete(k);
+      return h;
+    },
+    canDefer(tier, key) {
+      if (!worker) return false;
+      const t = inFlight.get(tier + ':' + key);
+      return t !== undefined && performance.now() - t < DEFER_MS;
+    },
+  };
+})();
+
 // Time-budgeted chunk builder. Builds at least one near + one far chunk per call
 // (so the world always makes progress), then keeps going only while under the ms
 // budget and below the hard cap. A weak CPU naturally builds fewer chunks/frame
 // (smoother) and a fast CPU more (faster fill) — replaces the old fixed counts
 // that handed slow machines the exact same multi-ms makeChunk hitch as the M3.
-function processChunkBuildQueues(maxMs = 2.5, hardCap = 6) {
+function processChunkBuildQueues(maxMs = 2.5, hardCap = 6, allowDefer = false) {
   const start = performance.now();
-  if (pendingChunkBuilds.length > 1) pendingChunkBuilds.sort((a, b) => a.priority - b.priority);
+  // One guaranteed build per CALL (not per tier): the old per-tier `built === 0`
+  // escape could stack a near + far + horizon build in one frame — three multi-ms
+  // synchronous hitches back to back. The shared budget below still guarantees
+  // forward progress (first build always runs) while spreading the rest out.
   let built = 0;
-  while (pendingChunkBuilds.length && (built === 0 || (built < hardCap && performance.now() - start < maxMs))) {
-    const job = pendingChunkBuilds.shift();
-    pendingChunkKeys.delete(job.key);
-    if (!chunks.has(job.key)) chunks.set(job.key, makeChunk(job.cx, job.cz));
-    built++;
-  }
-  if (pendingFarChunkBuilds.length > 1) pendingFarChunkBuilds.sort((a, b) => a.priority - b.priority);
-  let builtFar = 0;
-  while (pendingFarChunkBuilds.length && (builtFar === 0 || (builtFar < hardCap && performance.now() - start < maxMs))) {
-    const job = pendingFarChunkBuilds.shift();
-    pendingFarChunkKeys.delete(job.key);
-    if (!farChunks.has(job.key)) farChunks.set(job.key, makeFarChunk(job.cx, job.cz));
-    builtFar++;
-  }
-  if (pendingHorizonBuilds.length > 1) pendingHorizonBuilds.sort((a, b) => a.priority - b.priority);
-  let builtHor = 0;
-  while (pendingHorizonBuilds.length && (builtHor === 0 || (builtHor < hardCap && performance.now() - start < maxMs))) {
-    const job = pendingHorizonBuilds.shift();
-    pendingHorizonKeys.delete(job.key);
-    if (!horizonChunks.has(job.key)) horizonChunks.set(job.key, makeHorizonChunk(job.cx, job.cz));
-    builtHor++;
-  }
+  const overBudget = () => built >= hardCap || (built > 0 && performance.now() - start >= maxMs);
+  const drain = (list, set, map, tier, makeFn) => {
+    if (list.length > 1) list.sort((a, b) => a.priority - b.priority);
+    while (list.length && !overBudget()) {
+      // Prefer the best-priority job whose worker grid has already arrived —
+      // that build skips the per-vertex getHeight pass entirely.
+      let idx = -1;
+      for (let i = 0; i < list.length; i++) {
+        if (heightPrefetch.has(tier, list[i].key)) { idx = i; break; }
+      }
+      if (idx === -1) {
+        // Nothing prefetched. In the live animate loop we can wait a frame or
+        // two for the worker instead of paying the sync height cost — but only
+        // while the head's request is in flight and young (DEFER_MS cap), so a
+        // stalled/dead worker degrades to today's synchronous builds.
+        if (allowDefer && heightPrefetch.canDefer(tier, list[0].key)) break;
+        idx = 0;
+      }
+      const job = list.splice(idx, 1)[0];
+      set.delete(job.key);
+      if (!map.has(job.key)) map.set(job.key, makeFn(job.cx, job.cz, heightPrefetch.take(tier, job.key)));
+      built++;
+    }
+  };
+  drain(pendingChunkBuilds, pendingChunkKeys, chunks, 'near', makeChunk);
+  drain(pendingFarChunkBuilds, pendingFarChunkKeys, farChunks, 'far', makeFarChunk);
+  drain(pendingHorizonBuilds, pendingHorizonKeys, horizonChunks, 'hor', makeHorizonChunk);
 }
 
 // Sedimentary strata — bands of color at fixed elevations. Mutable so the
@@ -3466,7 +3590,7 @@ const floraMatLow = new THREE.MeshPhongMaterial({
 applyDistanceCulling(floraMatLow, 500.0);
 
 
-function makeChunk(cx, cz) {
+function makeChunk(cx, cz, preHeights) {
   const group = new THREE.Group();
 
   // Pick the material variant matching the current style mode so newly
@@ -3485,21 +3609,34 @@ function makeChunk(cx, cz) {
   const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
 
+  // Height grid first, then colors from grid neighbors. getHeight is ~12 noise
+  // evaluations, so deriving slope from already-computed neighbors instead of two
+  // extra probes per vertex cuts the build's noise cost to a third.
+  const GRID_W = CHUNK_RES + 1;
+  let heights = preHeights;
+  if (!heights || heights.length !== pos.count) {
+    heights = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      heights[i] = getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+    }
+  }
+
   for (let i = 0; i < pos.count; i++) {
-    const lx = pos.getX(i);
-    const lz = pos.getZ(i);
-    const wx = cxW + lx;
-    const wz = czW + lz;
-    const h = getHeight(wx, wz);
+    const wx = cxW + pos.getX(i);
+    const wz = czW + pos.getZ(i);
+    const h = heights[i];
     pos.setY(i, h);
 
     // Sedimentary strata
     strataColor(h, tmp);
 
-    // Cliff face tint — steep slopes turn warmer / darker
-    const hN = getHeight(wx + 5, wz);
-    const hE = getHeight(wx, wz + 5);
-    const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.045);
+    // Cliff face tint — steep slopes turn warmer / darker.
+    // Neighbor spacing is 10 m vs the old 5 m probes, so halve the scale factor.
+    const col = i % GRID_W;
+    const row = (i / GRID_W) | 0;
+    const hN = heights[col < GRID_W - 1 ? i + 1 : i - 1];
+    const hE = heights[row < GRID_W - 1 ? i + GRID_W : i - GRID_W];
+    const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.0225);
     if (slope > 0.25) {
       tmp.lerp(CLIFF_TINT, (slope - 0.25) * 0.55);
     }
@@ -3513,6 +3650,20 @@ function makeChunk(cx, cz) {
     colors[i * 3 + 1] = tmp.g;
     colors[i * 3 + 2] = tmp.b;
   }
+
+  // Bilinear height sample from the precomputed grid (local chunk coords).
+  // Scatter placement reads this instead of exact getHeight — cheaper, and the
+  // result sits exactly on the rendered terrain mesh rather than the ideal field.
+  const sampleH = (lx, lz) => {
+    const gx = Math.max(0, Math.min(CHUNK_RES - 1e-4, (lx / CHUNK_SIZE + 0.5) * CHUNK_RES));
+    const gz = Math.max(0, Math.min(CHUNK_RES - 1e-4, (lz / CHUNK_SIZE + 0.5) * CHUNK_RES));
+    const x0 = gx | 0, z0 = gz | 0;
+    const fx = gx - x0, fz = gz - z0;
+    const i00 = z0 * GRID_W + x0;
+    const h0 = heights[i00] + (heights[i00 + 1] - heights[i00]) * fx;
+    const h1 = heights[i00 + GRID_W] + (heights[i00 + GRID_W + 1] - heights[i00 + GRID_W]) * fx;
+    return h0 + (h1 - h0) * fz;
+  };
 
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
@@ -3534,7 +3685,7 @@ function makeChunk(cx, cz) {
     const wz = czW + lzr;
     const dist = Math.sqrt(wx * wx + wz * wz);
     if (dist < 280) continue;                 // keep airfield clear
-    const h = getHeight(wx, wz);
+    const h = sampleH(lxr, lzr);
     if (h < 4) continue;                       // skip valley floors
     const scl = 0.6 + srand(cx, cz, i + 100) * 3.2;
     dummy.position.set(wx, h - scl * 0.3, wz);
@@ -3586,12 +3737,12 @@ function makeChunk(cx, cz) {
     const dist = Math.sqrt(wx * wx + wz * wz);
     if (dist < 280) continue;                       // keep airfield clear
 
-    const h = getHeight(wx, wz);
+    const h = sampleH(lxr, lzr);
     if (h < 1) continue;                            // skip valley floors
 
     // Approximate slope
-    const hN = getHeight(wx + 6, wz);
-    const hE = getHeight(wx, wz + 6);
+    const hN = sampleH(lxr + 6, lzr);
+    const hE = sampleH(lxr, lzr + 6);
     const slope = (Math.abs(hN - h) + Math.abs(hE - h)) * 0.08;
 
     const pick = srand(cx, cz, i * 7 + 1002);
@@ -3667,34 +3818,58 @@ function makeChunk(cx, cz) {
   boulders.count = Math.max(0, Math.min(nBoulder, Math.round(nBoulder * clutterDensity))); boulders.instanceMatrix.needsUpdate = true; boulders.userData.__densityGroup = 'terrain-clutter'; boulders.userData.__baseCount = nBoulder; if (nBoulder) group.add(boulders);
 
   scene.add(group);
-  return { group, geo, terrainMesh: mesh };
+  return { group, geo, terrainMesh: mesh, clutter: [rocks, pines, cacti, shrubs, boulders], cxW, czW };
 }
 
+let _lastChunkCellX = null, _lastChunkCellZ = null;
 function updateChunks(px, pz) {
   const pcx = Math.floor(px / CHUNK_SIZE);
   const pcz = Math.floor(pz / CHUNK_SIZE);
-  const wanted = new Set();
 
-  for (let dz = -RENDER_RADIUS; dz <= RENDER_RADIUS; dz++) {
-    for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
-      const cx = pcx + dx, cz = pcz + dz;
-      const key = chunkKey(cx, cz);
-      wanted.add(key);
-      if (!chunks.has(key)) queueChunkBuild(pendingChunkBuilds, pendingChunkKeys, chunks, cx, cz, Math.abs(dx) + Math.abs(dz));
+  // Queue/evict bookkeeping (Set + Map churn) only needs to run when the plane
+  // crosses a 600 m cell boundary — not every frame.
+  if (pcx !== _lastChunkCellX || pcz !== _lastChunkCellZ) {
+    _lastChunkCellX = pcx; _lastChunkCellZ = pcz;
+    const wanted = new Set();
+
+    for (let dz = -RENDER_RADIUS; dz <= RENDER_RADIUS; dz++) {
+      for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
+        const cx = pcx + dx, cz = pcz + dz;
+        const key = chunkKey(cx, cz);
+        wanted.add(key);
+        if (!chunks.has(key)) queueChunkBuild(pendingChunkBuilds, pendingChunkKeys, chunks, cx, cz, Math.abs(dx) + Math.abs(dz), 'near');
+      }
+    }
+
+    trimPendingChunkBuilds(pendingChunkBuilds, pendingChunkKeys, wanted);
+
+    for (const [key, c] of chunks) {
+      if (!wanted.has(key)) {
+        scene.remove(c.group);
+        c.geo.dispose();
+        // sandMat + rockGeo + rockMat are shared across chunks — don't dispose them.
+        // But each InstancedMesh (rocks + up to 4 flora) owns a per-chunk instanceMatrix
+        // GPU buffer; dispose() frees that buffer (shared geometry/material untouched).
+        c.group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
+        chunks.delete(key);
+      }
     }
   }
 
-  trimPendingChunkBuilds(pendingChunkBuilds, pendingChunkKeys, wanted);
-
-  for (const [key, c] of chunks) {
-    if (!wanted.has(key)) {
-      scene.remove(c.group);
-      c.geo.dispose();
-      // sandMat + rockGeo + rockMat are shared across chunks — don't dispose them.
-      // But each InstancedMesh (rocks + up to 4 flora) owns a per-chunk instanceMatrix
-      // GPU buffer; dispose() frees that buffer (shared geometry/material untouched).
-      c.group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
-      chunks.delete(key);
+  // CPU-side clutter culling. The vertex-shader fade collapses out-of-range
+  // instances to vec3(0), but every triangle of every instance in all 49 chunks
+  // is still submitted and vertex-shaded. Hiding whole chunks' clutter meshes
+  // once they're beyond the cull distance skips that submission entirely.
+  // Margin = chunk half-diagonal so the shader fade ring is never clipped.
+  const cullBase = (window.gfx && window.gfx.floraCullDistance != null) ? window.gfx.floraCullDistance : 450;
+  const clutterVisRange = cullBase * (500 / 450) + CHUNK_SIZE * 0.71 + 60;
+  const visRangeSq = clutterVisRange * clutterVisRange;
+  for (const c of chunks.values()) {
+    if (!c.clutter) continue;
+    const dx = c.cxW - px, dz = c.czW - pz;
+    const vis = (dx * dx + dz * dz) < visRangeSq;
+    for (let i = 0; i < c.clutter.length; i++) {
+      if (c.clutter[i].visible !== vis) c.clutter[i].visible = vis;
     }
   }
 }
@@ -3702,7 +3877,7 @@ function updateChunks(px, pz) {
 // =============================================================
 //  FAR CHUNKS — LOD tier: 3× size, half res, no rocks, cheap
 // =============================================================
-function makeFarChunk(cx, cz) {
+function makeFarChunk(cx, cz, preHeights) {
   const lowPoly = (typeof styleMode !== 'undefined') && styleMode.current === 'lowpoly';
   const sandM = lowPoly ? sandMatLowPoly : sandMat;
 
@@ -3716,19 +3891,28 @@ function makeFarChunk(cx, cz) {
   const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
 
+  // Height grid first, slope from grid neighbors — same trick as makeChunk,
+  // cuts the build's getHeight count to a third.
+  const GRID_W = FAR_CHUNK_RES + 1;
+  let heights = preHeights;
+  if (!heights || heights.length !== pos.count) {
+    heights = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      heights[i] = getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+    }
+  }
+
   for (let i = 0; i < pos.count; i++) {
-    const lx = pos.getX(i);
-    const lz = pos.getZ(i);
-    const wx = cxW + lx;
-    const wz = czW + lz;
-    const h = getHeight(wx, wz);
+    const h = heights[i];
     pos.setY(i, h);
 
     strataColor(h, tmp);
-    // Slope tint (cheaper, wider spacing than high-detail)
-    const hN = getHeight(wx + 12, wz);
-    const hE = getHeight(wx, wz + 12);
-    const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.018);
+    // Slope tint from 50 m grid neighbors (was 12 m probes → rescale factor)
+    const col = i % GRID_W;
+    const row = (i / GRID_W) | 0;
+    const hN = heights[col < GRID_W - 1 ? i + 1 : i - 1];
+    const hE = heights[row < GRID_W - 1 ? i + GRID_W : i - GRID_W];
+    const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.0043);
     if (slope > 0.25) tmp.lerp(CLIFF_TINT, (slope - 0.25) * 0.55);
 
     // Subtle atmospheric desaturation for far chunks — they're already
@@ -3759,52 +3943,69 @@ function makeFarChunk(cx, cz) {
   mesh.material.polygonOffsetUnits = 4;
   mesh.renderOrder = -1;
   scene.add(mesh);
-  return { mesh, geo };
+  return { mesh, geo, cxW, czW };
 }
 
+let _lastFarCellX = null, _lastFarCellZ = null;
 function updateFarChunks(px, pz) {
   const pcx = Math.floor(px / FAR_CHUNK_SIZE);
   const pcz = Math.floor(pz / FAR_CHUNK_SIZE);
-  const wanted = new Set();
 
-  // Skip far chunks that are fully inside the high-detail ring to avoid
-  // Z-fighting between LOD tiers. The near-chunk grid is an axis-aligned
-  // square of half-extent ≈ (RENDER_RADIUS + 0.5) * CHUNK_SIZE centred on
-  // the plane's chunk — NOT a circle — so the cull test must also be
-  // axis-aligned. A far chunk is fully redundant only when ALL its corners
-  // (half-extent = FAR_CHUNK_SIZE/2) sit inside that square, with a small
-  // safety margin so the LOD seam stays near chunk boundaries.
-  const nearHalfExtent = (RENDER_RADIUS + 0.5) * CHUNK_SIZE;  // 2100
-  const farHalf        = FAR_CHUNK_SIZE / 2;                   // 900
-  const safety         = 60;                                    // 1 near-vertex spacing
+  if (pcx !== _lastFarCellX || pcz !== _lastFarCellZ) {
+    _lastFarCellX = pcx; _lastFarCellZ = pcz;
+    const wanted = new Set();
 
-  for (let dz = -FAR_RADIUS; dz <= FAR_RADIUS; dz++) {
-    for (let dx = -FAR_RADIUS; dx <= FAR_RADIUS; dx++) {
-      const cx = pcx + dx, cz = pcz + dz;
-      const cxW = (cx + 0.5) * FAR_CHUNK_SIZE;
-      const czW = (cz + 0.5) * FAR_CHUNK_SIZE;
-      const dxp = cxW - px, dzp = czW - pz;
-      // Fully inside the near-chunk square (with safety margin) → skip.
-      if (Math.abs(dxp) + farHalf + safety < nearHalfExtent &&
-          Math.abs(dzp) + farHalf + safety < nearHalfExtent) continue;
+    // Skip far chunks that are fully inside the high-detail ring to avoid
+    // Z-fighting between LOD tiers. The near-chunk grid is an axis-aligned
+    // square of half-extent ≈ (RENDER_RADIUS + 0.5) * CHUNK_SIZE centred on
+    // the plane's chunk — NOT a circle — so the cull test must also be
+    // axis-aligned. A far chunk is fully redundant only when ALL its corners
+    // (half-extent = FAR_CHUNK_SIZE/2) sit inside that square, with a small
+    // safety margin so the LOD seam stays near chunk boundaries.
+    const nearHalfExtent = (RENDER_RADIUS + 0.5) * CHUNK_SIZE;  // 2100
+    const farHalf        = FAR_CHUNK_SIZE / 2;                   // 900
+    const safety         = 60;                                    // 1 near-vertex spacing
 
-      const key = chunkKey(cx, cz);
-      wanted.add(key);
-      if (!farChunks.has(key)) queueChunkBuild(pendingFarChunkBuilds, pendingFarChunkKeys, farChunks, cx, cz, Math.abs(dx) + Math.abs(dz));
+    for (let dz = -FAR_RADIUS; dz <= FAR_RADIUS; dz++) {
+      for (let dx = -FAR_RADIUS; dx <= FAR_RADIUS; dx++) {
+        const cx = pcx + dx, cz = pcz + dz;
+        const cxW = (cx + 0.5) * FAR_CHUNK_SIZE;
+        const czW = (cz + 0.5) * FAR_CHUNK_SIZE;
+        const dxp = cxW - px, dzp = czW - pz;
+        // Fully inside the near-chunk square (with safety margin) → skip.
+        if (Math.abs(dxp) + farHalf + safety < nearHalfExtent &&
+            Math.abs(dzp) + farHalf + safety < nearHalfExtent) continue;
+
+        const key = chunkKey(cx, cz);
+        wanted.add(key);
+        if (!farChunks.has(key)) queueChunkBuild(pendingFarChunkBuilds, pendingFarChunkKeys, farChunks, cx, cz, Math.abs(dx) + Math.abs(dz), 'far');
+      }
+    }
+
+    trimPendingChunkBuilds(pendingFarChunkBuilds, pendingFarChunkKeys, wanted);
+
+    for (const [key, c] of farChunks) {
+      if (!wanted.has(key)) {
+        scene.remove(c.mesh);
+        c.geo.dispose();
+        // makeFarChunk clones the shared sand material per chunk (for polygonOffset),
+        // so this clone is unique to this chunk — dispose it to free its program ref.
+        if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+        farChunks.delete(key);
+      }
     }
   }
 
-  trimPendingChunkBuilds(pendingFarChunkBuilds, pendingFarChunkKeys, wanted);
-
-  for (const [key, c] of farChunks) {
-    if (!wanted.has(key)) {
-      scene.remove(c.mesh);
-      c.geo.dispose();
-      // makeFarChunk clones the shared sand material per chunk (for polygonOffset),
-      // so this clone is unique to this chunk — dispose it to free its program ref.
-      if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
-      farChunks.delete(key);
-    }
+  // Fog-distance culling: a far chunk whose nearest point is past the fog-opaque
+  // distance renders as pure fog color — wasted vertex + fill work. Hide it.
+  // Half-diagonal of an 1800 m tile ≈ 1273 m; small extra margin for safety.
+  const fogActive = scene.fog && !scene.userData.__fogDisabled;
+  const fogVisLimit = fogActive ? scene.fog.far + 1273 + 200 : Infinity;
+  const fogVisLimitSq = fogVisLimit * fogVisLimit;
+  for (const c of farChunks.values()) {
+    const dx = c.cxW - px, dz = c.czW - pz;
+    const vis = !fogActive || (dx * dx + dz * dz) < fogVisLimitSq;
+    if (c.mesh.visible !== vis) c.mesh.visible = vis;
   }
 }
 
@@ -3813,7 +4014,7 @@ function updateFarChunks(px, pz) {
 //  heavy fog tint. Only active when gfx.renderDistance > 1.0 pushes
 //  HORIZON_RADIUS above 0; at default render distance this is a no-op.
 // =============================================================
-function makeHorizonChunk(cx, cz) {
+function makeHorizonChunk(cx, cz, preHeights) {
   const lowPoly = (typeof styleMode !== 'undefined') && styleMode.current === 'lowpoly';
   const sandM = lowPoly ? sandMatLowPoly : sandMat;
 
@@ -3827,8 +4028,9 @@ function makeHorizonChunk(cx, cz) {
   const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
 
+  const hasPre = !!(preHeights && preHeights.length === pos.count);
   for (let i = 0; i < pos.count; i++) {
-    const h = getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+    const h = hasPre ? preHeights[i] : getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
     pos.setY(i, h);
     strataColor(h, tmp);
     // Heavy atmospheric desaturation — these tiles sit 15-24 km out, deep in fog.
@@ -3886,7 +4088,7 @@ function updateHorizonChunks(px, pz) {
           Math.abs(czW - pz) + horHalf + safety < farHalfExtent) continue;
       const key = chunkKey(cx, cz);
       wanted.add(key);
-      if (!horizonChunks.has(key)) queueChunkBuild(pendingHorizonBuilds, pendingHorizonKeys, horizonChunks, cx, cz, Math.abs(dx) + Math.abs(dz));
+      if (!horizonChunks.has(key)) queueChunkBuild(pendingHorizonBuilds, pendingHorizonKeys, horizonChunks, cx, cz, Math.abs(dx) + Math.abs(dz), 'hor');
     }
   }
   trimPendingChunkBuilds(pendingHorizonBuilds, pendingHorizonKeys, wanted);
@@ -4564,6 +4766,7 @@ function updateGenerativeInstallations(dt) {
   }
 }
 
+let _runwayLightsLastAt = 0;
 function updateRunwayLights(nightFactor, twilight) {
   const nightGlow = Math.max(0, nightFactor * 1.15 + twilight * 0.22);
   const pulseT = performance.now() * 0.004;
@@ -4574,8 +4777,19 @@ function updateRunwayLights(nightFactor, twilight) {
   if (airfieldNightFx.approachMaterial) {
     airfieldNightFx.approachMaterial.opacity = 0.03 + nightGlow * 0.95;
   }
+  // Publish flood demand every call (above the 20 Hz gate) for the group-N
+  // state machine; visibility is APPLIED per frame in updateJetVisual alongside
+  // the landing rigs so all four group-N lights flip atomically in one frame —
+  // a second application site here would render frames with mismatched
+  // point/spot counts (hashes outside the prewarmed states → shader recompile).
+  auxLightGroupN.floodWant = nightGlow * 1.25;
   // Per-instance pulse — only rebuild matrices when near the airfield (the instanced
   // lights are frustum-culled in cruise, so this work is skipped the rest of the time).
+  // The pulse animates slowly, so 20 Hz is indistinguishable from per-frame and
+  // skips ~2/3 of the matrix recompose + GPU buffer re-uploads.
+  const nowMs = performance.now();
+  if (nowMs - _runwayLightsLastAt < 50) return;
+  _runwayLightsLastAt = nowMs;
   const nf = airfieldNightFx;
   const nearField = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z) < (3200 * 3200);
   if (nearField && nf.edgeInst) {
@@ -5374,6 +5588,49 @@ const airframeFillRig = (() => {
   scene.add(fill);
   return { spot, fill, target };
 })();
+// Aux-light visibility groups. three.js r128 bakes the VISIBLE point/spot light
+// counts into every lit material's program hash, so flipping a light's `visible`
+// flag forces a lazy shader recompile (a mid-flight hitch) unless that state was
+// compiled up front. Three toggle groups exist:
+//   F = airframeFillRig (1 spot + 1 point), H = replayHeroRig (1 spot + 1 point),
+//   N = 2 apron-flood points + 2 landing spots (paired so point/spot counts stay
+//       matched). Every reachable hash therefore has matched point+spot counts
+//       0..4 — the five states prewarmLightStatePrograms compiles at boot. Adding
+//       any new toggled Point/Spot light breaks this invariant; re-enumerate the
+//       prewarm state list if you do.
+// Group N's off-switch dwells so the lights-hash can't flap at the threshold.
+const AUX_LIGHT_ON_INTENSITY = 0.02;
+const AUX_LIGHT_OFF_INTENSITY = 0.005;
+const AUX_LIGHT_OFF_DWELL_MS = 3000;
+const auxLightGroupN = { on: true, offSince: 0, floodWant: 0, landingWant: 0 };
+function updateAuxLightGroupN(nowMs) {
+  const want = Math.max(auxLightGroupN.floodWant, auxLightGroupN.landingWant);
+  if (!auxLightGroupN.on) {
+    if (want > AUX_LIGHT_ON_INTENSITY) { auxLightGroupN.on = true; auxLightGroupN.offSince = 0; }
+  } else if (want < AUX_LIGHT_OFF_INTENSITY) {
+    if (!auxLightGroupN.offSince) auxLightGroupN.offSince = nowMs;
+    else if (nowMs - auxLightGroupN.offSince > AUX_LIGHT_OFF_DWELL_MS) auxLightGroupN.on = false;
+  } else {
+    auxLightGroupN.offSince = 0;
+  }
+  return auxLightGroupN.on;
+}
+function prewarmLightStatePrograms() {
+  const fill = [airframeFillRig.spot, airframeFillRig.fill];
+  const hero = [replayHeroRig.spot, replayHeroRig.fill];
+  const groupN = airfieldAmbientState.apronFloods.map(r => r.light)
+    .concat(((jet.userData && jet.userData.landingRigs) || []).map(r => r.light));
+  const all = groupN.concat(fill, hero);
+  const saved = all.map(l => l.visible);
+  // Matched point+spot sums 0,1,2,3,4 — the only hashes runtime toggles produce.
+  const states = [[], [fill], [fill, hero], [fill, groupN], [fill, hero, groupN]];
+  for (const groups of states) {
+    for (const l of all) l.visible = false;
+    for (const g of groups) for (const l of g) l.visible = true;
+    try { renderer.compile(scene, camera); } catch (e) {}
+  }
+  all.forEach((l, i) => { l.visible = saved[i]; });
+}
 const aeroFlexState = {
   wingBend: 0,
   aileron: 0,
@@ -6190,6 +6447,16 @@ function updateMultiplayer(dt) {
 
       applyShadowFlags(model);
       jet.add(model);
+      // The GLB lands seconds into gameplay (flight starts before the async load
+      // finishes), so its MeshStandardMaterial program variants would otherwise
+      // compile lazily on its first rendered frame — a classic multi-hundred-ms
+      // hitch (shader compile + texture upload in one frame). Compile now, while
+      // the model is freshly attached, instead of mid-flight on first sight.
+      // Warm every aux-light state, not just the current one — otherwise the next
+      // group toggle (dusk crossing, L key, replay start) re-hitches on the GLB's
+      // materials. Already-warm scene materials are program-cache hits, so each
+      // extra pass compiles only the GLB's few distinct programs.
+      prewarmLightStatePrograms();
 
       // Swapped-in GLB planes are visual models only — their rigs have no
       // retractable-gear animation. Treat them as fixed-gear: gear stays
@@ -7177,6 +7444,10 @@ function applyBiome(name) {
   pendingFarChunkBuilds.length = 0;
   pendingFarChunkKeys.clear();
   disposeAllHorizonChunks();
+  // The chunk updaters early-out while the plane stays in the same cell —
+  // invalidate the cached cell so the freshly cleared maps re-queue everything.
+  _lastChunkCellX = null; _lastChunkCellZ = null;
+  _lastFarCellX = null; _lastFarCellZ = null;
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
   updateHorizonChunks(plane.pos.x, plane.pos.z);
@@ -7570,9 +7841,25 @@ class ParticlePool {
   }
 
   update(dt) {
+    // Idle pools (most of the ~15 pools, most of the time) skip the full-pool
+    // scan AND the 3 attribute re-uploads — was a constant per-frame GPU
+    // buffer upload even with zero live particles.
+    if (this._wasEmpty === undefined) this._wasEmpty = false;
+    let anyActive = false;
+    for (let i = 0; i < this.max; i++) { if (this.pool[i].active) { anyActive = true; break; } }
+    if (!anyActive) {
+      if (!this._wasEmpty) {
+        for (let i = 0; i < this.max; i++) this.alphas[i] = 0;
+        this.geo.attributes.alpha.needsUpdate = true;
+        this.geo.setDrawRange(0, 0);
+        this._wasEmpty = true;
+      }
+      return;
+    }
+    this._wasEmpty = false;
     const dragK = Math.pow(0.6, dt);
     let activeParticles = 0;
-    
+
     for (let i = 0; i < this.max; i++) {
       const p = this.pool[i];
       if (!p.active) continue;
@@ -8660,8 +8947,8 @@ function fireUfoPulse(t, originPos, dt = 1 / 60) {
   const aggression = learning ? learning.aggression : 0.5;
   const dist = originPos.distanceTo(plane.pos);
   const toPlayer = _combatTmpA.copy(plane.pos).sub(originPos);
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(t.group.quaternion).normalize();
-  const facing = toPlayer.lengthSq() > 1 ? forward.dot(toPlayer.clone().normalize()) : 1;
+  const forward = _combatTmpC.set(0, 0, -1).applyQuaternion(t.group.quaternion).normalize();
+  const facing = toPlayer.lengthSq() > 1 ? forward.dot(_combatTmpD.copy(toPlayer).normalize()) : 1;
   const cmActive = now < (combatState.countermeasureUntil || 0);
   const smokeActive = now < (combatState.smokeScreenUntil || 0);
   const canSee = dist < 840 && dist > 32 && facing > -0.06;
@@ -9357,6 +9644,17 @@ function currentCloudStyle() {
   return (typeof window !== 'undefined' && window.gfx && window.gfx.cloudStyle) ? window.gfx.cloudStyle : 'chunky';
 }
 
+// One shared material for every cloud wisp sprite: syncCloudWisps always writes
+// the same color/opacity to all of them, so per-sprite material clones only
+// added ~76 unique materials' worth of state changes per frame.
+const cloudWispSharedMat = new THREE.SpriteMaterial({
+  map: cloudWispTex,
+  color: currentBiome.cloudColor,
+  transparent: true,
+  opacity: 0.18,
+  depthWrite: false,
+  depthTest: true,
+});
 function buildClouds() {
   const group = new THREE.Group();
   const data = [];
@@ -9373,14 +9671,7 @@ function buildClouds() {
 
     const wisps = [];
     for (let w = 0; w < 2; w++) {
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: cloudWispTex,
-        color: currentBiome.cloudColor,
-        transparent: true,
-        opacity: 0.18,
-        depthWrite: false,
-        depthTest: true,
-      }));
+      const sprite = new THREE.Sprite(cloudWispSharedMat);
       const spread = (w === 0 ? 0.28 : -0.33) * scale;
       sprite.position.set(spread, scale * yScale * (0.12 + w * 0.18), (w === 0 ? -0.18 : 0.22) * scale);
       sprite.scale.set(scale * (1.45 + w * 0.2), scale * (0.68 + yScale * 0.55), 1);
@@ -9447,11 +9738,12 @@ function syncCloudWisps() {
   const soft = currentCloudStyle() !== 'chunky';
   const daylight = timeOfDay ? timeOfDay.daylight : 1;
   const stormMix = Math.max(0, Math.min(1, weather.storm || 0));
+  // All wisps share one material — set it once, then just toggle visibility.
+  cloudWispSharedMat.color.copy(cloudMat.color);
+  cloudWispSharedMat.opacity = soft ? (0.10 + daylight * 0.05 + (1 - stormMix) * 0.08) : 0;
   for (const c of clouds.data) {
     for (const sprite of c.wisps || []) {
-      sprite.visible = soft;
-      sprite.material.color.copy(cloudMat.color);
-      sprite.material.opacity = soft ? (0.10 + daylight * 0.05 + (1 - stormMix) * 0.08) : 0;
+      if (sprite.visible !== soft) sprite.visible = soft;
     }
   }
 }
@@ -9632,6 +9924,17 @@ const todGround = new THREE.Color();
 const todAmbient = new THREE.Color();
 const todLowPolyAmbient = new THREE.Color();
 
+// Scratch colors for updateTimeOfDay (runs every frame, must not allocate).
+// Declared with var-free hoist-safety: these sit above the function so any
+// init-time call (e.g. setBiome → updateTimeOfDay(0)) finds them initialized.
+const _todCloudTarget = new THREE.Color();
+const _todCloudEmissive = new THREE.Color();
+const _TOD_CLOUD_WHITE = new THREE.Color(0xffffff);
+const _TOD_CLOUD_STORM = new THREE.Color(0x5a6070);
+const _TOD_CLOUD_MOONLIGHT = new THREE.Color(0x9abaf8);
+const _TOD_CLOUD_DUSK = new THREE.Color(0x8a5030);
+let _todIndLastMinutes = -1;
+let _todIndLastLabel = '';
 function updateTimeOfDay(dt = 0) {
   timeOfDay.phase = (timeOfDay.phase + dt / timeOfDay.cycleSeconds) % 1;
   const angle = timeOfDay.phase * Math.PI * 2;
@@ -9746,19 +10049,16 @@ function updateTimeOfDay(dt = 0) {
   cloudMat.opacity = dayCloudOpacity;
   cloudMatLow.opacity = dayCloudOpacity;
 
-  const CLOUD_WHITE = 0xffffff;
-  const biomeCloudCol = new THREE.Color(currentBiome.cloudColor);
-  const stormCloudCol = new THREE.Color(0x5a6070);
   const brightenMix = daylight * 0.75 * (1 - stormMix);
-  const cloudTarget = biomeCloudCol.clone().lerp(new THREE.Color(CLOUD_WHITE), brightenMix).lerp(stormCloudCol, stormMix * 0.8);
+  const cloudTarget = _todCloudTarget.setHex(currentBiome.cloudColor).lerp(_TOD_CLOUD_WHITE, brightenMix).lerp(_TOD_CLOUD_STORM, stormMix * 0.8);
   cloudMat.color.copy(cloudTarget);
   cloudMatLow.color.copy(cloudTarget);
   // Emissive tint keeps clouds from turning black when the sun is low.
   // At midday (daylight=1) emissive is 0.15 (dim self-glow overridden by sun);
   // at midnight (daylight=0) emissive is 0.55 so clouds read as moonlit.
-  const cloudEmissive = biomeCloudCol.clone()
-    .lerp(new THREE.Color(0x9abaf8), 1 - daylight)   // cool moonlight at night
-    .lerp(new THREE.Color(0x8a5030), stormMix * 0.4); // dusky if storming
+  const cloudEmissive = _todCloudEmissive.setHex(currentBiome.cloudColor)
+    .lerp(_TOD_CLOUD_MOONLIGHT, 1 - daylight)   // cool moonlight at night
+    .lerp(_TOD_CLOUD_DUSK, stormMix * 0.4); // dusky if storming
   cloudMat.emissive.copy(cloudEmissive);
   cloudMatLow.emissive.copy(cloudEmissive);
   const nightGlow = 0.15 + (1 - daylight) * 0.40;
@@ -9785,21 +10085,30 @@ function updateTimeOfDay(dt = 0) {
   starField.material.opacity = starOpacity;
 
   if (typeof $todInd !== 'undefined' && $todInd) {
+    // Only touch the DOM when the displayed minute actually changes.
     const totalMinutes = Math.floor(((timeOfDay.phase + 0.25) % 1) * 24 * 60) % (24 * 60);
-    const hh = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
-    const mm = String(totalMinutes % 60).padStart(2, '0');
-    $todInd.textContent = `${hh}:${mm} ${timeOfDay.label}`;
-    $todInd.className = `hud-chip ${daylight < 0.2 ? 'warn' : twilight > 0.55 ? '' : 'ok'}`.trim();
+    if (totalMinutes !== _todIndLastMinutes || timeOfDay.label !== _todIndLastLabel) {
+      _todIndLastMinutes = totalMinutes;
+      _todIndLastLabel = timeOfDay.label;
+      const hh = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+      const mm = String(totalMinutes % 60).padStart(2, '0');
+      $todInd.textContent = `${hh}:${mm} ${timeOfDay.label}`;
+      $todInd.className = `hud-chip ${daylight < 0.2 ? 'warn' : twilight > 0.55 ? '' : 'ok'}`.trim();
+    }
   }
 }
 
+const _lfForward = new THREE.Vector3();
+const _lfSunScreen = new THREE.Vector3();
+const _lfSunScreenOut = { x: 0, y: 0, z: 0 };
+const _lfGhostColors = [new THREE.Color(), new THREE.Color(), new THREE.Color()];
 function updateLensFlare() {
   if (!sunGrp.userData || !sunGrp.userData.streak || !sunGrp.userData.ghosts) return;
   const streak = sunGrp.userData.streak;
   const ghosts = sunGrp.userData.ghosts;
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const forward = _lfForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = clamp01(forward.dot(sunDir));
-  const sunScreen = sunGrp.position.clone().project(camera);
+  const sunScreen = _lfSunScreen.copy(sunGrp.position).project(camera);
   const onScreen = sunScreen.z > -1 && sunScreen.z < 1 && Math.abs(sunScreen.x) < 1.4 && Math.abs(sunScreen.y) < 1.4;
   const daylight = timeOfDay.daylight || 0;
   const flareStrength = onScreen ? Math.pow(facing, 6) * clamp01(0.1 + daylight * 1.15) : 0;
@@ -9807,14 +10116,18 @@ function updateLensFlare() {
   const centerPullX = -sunScreen.x;
   const centerPullY = -sunScreen.y;
   sunGrp.userData.flareStrength = flareStrength * edgeFade;
-  sunGrp.userData.sunScreen = { x: sunScreen.x, y: sunScreen.y, z: sunScreen.z };
+  _lfSunScreenOut.x = sunScreen.x; _lfSunScreenOut.y = sunScreen.y; _lfSunScreenOut.z = sunScreen.z;
+  sunGrp.userData.sunScreen = _lfSunScreenOut;
 
   streak.position.set(centerPullX * 260, centerPullY * 75, 0);
   streak.material.color.copy(todSun).lerp(TOD_WARM, 0.28);
   streak.material.opacity = flareStrength * edgeFade * 0.26;
   streak.scale.set(1200 + flareStrength * 900, 110 + flareStrength * 90, 1);
 
-  const ghostColors = [todSun.clone().lerp(TOD_WARM, 0.12), TOD_WARM.clone(), TOD_MOON.clone()];
+  const ghostColors = _lfGhostColors;
+  ghostColors[0].copy(todSun).lerp(TOD_WARM, 0.12);
+  ghostColors[1].copy(TOD_WARM);
+  ghostColors[2].copy(TOD_MOON);
   const ghostFactors = [0.38, 0.9, 1.45];
   ghosts.forEach((ghost, idx) => {
     const factor = ghostFactors[idx] || (idx + 1) * 0.5;
@@ -9968,8 +10281,11 @@ function updateSunShadowRig() {
   sunTarget.position.copy(sunShadowFocus);
   const shadowDistance = Math.max(140, Math.min(340, scene.userData.__shadowDistance || 230));
   sun.position.copy(sunShadowFocus).addScaledVector(sunDir, Math.max(420, shadowDistance * 2.45));
-  if (sun.shadow && sun.shadow.camera) {
+  // Projection bounds depend only on shadowDistance (an options-panel setting);
+  // recompute the projection matrix only when it actually changes.
+  if (sun.shadow && sun.shadow.camera && sun.shadow.camera.userData.__lastDist !== shadowDistance) {
     const cam = sun.shadow.camera;
+    cam.userData.__lastDist = shadowDistance;
     cam.left = -shadowDistance;
     cam.right = shadowDistance;
     cam.top = shadowDistance;
@@ -10948,6 +11264,7 @@ window.__sim = { plane, jet, scene, camera, renderer, weather, THREE,
   resetPlane: () => resetPlane(),
   damagePlane: (a, k, o) => damagePlane(a, k, o),
   playSfx: (e, o) => playSfx(e, o),
+  getHeight, heightPrefetch, // debug: worker-grid parity checks from devtools
 };
 
 const GRAVITY = 9.81;
@@ -11957,10 +12274,20 @@ function updateJetVisual() {
   const glowOpacity = plane.landingLights
     ? Math.min(0.6, 0.10 + nightFactor * 0.45 + (plane.onGround ? 0.10 : 0))
     : 0;
+  // Group-N hysteresis: ON edge is immediate (L jumps intensity to ≥0.65, far
+  // above the threshold), OFF edge needs 3 s below it — key spam or dusk shimmer
+  // can't flap the lights-hash into a shader recompile.
+  auxLightGroupN.landingWant = landingIntensity;
+  const auxNOn = updateAuxLightGroupN(performance.now());
+  // Single application site for ALL group-N visibility: apron floods must flip
+  // the same frame as the landing rigs, or intermediate frames render
+  // mismatched point/spot counts — hashes outside the prewarmed states.
+  for (const rig of airfieldAmbientState.apronFloods) rig.light.visible = auxNOn;
   if (jet.userData.landingRigs) {
     const forwardWorld = _visFwd.set(0, 0, -1).applyQuaternion(plane.quat);
     const rightWorld = _visRight.set(1, 0, 0).applyQuaternion(plane.quat);
     for (const rig of jet.userData.landingRigs) {
+      rig.light.visible = auxNOn;
       rig.light.intensity = landingIntensity;
       rig.light.distance = 260 + nightFactor * 180;
       rig.glow.material.opacity = glowOpacity;
@@ -12097,10 +12424,19 @@ const flightLearningState = {
 };
 function persistFlightLearning(force = false) {
   const now = performance.now();
-  if (!force && now - (flightLearningState.lastPersistAt || 0) < 3800) return;
+  // Stringify of up to 900 samples + synchronous localStorage write is a 2-10 ms
+  // main-thread stall — do it rarely and off the frame path (idle callback),
+  // with a pagehide flush below so nothing is lost on exit.
+  if (!force && now - (flightLearningState.lastPersistAt || 0) < 30000) return;
   flightLearningState.lastPersistAt = now;
-  try { localStorage.setItem(FLIGHT_LEARNING_KEY, JSON.stringify(flightLearningState.samples.slice(-FLIGHT_LEARNING_MAX))); } catch {}
+  const write = () => {
+    try { localStorage.setItem(FLIGHT_LEARNING_KEY, JSON.stringify(flightLearningState.samples.slice(-FLIGHT_LEARNING_MAX))); } catch {}
+  };
+  if (!force && typeof requestIdleCallback === 'function') requestIdleCallback(write, { timeout: 4000 });
+  else write();
 }
+window.addEventListener('pagehide', () => persistFlightLearning(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistFlightLearning(true); });
 function recordFlightLearningSample(slot) {
   if (!slot || replay.playing || plane.crashed) return;
   const now = slot.t || performance.now();
@@ -12164,12 +12500,14 @@ function learnedFlightOffsetForTraffic(t, nowMs = performance.now()) {
   const rx = dx * ca - dz * sa;
   const rz = dx * sa + dz * ca;
   const scale = 0.18;
-  return new THREE.Vector3(
+  return _learnedOffsetScratch.set(
     Math.max(-155, Math.min(155, rx * scale)),
     Math.max(-54, Math.min(92, dy * scale)),
     Math.max(-155, Math.min(155, rz * scale))
   );
 }
+// Shared scratch for the per-UFO-per-frame learned offset (consumed immediately)
+const _learnedOffsetScratch = new THREE.Vector3();
 function applyLearnedFlightPatternToUfo(t, pos, dt) {
   const offset = learnedFlightOffsetForTraffic(t);
   if (!offset) return;
@@ -12180,16 +12518,23 @@ function applyLearnedFlightPatternToUfo(t, pos, dt) {
 }
 function replayRecord() {
   if (replay.playing || plane.crashed) return;
-  const slot = {
-    pos: plane.pos.clone(),
-    quat: plane.quat.clone(),
-    throttle: plane.throttle,
-    t: performance.now(),
-  };
+  let slot;
   if (replay.size < REPLAY_MAX) {
+    slot = {
+      pos: plane.pos.clone(),
+      quat: plane.quat.clone(),
+      throttle: plane.throttle,
+      t: performance.now(),
+    };
     replay.buffer[replay.size++] = slot;
   } else {
-    replay.buffer[replay.head] = slot;
+    // Ring is full: recycle the slot being overwritten instead of allocating
+    // a fresh Vector3 + Quaternion + object 60 times a second forever.
+    slot = replay.buffer[replay.head];
+    slot.pos.copy(plane.pos);
+    slot.quat.copy(plane.quat);
+    slot.throttle = plane.throttle;
+    slot.t = performance.now();
     replay.head = (replay.head + 1) % REPLAY_MAX;
   }
   recordFlightLearningSample(slot);
@@ -13278,13 +13623,23 @@ document.addEventListener('pointerlockchange', () => {
   }
 });
 
+// Scratch vectors for updateCamera (runs every frame; pattern matches _phys*/_hud*)
+const _camOffset = new THREE.Vector3();
+const _camPlaneUp = new THREE.Vector3();
+const _camPlaneRight = new THREE.Vector3();
+const _camPlaneForward = new THREE.Vector3();
+const _camDelayedForward = new THREE.Vector3();
+const _camWorldUp = new THREE.Vector3(0, 1, 0);
+const _camDesired = new THREE.Vector3();
+const _camLookForward = new THREE.Vector3();
+const _camLookTarget = new THREE.Vector3();
 function updateCamera(dt) {
   // Stable chase camera: keep the camera locked behind and above the plane.
   // Mouse now flies the aircraft via the reticle instead of orbiting the camera.
-  const offsetRotated = camLocalOffset.clone();
-  const planeUp = new THREE.Vector3(0, 1, 0).applyQuaternion(jet.quaternion);
-  const planeRight = new THREE.Vector3(1, 0, 0).applyQuaternion(jet.quaternion);
-  const planeForward = new THREE.Vector3(0, 0, -1).applyQuaternion(jet.quaternion);
+  const offsetRotated = _camOffset.copy(camLocalOffset);
+  const planeUp = _camPlaneUp.set(0, 1, 0).applyQuaternion(jet.quaternion);
+  const planeRight = _camPlaneRight.set(1, 0, 0).applyQuaternion(jet.quaternion);
+  const planeForward = _camPlaneForward.set(0, 0, -1).applyQuaternion(jet.quaternion);
   let followQuat = camera.userData.followQuat;
   if (!(followQuat instanceof THREE.Quaternion)) {
     followQuat = jet.quaternion.clone();
@@ -13293,8 +13648,8 @@ function updateCamera(dt) {
   const cameraLagTune = scene.userData.__cameraLag != null ? scene.userData.__cameraLag : 1.0;
   const quatCatchup = 1 - Math.exp(-((plane.onGround ? 18.0 : 10.8) / cameraLagTune) * dt);
   followQuat.slerp(jet.quaternion, quatCatchup);
-  const delayedForward = new THREE.Vector3(0, 0, -1).applyQuaternion(followQuat).normalize();
-  const worldUp = new THREE.Vector3(0, 1, 0);
+  const delayedForward = _camDelayedForward.set(0, 0, -1).applyQuaternion(followQuat).normalize();
+  const worldUp = _camWorldUp;
 
   const bankReveal = clamp01(Math.abs(planeRight.y) * 1.05);
   const pitchReveal = clamp01(Math.abs(plane.vel.y) / 22);
@@ -13356,7 +13711,7 @@ function updateCamera(dt) {
     ? rawHeight
     : prevHeightState + (rawHeight - prevHeightState) * heightBlend;
   camera.userData.verticalHeightState = height;
-  const desired = jet.position.clone()
+  const desired = _camDesired.copy(jet.position)
     .addScaledVector(delayedForward, -backDist)
     .addScaledVector(worldUp, height);
 
@@ -13379,8 +13734,8 @@ function updateCamera(dt) {
     ? rawFocusYOffset
     : prevFocusState + (rawFocusYOffset - prevFocusState) * focusBlend;
   camera.userData.focusYOffsetState = focusYOffset;
-  const lookForward = delayedForward.clone().lerp(planeForward, 0.38 + maneuverReveal * 0.14).normalize();
-  const lookTarget = jet.position.clone()
+  const lookForward = _camLookForward.copy(delayedForward).lerp(planeForward, 0.38 + maneuverReveal * 0.14).normalize();
+  const lookTarget = _camLookTarget.copy(jet.position)
     .addScaledVector(lookForward, lookDist)
     .addScaledVector(worldUp, focusYOffset);
 
@@ -13392,7 +13747,10 @@ function updateCamera(dt) {
   applyCameraLensFov(CAMERA_BASE_FOV + speedFov + lowFastFov + maneuverReveal * 1.3, Math.min(1, dt * 4.4));
 
   camera.lookAt(lookTarget);
-  camera.userData.focusTarget = lookTarget.clone();
+  if (!camera.userData.focusTarget || !camera.userData.focusTarget.isVector3) {
+    camera.userData.focusTarget = new THREE.Vector3();
+  }
+  camera.userData.focusTarget.copy(lookTarget);
   camera.userData.cameraHeightOffset = camera.position.y - jet.position.y;
   camera.userData.cameraFocusYOffset = lookTarget.y - jet.position.y;
 }
@@ -13726,7 +14084,10 @@ function collectAirTargetCandidates() {
       distanceM: plane.pos.distanceTo(rec.group.position),
       speedKts: (rec.speed || 0) * 1.94,
       altFt: rec.group.position.y * 3.28,
-      velocity: rec.velocity && rec.velocity.lengthSq && rec.velocity.lengthSq() > 0.01 ? rec.velocity.clone() : estimateTrafficVelocity(rec).clone(),
+      // Reuse a per-record vector — this ran ~22 clones per frame
+      velocity: (rec.__hudVel || (rec.__hudVel = new THREE.Vector3())).copy(
+        rec.velocity && rec.velocity.lengthSq && rec.velocity.lengthSq() > 0.01 ? rec.velocity : estimateTrafficVelocity(rec)
+      ),
     });
   }
   for (const [id, rec] of multiplayerState.remotePlayers) {
@@ -14145,16 +14506,23 @@ function updateTargetHud(dt = 1 / 60) {
     poolEntry.el.classList.toggle('damaged', !!(d && hullPct < 100));
     poolEntry.el.style.opacity = targetBoxLocked ? '1' : isTracking ? '0.96' : isActive ? '0.78' : '0.35';
     const lockPct = isActive ? Math.round(targetHudState.lockAmount * 100) : 0;
-    poolEntry.tag.textContent = isActive
+    const tagText = isActive
       ? (targetBoxLocked
           ? `${target.label} · ${target.type} · LOCK`
           : isTracking
             ? `${target.label} · ${target.type} · TRACK ${lockPct}%`
             : `${target.label} · ${target.type} · ${target.guidanceLabel || (target.offscreenCue ? 'STEER' : 'IN FRONT')}`)
       : `${target.label} · ${target.type}`;
-    poolEntry.readout.style.display = 'block';
-    const damageLine = (isActive && d) ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
-    poolEntry.readout.textContent = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
+    if (poolEntry.tag.textContent !== tagText) poolEntry.tag.textContent = tagText;
+    if (poolEntry.readout.style.display !== 'block') poolEntry.readout.style.display = 'block';
+    // Distance/speed/alt readout changes every frame at full precision — 10 Hz
+    // is plenty for a textual readout and skips most of the string+DOM churn.
+    if (!poolEntry.lastReadoutAt || nowMs - poolEntry.lastReadoutAt >= 100) {
+      poolEntry.lastReadoutAt = nowMs;
+      const damageLine = (isActive && d) ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
+      const readoutText = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
+      if (poolEntry.readout.textContent !== readoutText) poolEntry.readout.textContent = readoutText;
+    }
   }
 }
 function getAimAssistDirection(origin, baseDir, out = _hudWorldG) {
@@ -14681,6 +15049,11 @@ function getNextPracticeRing() {
   const ring = course[idx];
   return ring && ring.visible ? { course, ring, index: idx } : null;
 }
+const _cdTarget = new THREE.Vector3();
+const _cdToTarget = new THREE.Vector3();
+const _cdForward = new THREE.Vector3();
+const _cdRight = new THREE.Vector3();
+let _cdLastTextAt = 0;
 function updateCourseDirectorHUD() {
   if (!$courseDirector) return;
   const next = getNextPracticeRing();
@@ -14688,11 +15061,17 @@ function updateCourseDirectorHUD() {
     $courseDirector.classList.add('is-hidden');
     return;
   }
+  $courseDirector.classList.remove('is-hidden');
+  // Guidance text at 10 Hz: the numbers move a couple of meters per frame and
+  // six unconditional textContent writes per frame cost style/layout work.
+  const now = performance.now();
+  if (now - _cdLastTextAt < 100) return;
+  _cdLastTextAt = now;
   const { course, ring, index } = next;
-  const target = ring.getWorldPosition(new THREE.Vector3());
-  const toTarget = target.clone().sub(plane.pos);
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat).normalize();
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat).normalize();
+  const target = ring.getWorldPosition(_cdTarget);
+  const toTarget = _cdToTarget.copy(target).sub(plane.pos);
+  const forward = _cdForward.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const right = _cdRight.set(1, 0, 0).applyQuaternion(plane.quat).normalize();
   const forwardDist = toTarget.dot(forward);
   const lateral = toTarget.dot(right);
   const vertical = target.y - plane.pos.y;
@@ -14703,16 +15082,16 @@ function updateCourseDirectorHUD() {
   const altLabel = Math.abs(vertical) < 14
     ? 'LEVEL'
     : (vertical > 0 ? 'CLIMB' : 'DESCEND');
-  $courseDirector.classList.remove('is-hidden');
   const rewardLabel = formatPracticeReward(ring.userData.upgradeReward || null);
-  if ($courseTitle) $courseTitle.textContent = course.completedRuns > 0 ? `TARGET RUN ${course.completedRuns + 1}` : 'TARGET COURSE';
-  if ($courseNext) $courseNext.textContent = `TGT ${index + 1}/${course.activeCount}`;
-  if ($courseRange) $courseRange.textContent = distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)}KM` : `${Math.round(distanceM)}M`;
-  if ($courseTurn) $courseTurn.textContent = turnLabel;
-  if ($courseAlt) $courseAlt.textContent = altLabel;
+  const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  setText($courseTitle, course.completedRuns > 0 ? `TARGET RUN ${course.completedRuns + 1}` : 'TARGET COURSE');
+  setText($courseNext, `TGT ${index + 1}/${course.activeCount}`);
+  setText($courseRange, distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)}KM` : `${Math.round(distanceM)}M`);
+  setText($courseTurn, turnLabel);
+  setText($courseAlt, altLabel);
   if ($courseCue) {
     const closure = forwardDist < -20 ? 'TURN BACK' : (distanceM < 90 ? 'COMMIT' : 'FOLLOW THE BLUE LINE');
-    $courseCue.textContent = `${closure} · NEXT REWARD ${rewardLabel} · ${Math.round(Math.abs(lateral))}M ${turnLabel}`;
+    setText($courseCue, `${closure} · NEXT REWARD ${rewardLabel} · ${Math.round(Math.abs(lateral))}M ${turnLabel}`);
   }
 }
 function getLocalRaceEntry() {
@@ -14797,31 +15176,42 @@ function updateMultiplayerRaceHUD() {
     else if (race.status === 'finished') $raceStatus.textContent = 'FINISHED · PRESS N TO RESTART';
     else $raceStatus.textContent = MULTIPLAYER_URL ? 'PRESS N TO START GRID' : 'SOLO TIME TRIAL · PRESS N';
   }
-  if ($raceBoard) {
+  if ($raceBoard && (performance.now() - (_raceBoardState.lastAt || 0)) >= 200) {
+    // Leaderboard refresh at 5 Hz with pooled rows — the old per-frame
+    // replaceChildren + 4 createElement per row was constant layout/GC churn.
+    _raceBoardState.lastAt = performance.now();
     const entries = [getLocalRaceEntry(), ...getRemoteRaceEntries()]
       .sort((a, b) => raceSortValue(b) - raceSortValue(a) || (a.local ? -1 : 1))
       .slice(0, 5);
-    $raceBoard.replaceChildren();
-    entries.forEach((entry, idx) => {
+    while (_raceBoardState.rows.length < entries.length) {
       const row = document.createElement('div');
-      row.className = 'race-row' + (entry.local ? ' local' : '');
-      const rank = document.createElement('span');
-      rank.className = 'race-rank';
-      rank.textContent = `#${idx + 1}`;
-      const name = document.createElement('span');
-      name.className = 'race-name';
-      name.textContent = entry.local ? `${entry.callsign} YOU` : entry.callsign;
-      const progress = document.createElement('span');
-      progress.className = 'race-progress';
-      if (entry.status === 'finished') progress.textContent = formatRaceTime(entry.lapMs, true).toUpperCase();
-      else if (entry.status === 'racing') progress.textContent = `${entry.gateIndex}/${entry.gateCount || 0}`;
-      else if (entry.status === 'countdown') progress.textContent = `T-${Math.max(1, Math.ceil(entry.countdownMs / 1000))}`;
-      else progress.textContent = entry.bestMs ? `B ${formatRaceTime(entry.bestMs, true).toUpperCase()}` : 'READY';
+      const rank = document.createElement('span'); rank.className = 'race-rank';
+      const name = document.createElement('span'); name.className = 'race-name';
+      const progress = document.createElement('span'); progress.className = 'race-progress';
       row.append(rank, name, progress);
       $raceBoard.appendChild(row);
+      _raceBoardState.rows.push({ row, rank, name, progress });
+    }
+    _raceBoardState.rows.forEach((slot, idx) => {
+      const entry = entries[idx];
+      if (!entry) { if (slot.row.style.display !== 'none') slot.row.style.display = 'none'; return; }
+      if (slot.row.style.display === 'none') slot.row.style.display = '';
+      const rowClass = 'race-row' + (entry.local ? ' local' : '');
+      if (slot.row.className !== rowClass) slot.row.className = rowClass;
+      const rankText = `#${idx + 1}`;
+      if (slot.rank.textContent !== rankText) slot.rank.textContent = rankText;
+      const nameText = entry.local ? `${entry.callsign} YOU` : entry.callsign;
+      if (slot.name.textContent !== nameText) slot.name.textContent = nameText;
+      let progressText;
+      if (entry.status === 'finished') progressText = formatRaceTime(entry.lapMs, true).toUpperCase();
+      else if (entry.status === 'racing') progressText = `${entry.gateIndex}/${entry.gateCount || 0}`;
+      else if (entry.status === 'countdown') progressText = `T-${Math.max(1, Math.ceil(entry.countdownMs / 1000))}`;
+      else progressText = entry.bestMs ? `B ${formatRaceTime(entry.bestMs, true).toUpperCase()}` : 'READY';
+      if (slot.progress.textContent !== progressText) slot.progress.textContent = progressText;
     });
   }
 }
+const _raceBoardState = { lastAt: 0, rows: [] };
 // Pre-allocated static scratch objects for updateHUD to avoid garbage collector pressure
 const _hudFwd = new THREE.Vector3();
 const _hudInvQ = new THREE.Quaternion();
@@ -15257,7 +15647,7 @@ function animate(now) {
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
   updateHorizonChunks(plane.pos.x, plane.pos.z);
-  processChunkBuildQueues(2.5, 6);
+  processChunkBuildQueues(2.5, 6, true); // real-time: allow brief deferral for worker grids
   updateCamera(dt);
   updateAtmospheric(dt);
   updateShadow();
@@ -15319,9 +15709,13 @@ updateDepthOfField();
 updateMotionBlurPostFX();
 // Pre-warm: compile shader programs for everything already in the scene during the
 // load screen, so the first interactive frame doesn't hitch on lazy compilation.
-// (Content created later — multiplayer planes, tracers, alternate clouds — still
-// compiles on first use; this flattens only the initial batch.)
-try { renderer.compile(scene, camera); } catch (e) {}
+// prewarmLightStatePrograms runs one compile pass per reachable aux-light state
+// (visible point/spot counts are baked into the program hash), so later toggles —
+// landing lights, dusk apron floods, dusk/replay hero light — don't recompile
+// mid-flight. (Content created later — multiplayer planes, tracers, alternate
+// clouds — still compiles on first use; this flattens only the initial batch.)
+prewarmLightStatePrograms();
+try { renderer.compile(scene, camera); } catch (e) {}  // safety net for any state outside the prewarm enum
 renderScene();
 
 // =============================================================
@@ -15403,8 +15797,9 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   updateFxaaPassResolution();
-  if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth, window.innerHeight);
+  if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth / 2, window.innerHeight / 2);
   if (postFX.composer) {
+    if (postFX.composer.setPixelRatio) postFX.composer.setPixelRatio(renderer.getPixelRatio());
     postFX.composer.setSize(window.innerWidth, window.innerHeight);
     if (postFX.bokehPass && postFX.bokehPass.materialBokeh && postFX.bokehPass.materialBokeh.uniforms.aspect) {
       postFX.bokehPass.materialBokeh.uniforms.aspect.value = camera.aspect;
@@ -15773,6 +16168,7 @@ function playGateChime(streak) {
     osc.stop(ct + off + 0.5);
   });
 }
+const _gateWorldPos = new THREE.Vector3();
 function updateGateScoring(dt) {
   if (plane.crashed || replay.playing) return;
   const now = performance.now();
@@ -15782,10 +16178,10 @@ function updateGateScoring(dt) {
   for (const ring of window.__allGates) {
     if (!ring.userData.isGate || ring.userData.scored) continue;
     if (!ring.parent) continue;
-    const ringWorldPos = new THREE.Vector3();
-    ring.getWorldPosition(ringWorldPos);
-    const d = plane.pos.distanceTo(ringWorldPos);
-    if (d < ring.userData.gateRadius) {
+    const ringWorldPos = ring.getWorldPosition(_gateWorldPos);
+    // Squared-distance broad phase: skip the sqrt for the common far-away case
+    const r = ring.userData.gateRadius;
+    if (plane.pos.distanceToSquared(ringWorldPos) < r * r) {
       const kind = ring.userData.gateKind || 'ring';
       if (kind === 'bank') {
         if (now - (ring.userData.lastBankAt || 0) < 2200) continue;
@@ -16383,6 +16779,53 @@ function resetGateScoring(respawn = false) {
 const traffic = [];
 const TRAFFIC_UFO_TARGET_FILE = 'procedural:ufo-saucer';
 
+// Shared saucer materials — one set reused by every saucer. Hull/rim/canopy
+// are never mutated; beacons pulse from the global clock with a per-rim-index
+// phase (i/12), so beacon i of every saucer renders identically and can share
+// one material. Per-saucer effects (e.g. a damage tint on the hull) would need
+// a clone — sharing means any mutation hits ALL saucers. NEVER dispose these:
+// saucer destruction is visibility-only (destroyTarget), models are never
+// removed from the scene.
+let saucerSharedMats = null;
+function getSaucerSharedMats() {
+  if (saucerSharedMats) return saucerSharedMats;
+  const hull = new THREE.MeshStandardMaterial({
+    color: 0x7f92a8,
+    emissive: 0x10243d,
+    emissiveIntensity: 0.18,
+    roughness: 0.38,
+    metalness: 0.74,
+  });
+  const rim = new THREE.MeshStandardMaterial({
+    color: 0xb9cadb,
+    emissive: 0x234d70,
+    emissiveIntensity: 0.22,
+    roughness: 0.32,
+    metalness: 0.82,
+  });
+  const canopy = new THREE.MeshStandardMaterial({
+    color: 0x9fe8ff,
+    emissive: 0x256d8c,
+    emissiveIntensity: 0.55,
+    roughness: 0.18,
+    metalness: 0.12,
+    transparent: true,
+    opacity: 0.78,
+  });
+  const beacons = [];
+  for (let i = 0; i < 12; i++) {
+    beacons.push(new THREE.MeshBasicMaterial({
+      color: i % 2 === 0 ? 0x80f7ff : 0xffb86a,
+      transparent: true,
+      opacity: i % 2 === 0 ? 0.82 : 0.72,
+      toneMapped: false,
+    }));
+  }
+  saucerSharedMats = { hull, rim, canopy, beacons };
+  for (const m of [hull, rim, canopy, ...beacons]) m.userData.__sharedSaucerMat = true;
+  return saucerSharedMats;
+}
+
 function createSaucerTargetModel(opts = {}) {
   const root = new THREE.Group();
   root.name = 'orientation-safe UFO target';
@@ -16395,29 +16838,9 @@ function createSaucerTargetModel(opts = {}) {
   root.userData.shieldMesh = null;
   root.userData.landingBeam = null;
 
-  const hullMat = new THREE.MeshStandardMaterial({
-    color: 0x7f92a8,
-    emissive: 0x10243d,
-    emissiveIntensity: 0.18,
-    roughness: 0.38,
-    metalness: 0.74,
-  });
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: 0xb9cadb,
-    emissive: 0x234d70,
-    emissiveIntensity: 0.22,
-    roughness: 0.32,
-    metalness: 0.82,
-  });
-  const canopyMat = new THREE.MeshStandardMaterial({
-    color: 0x9fe8ff,
-    emissive: 0x256d8c,
-    emissiveIntensity: 0.55,
-    roughness: 0.18,
-    metalness: 0.12,
-    transparent: true,
-    opacity: 0.78,
-  });
+  const shared = getSaucerSharedMats();
+  // Per-saucer: glow opacity tracks this saucer's evasivePhase; shield/beam
+  // track its damage state. Everything else uses the shared set above.
   const glowMat = new THREE.MeshBasicMaterial({
     color: 0x60f6ff,
     transparent: true,
@@ -16426,41 +16849,29 @@ function createSaucerTargetModel(opts = {}) {
     blending: THREE.AdditiveBlending,
     toneMapped: false,
   });
-  const beaconMatA = new THREE.MeshBasicMaterial({
-    color: 0x80f7ff,
-    transparent: true,
-    opacity: 0.82,
-    toneMapped: false,
-  });
-  const beaconMatB = new THREE.MeshBasicMaterial({
-    color: 0xffb86a,
-    transparent: true,
-    opacity: 0.72,
-    toneMapped: false,
-  });
 
-  const hull = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.8, 0.82, 56, 1), hullMat);
+  const hull = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.8, 0.82, 56, 1), shared.hull);
   hull.name = 'ufo symmetric saucer hull';
   root.add(hull);
 
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(5.25, 0.22, 10, 72), rimMat);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(5.25, 0.22, 10, 72), shared.rim);
   rim.name = 'ufo circular rim';
   rim.rotation.x = Math.PI / 2;
   rim.position.y = -0.02;
   root.add(rim);
 
-  const topDome = new THREE.Mesh(new THREE.SphereGeometry(2.85, 36, 14), canopyMat);
+  const topDome = new THREE.Mesh(new THREE.SphereGeometry(2.85, 36, 14), shared.canopy);
   topDome.name = 'ufo centered canopy dome';
   topDome.scale.set(1, 0.34, 1);
   topDome.position.y = 0.48;
   root.add(topDome);
 
-  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat.clone());
+  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat);
   lowerGlow.name = 'ufo underside glow';
   lowerGlow.position.y = -0.48;
   root.add(lowerGlow);
 
-  const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), glowMat.clone());
+  const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), glowMat);
   ringGlow.name = 'ufo equator glow';
   ringGlow.rotation.x = Math.PI / 2;
   ringGlow.position.y = 0.18;
@@ -16490,7 +16901,7 @@ function createSaucerTargetModel(opts = {}) {
 
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
-    const mat = (i % 2 === 0 ? beaconMatA : beaconMatB).clone();
+    const mat = shared.beacons[i];
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
     beacon.name = 'ufo symmetric rim beacon';
     beacon.position.set(Math.cos(a) * 5.15, 0.02, Math.sin(a) * 5.15);
@@ -16668,7 +17079,26 @@ function pathWaypointLoop(points, opts = {}) {
     segLens.push(len);
     total += len;
   }
+  // Rotating scratch slots: this runs once per traffic record per frame, and the
+  // old per-call allocations (~7 objects each) were a steady GC-pressure source.
+  // 3 sample slots cover prev/cur/next within one call; 2 result slots keep
+  // consecutive calls (e.g. estimateTrafficVelocity's pair) from aliasing.
+  // Callers must treat returns as transient snapshots — copy what they keep.
+  const _sampleSlots = [
+    { pos: new THREE.Vector3(), segment: 0 },
+    { pos: new THREE.Vector3(), segment: 0 },
+    { pos: new THREE.Vector3(), segment: 0 },
+  ];
+  let _sampleIdx = 0;
+  const _results = [
+    { pos: new THREE.Vector3(), yaw: 0, pitch: 0, bank: 0, segment: 0 },
+    { pos: new THREE.Vector3(), yaw: 0, pitch: 0, bank: 0, segment: 0 },
+  ];
+  let _resultIdx = 0;
+  const _tangent = new THREE.Vector3();
   function sample(distance) {
+    const out = _sampleSlots[_sampleIdx];
+    _sampleIdx = (_sampleIdx + 1) % 3;
     let d = ((distance % total) + total) % total;
     for (let i = 0; i < segLens.length; i++) {
       const len = segLens[i];
@@ -16676,23 +17106,31 @@ function pathWaypointLoop(points, opts = {}) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
         const u = len > 0 ? d / len : 0;
-        return { pos: new THREE.Vector3().lerpVectors(a, b, u), segment: i };
+        out.pos.lerpVectors(a, b, u);
+        out.segment = i;
+        return out;
       }
       d -= len;
     }
-    return { pos: pts[0].clone(), segment: 0 };
+    out.pos.copy(pts[0]);
+    out.segment = 0;
+    return out;
   }
   return function(phase) {
     const prev = sample(phase - lookAhead);
     const cur = sample(phase);
     const next = sample(phase + lookAhead);
-    const tangent = next.pos.clone().sub(prev.pos);
-    const horiz = Math.max(0.001, Math.hypot(tangent.x, tangent.z));
-    const yaw = Math.atan2(tangent.x, -tangent.z);
-    const pitch = Math.atan2(tangent.y, horiz);
+    _tangent.copy(next.pos).sub(prev.pos);
+    const horiz = Math.max(0.001, Math.hypot(_tangent.x, _tangent.z));
+    const yaw = Math.atan2(_tangent.x, -_tangent.z);
+    const pitch = Math.atan2(_tangent.y, horiz);
     const prevYaw = Math.atan2(cur.pos.x - prev.pos.x, -(cur.pos.z - prev.pos.z));
     const bank = Math.max(-0.38, Math.min(0.38, -wrapRadians(yaw - prevYaw) * bankScale));
-    return { pos: cur.pos, yaw, pitch, bank, segment: cur.segment };
+    const res = _results[_resultIdx];
+    _resultIdx ^= 1;
+    res.pos.copy(cur.pos);
+    res.yaw = yaw; res.pitch = pitch; res.bank = bank; res.segment = cur.segment;
+    return res;
   };
 }
 function pathAirfieldCircuit(runwayKey = 'runway36', opts = {}) {
@@ -16794,6 +17232,8 @@ function trafficEnabled() {
   return ambientDensity > 0.05;
 }
 
+const _trafficPos = new THREE.Vector3();
+const _trafficOrbit = new THREE.Vector3();
 function updateTraffic(dt) {
   if (!trafficEnabled()) {
     for (const t of traffic) {
@@ -16813,7 +17253,9 @@ function updateTraffic(dt) {
     t.phase += dt * t.speed;
     const sample = t.pathFn(t.phase) || {};
     const isUfo = t.targetKind === 'ufo-saucer' || (t.child && t.child.userData.__isUfoTarget);
-    const pos = sample.pos && sample.pos.clone ? sample.pos.clone() : new THREE.Vector3();
+    // pos never escapes the iteration (it's copied into group.position /
+    // prevPosition below) — reuse one scratch vector instead of a per-record clone
+    const pos = sample.pos ? _trafficPos.copy(sample.pos) : _trafficPos.set(0, 0, 0);
     let yaw = sample.yaw || 0;
     let pitch = sample.pitch || 0;
     let bank = sample.bank || 0;
@@ -16830,7 +17272,7 @@ function updateTraffic(dt) {
         if (t.aiMode === 'dogfight') {
           const orbitRadius = 170 + Math.sin(phase * 0.7) * 48;
           const desired = _combatTmpA.copy(plane.pos)
-            .add(new THREE.Vector3(Math.cos(phase) * orbitRadius, 0, Math.sin(phase) * orbitRadius));
+            .add(_trafficOrbit.set(Math.cos(phase) * orbitRadius, 0, Math.sin(phase) * orbitRadius));
           const terrain = desired.x * desired.x + desired.z * desired.z < AIRFIELD_FLAT_R2
             ? AIRFIELD_SURFACE_Y : getHeight(desired.x, desired.z);
           desired.y = Math.max(terrain + 72, plane.pos.y + 42 + Math.sin(phase * 1.6) * 38);
@@ -17678,7 +18120,9 @@ function updatePracticeRingCourse(dt) {
   // motion-blur dialed down — full ultra blew them out by default.
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'high', shadowDistance: 320,
-    dof: true, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
+    // dof defaults OFF: r128 BokehPass re-renders the whole scene for its depth
+    // pass (~2x geometry cost per frame) for a barely-visible blur at our apertures.
+    dof: false, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
     waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 8, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
@@ -17691,8 +18135,8 @@ function updatePracticeRingCourse(dt) {
   const PRESETS = {
     low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
     medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: true,  bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: true,  bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -17714,6 +18158,10 @@ function updatePracticeRingCourse(dt) {
       // else: clearly capable desktop (>8 cores) → keep DEFAULTS (detuned ultra).
     }
   } catch {}
+  // One-time migration for previously saved settings: DoF's BokehPass doubles the
+  // per-frame geometry cost for a near-invisible blur, so force it off once.
+  // Users can still re-enable it in the graphics panel afterwards.
+  if (gfx.__dofPerfMigration == null) { gfx.dof = false; gfx.__dofPerfMigration = 1; }
   if (gfx.motionBlurAmount == null) {
     gfx.motionBlur = true;
     gfx.motionBlurAmount = DEFAULTS.motionBlurAmount;
@@ -17990,10 +18438,19 @@ function updatePracticeRingCourse(dt) {
     const ratio = Math.max(0.5, Math.min(1.0, gfx.renderScale));
     const supersample = Math.max(0.75, Math.min(1.35, gfx.resolutionScale || 1.0));
     if (gfx.adaptiveRes === false) adaptiveScale = 1.0; // disabling restores the user's full chosen resolution
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample * adaptiveScale, 2.35));
+    // Cap the effective ratio at 1.6: with FXAA in the chain the sharpness gain
+    // above ~1.6 is invisible at this scene's detail level, while fill cost grows
+    // with the square (2.0 → 1.6 is a 36% pixel reduction across every pass).
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio * ratio * supersample * adaptiveScale, 1.6));
     renderer.setSize(window.innerWidth, window.innerHeight, true);
-    if (postFX.composer) postFX.composer.setSize(window.innerWidth, window.innerHeight);
-    if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth, window.innerHeight);
+    if (postFX.composer) {
+      // EffectComposer snapshots the renderer's pixel ratio at construction; without
+      // this, render-scale changes (sliders AND adaptive resolution) never reach the
+      // composer targets — i.e. they did nothing while any post pass was active.
+      if (postFX.composer.setPixelRatio) postFX.composer.setPixelRatio(renderer.getPixelRatio());
+      postFX.composer.setSize(window.innerWidth, window.innerHeight);
+    }
+    if (postFX.bloomPass && postFX.bloomPass.setSize) postFX.bloomPass.setSize(window.innerWidth / 2, window.innerHeight / 2);
     updateFxaaPassResolution();
   }
   function applyClouds() {
@@ -19135,6 +19592,14 @@ window.advanceTime = (ms = 16.7) => {
   };
   document.body.appendChild(btn);
 })();
+
+// Second prewarm pass at end of script evaluation: the boot pass ran before
+// the saucer traffic, ring courses, and saved gfx settings existed, so those
+// lit materials would still lazy-compile on the first mid-game aux-light
+// toggle. Already-compiled states are program-cache hits, so this pass costs
+// only the genuinely missing programs.
+prewarmLightStatePrograms();
+try { renderer.compile(scene, camera); } catch (e) {}  // current state, in case it's outside the prewarm enum
 })();
 </script>
 </body>
