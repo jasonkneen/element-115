@@ -1,0 +1,10 @@
+HUMAN: R5 effects applied — shockwave rings, saucer debris, de-striped shoreline foam in both terrain shaders.
+CHG C1<-P1 st=ok ver=pass t="node --check main script OK; class defs grep=3" drift=0 note=ring-pool-and-debris-fx-inserted
+CHG C2<-P2 st=ok ver=pass t="grep update(dt) count=2" drift=+170 note=wired-into-fx-update-loop
+CHG C3<-P3 st=ok ver=pass t="grep emit/burst count=2" drift=+167 note=saucer-kill-fx-hook
+CHG C4<-P4 st=ok ver=pass t="grep emit(plane.pos count=1" drift=+167 note=player-crash-ring
+CHG C5<-P5 st=ok ver=defer-browser t="anchor exact match, block replaced incl mix line" drift=0 note=sand-foam-destripe
+CHG C6<-P6 st=ok ver=defer-browser t="anchor exact match (drift+8 from P5), block replaced incl mix line" drift=+8 note=lowpoly-foam-destripe
+DONE stage=S ok=6 adapt=0 blk=0 deleg=0 esc=0 tok~=3200
+CHG V1<-C1..C6 st=ok ver=pass t="browser: console 0 err (both foam shaders compile); shockwave ring live on crash — scale 24.5@0.65op at 90ms -> 56@0.36 at 290ms (expanding+fading on spec); debris InstancedMesh present (40 inst, MeshStandardMaterial, no new lights); horizon check: no black tiles, shorelines foam without striping; FPS 60.0 / 0.1% missed @ pixelRatio 1.6" note=orchestrator-browser-verify
+DONE stage=verify ok=1 tok~=110

@@ -3210,10 +3210,18 @@ const SAND_FS = `
     vec3 color = diffuse + spec * sunColor + sparkle + backScatter + rimCol;
     color *= mix(vec3(0.72, 0.78, 0.88), vec3(1.03, 1.0, 0.97), sunFacing);
 
-    // ---- Shoreline foam band (masks the water/terrain sawtooth at the coast) ----
-    float foamBand = (1.0 - smoothstep(waterLevel + 0.5, waterLevel + 7.0, vWorldPos.y))
-                   * step(waterLevel - 0.5, vWorldPos.y);
-    foamBand *= 0.55 + 0.55 * vnoise(uv * 3.0 + vec2(time * 0.15));
+    // ---- Shoreline foam band — constrained to true shorelines (R5 F15) ----
+    // Narrow to the ~2.5m just above water, biased hard at the very edge; fade
+    // out past 1200m (shoreline detail only, kills grazing-angle far stripes);
+    // break long bands into patches with a large-scale noise mask so flat coasts
+    // read as foam pockets, not horizontal stripes.
+    float foamEdge = 1.0 - smoothstep(waterLevel + 0.35, waterLevel + 2.8, vWorldPos.y);
+    foamEdge = pow(foamEdge, 1.7) * step(waterLevel - 0.5, vWorldPos.y);
+    float foamDist = length(vWorldPos - cameraPosition);
+    foamEdge *= 1.0 - smoothstep(900.0, 1200.0, foamDist);
+    float foamPatch = smoothstep(0.35, 0.75, vnoise(vWorldPos.xz * 0.05));
+    float foamBand = foamEdge * (0.35 + 0.65 * foamPatch)
+                   * (0.55 + 0.55 * vnoise(vWorldPos.xz * 3.0 + vec2(time * 0.15)));
     color = mix(color, vec3(0.92, 0.97, 1.0), clamp(foamBand, 0.0, 1.0) * 0.55);
 
     // ---- Distance haze / aerial perspective ----
@@ -3334,10 +3342,16 @@ const LOWPOLY_FS = `
     color += rimCol;
     color *= mix(vec3(0.84, 0.88, 0.95), vec3(1.04, 1.00, 0.96), sunFacing);
 
-    // ---- Shoreline foam band (masks the water/terrain sawtooth at the coast) ----
-    float foamBand = (1.0 - smoothstep(waterLevel + 0.5, waterLevel + 7.0, vWorldPos.y))
-                   * step(waterLevel - 0.5, vWorldPos.y);
-    foamBand *= 0.55 + 0.55 * vnoise(vWorldPos.xz * 3.0 + vec2(time * 0.15));
+    // ---- Shoreline foam band — constrained to true shorelines (R5 F15) ----
+    // Identical policy to SAND_FS: narrow near-water edge, 1200m distance fade,
+    // large-scale patch mask so flat low-poly coasts read as pockets not stripes.
+    float foamEdge = 1.0 - smoothstep(waterLevel + 0.35, waterLevel + 2.8, vWorldPos.y);
+    foamEdge = pow(foamEdge, 1.7) * step(waterLevel - 0.5, vWorldPos.y);
+    float foamDist = length(vWorldPos - cameraPosition);
+    foamEdge *= 1.0 - smoothstep(900.0, 1200.0, foamDist);
+    float foamPatch = smoothstep(0.35, 0.75, vnoise(vWorldPos.xz * 0.05));
+    float foamBand = foamEdge * (0.35 + 0.65 * foamPatch)
+                   * (0.55 + 0.55 * vnoise(vWorldPos.xz * 3.0 + vec2(time * 0.15)));
     color = mix(color, vec3(0.92, 0.97, 1.0), clamp(foamBand, 0.0, 1.0) * 0.55);
 
     // Lighter fog + horizon haze so distant terrain sits deeper in the scene
@@ -8350,6 +8364,176 @@ const crashBlast = new THREE.Sprite(new THREE.SpriteMaterial({
 }));
 crashBlast.visible = false;
 scene.add(crashBlast);
+
+// --- R5 F13: pooled expanding shockwave rings (emissive sprites, NO lights / I5) ---
+// Radial ring texture: transparent core, bright ~0.78r annulus, soft outer falloff.
+function makeRingTexture(size = 128) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const cx = size / 2;
+  const grad = g.createRadialGradient(cx, cx, 0, cx, cx, cx);
+  grad.addColorStop(0.00, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.60, 'rgba(255,244,224,0)');
+  grad.addColorStop(0.78, 'rgba(255,250,236,1)');
+  grad.addColorStop(0.90, 'rgba(255,232,198,0.32)');
+  grad.addColorStop(1.00, 'rgba(255,214,170,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  t.needsUpdate = true;
+  return t;
+}
+// Small pool of camera-facing ring sprites. Each ring owns its material so it
+// can fade independently; the texture is shared. Additive, depthTest off so the
+// flash always reads, like crashBlast.
+class ShockwaveRingPool {
+  constructor(scene, max = 8) {
+    const tex = makeRingTexture(128);
+    this.rings = [];
+    for (let i = 0; i < max; i++) {
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex,
+        color: 0xfff2d6,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+        toneMapped: false,
+      }));
+      spr.visible = false;
+      spr.renderOrder = 9;
+      scene.add(spr);
+      this.rings.push({ spr, age: 0, life: 0, startScale: 2, endScale: 55, peakOpacity: 0.7 });
+    }
+    this.writeIndex = 0;
+  }
+  emit(pos, opts = {}) {
+    const r = this.rings[this.writeIndex];
+    this.writeIndex = (this.writeIndex + 1) % this.rings.length;
+    r.age = 0;
+    r.life = opts.life || 0.55;
+    r.startScale = opts.startScale || 2.0;
+    r.endScale = opts.endScale || 55.0;
+    r.peakOpacity = opts.opacity != null ? opts.opacity : 0.7;
+    r.spr.position.copy(pos);
+    if (opts.color != null) r.spr.material.color.set(opts.color);
+    r.spr.material.opacity = r.peakOpacity;
+    r.spr.scale.set(r.startScale, r.startScale, 1);
+    r.spr.visible = true;
+  }
+  update(dt) {
+    for (let i = 0; i < this.rings.length; i++) {
+      const r = this.rings[i];
+      if (!r.spr.visible) continue;
+      r.age += dt;
+      const t = r.age / r.life;
+      if (t >= 1) { r.spr.visible = false; r.spr.material.opacity = 0; continue; }
+      const ease = 1 - (1 - t) * (1 - t);
+      const s = r.startScale + (r.endScale - r.startScale) * ease;
+      r.spr.scale.set(s, s, 1);
+      r.spr.material.opacity = r.peakOpacity * (1 - t);
+    }
+  }
+}
+const shockwaveRingPool = new ShockwaveRingPool(scene, 8);
+
+// --- R5 F14: pooled saucer debris (InstancedMesh, one shared material / I5,I6) ---
+// Tiny faceted tetrahedra: dark hull chunks with a faint energized emissive so
+// they read at night. Gravity + tumble, fade-by-scale at end of life. Zero
+// per-frame allocation (single scratch Object3D).
+const debrisFieldFX = (() => {
+  const MAX = 40;
+  const geo = new THREE.TetrahedronGeometry(0.6, 0);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x15131c,
+    emissive: 0x1d5560,
+    emissiveIntensity: 0.7,
+    roughness: 0.65,
+    metalness: 0.25,
+    flatShading: true,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, MAX);
+  mesh.frustumCulled = false;
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.count = MAX;
+  scene.add(mesh);
+  const parts = [];
+  for (let i = 0; i < MAX; i++) {
+    parts.push({
+      active: false,
+      pos: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      rot: new THREE.Euler(),
+      spin: new THREE.Vector3(),
+      life: 0, maxLife: 1.6, baseScale: 1,
+    });
+  }
+  let writeIndex = 0;
+  const dummy = new THREE.Object3D();
+  // Park every instance at zero scale so nothing shows until a burst.
+  dummy.position.set(0, -9999, 0);
+  dummy.scale.set(0, 0, 0);
+  dummy.updateMatrix();
+  for (let i = 0; i < MAX; i++) mesh.setMatrixAt(i, dummy.matrix);
+  mesh.instanceMatrix.needsUpdate = true;
+  return {
+    burst(pos, count = 8) {
+      count = Math.max(4, Math.min(12, count | 0));
+      for (let k = 0; k < count; k++) {
+        const p = parts[writeIndex];
+        writeIndex = (writeIndex + 1) % MAX;
+        p.active = true;
+        p.pos.copy(pos);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const speed = 8 + Math.random() * 18; // 8-26 m/s radial
+        p.vel.set(
+          Math.sin(phi) * Math.cos(theta) * speed,
+          Math.abs(Math.cos(phi)) * speed * 0.7 + 4,
+          Math.sin(phi) * Math.sin(theta) * speed
+        );
+        p.rot.set(Math.random() * 6.283, Math.random() * 6.283, Math.random() * 6.283);
+        p.spin.set((Math.random() - 0.5) * 11, (Math.random() - 0.5) * 11, (Math.random() - 0.5) * 11);
+        p.life = p.maxLife = 1.6;
+        p.baseScale = 0.7 + Math.random() * 0.8;
+      }
+    },
+    update(dt) {
+      let any = false;
+      for (let i = 0; i < MAX; i++) {
+        const p = parts[i];
+        if (!p.active) continue;
+        any = true;
+        p.life -= dt;
+        if (p.life <= 0) {
+          p.active = false;
+          dummy.position.set(0, -9999, 0);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0, 0, 0);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+          continue;
+        }
+        p.vel.y -= 9.8 * dt * 2.0;
+        p.pos.addScaledVector(p.vel, dt);
+        p.rot.x += p.spin.x * dt;
+        p.rot.y += p.spin.y * dt;
+        p.rot.z += p.spin.z * dt;
+        const lifeT = p.life / p.maxLife;
+        const s = p.baseScale * Math.min(1, lifeT * 3.0); // fade-by-scale in final third
+        dummy.position.copy(p.pos);
+        dummy.rotation.copy(p.rot);
+        dummy.scale.set(s, s, s);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      if (any) mesh.instanceMatrix.needsUpdate = true;
+    },
+  };
+})();
+
 const groundScorchFX = (() => {
   const COUNT = 18;
   const tex = (() => {
@@ -8918,6 +9102,10 @@ function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
   const saucerKill = !!(target.trafficRef && target.trafficRef.targetKind === 'ufo-saucer');
   if (saucerKill && source === 'missile') spawnSaucerMissileExplosion(pos, true, intensity);
   else spawnExplosion(pos, intensity * (saucerKill ? 1.85 : 1.25), intensity * (saucerKill ? 1.9 : 1.35));
+  if (saucerKill) {
+    shockwaveRingPool.emit(pos);
+    debrisFieldFX.burst(pos, 6 + (Math.random() * 5 | 0));
+  }
   if (target.kind === 'traffic' && (source === 'shot' || source === 'missile' || source === 'alien-pulse') && typeof window.showComboBanner === 'function') {
     window.showComboBanner(source === 'missile' ? 'MISSILE KILL' : source === 'alien-pulse' ? 'ALIEN PULSE KILL' : 'AIR KILL', `HOSTILE DOWN · ${combatState.kills} TOTAL`, source === 'alien-pulse' ? '#74efff' : '#ffb36a');
   }
@@ -9313,6 +9501,7 @@ function updateCombat(dt) {
     crashBlast.scale.set(34, 34, 1);
     crashBlast.material.opacity = 1.0;
     spawnExplosion(plane.pos.clone(), 1.7, 1.6);
+    shockwaveRingPool.emit(plane.pos.clone().add(new THREE.Vector3(0, 2.4, 0)), { endScale: 70, opacity: 0.8, color: 0xffb060 });
     if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R · OR REPLAY', 'panel warn', 2.5);
     // Surface the REPLAY panel so the player can watch what killed them.
     if (typeof syncReplayUI === 'function') syncReplayUI();
@@ -9466,6 +9655,8 @@ function updateCombat(dt) {
   impactBlastPool.update(dt);
   explosionFirePool.update(dt);
   explosionSmokePool.update(dt);
+  shockwaveRingPool.update(dt);
+  debrisFieldFX.update(dt);
   if (groundScorchFX) groundScorchFX.update(dt);
   if (bulletSurfaceDamageFX) bulletSurfaceDamageFX.update(dt);
 }
