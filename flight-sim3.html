@@ -1688,6 +1688,7 @@
   body.preflight #course-director,
   body.preflight #mp-race-panel,
   body.preflight #status-msg,
+  body.preflight #replay-panel,
   body.review-open #crosshair,
   body.review-open #target-overlay,
   body.review-open #instruments,
@@ -16761,6 +16762,24 @@ window.addEventListener('keydown', (e) => {
 }, { once: true });
 armFirstInteractionAudio();
 beginFlight({ enableAudio: false, focusCanvas: false });
+
+// __branded_intro__ — beginFlight above hides the title instantly, so the
+// branded intro was never seen. Keep the sim warm underneath but re-show
+// the intro card + backdrop until the first real user input dismisses it.
+document.body.classList.add('preflight');
+if (title) title.classList.remove('hide');
+(function armIntroDismiss() {
+  const dismiss = (e) => {
+    if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
+    document.body.classList.remove('preflight');
+    if (title) title.classList.add('hide');
+    window.removeEventListener('pointerdown', dismiss, true);
+    window.removeEventListener('keydown', dismiss, true);
+    try { renderer.domElement.focus(); } catch {}
+  };
+  window.addEventListener('pointerdown', dismiss, true);
+  window.addEventListener('keydown', dismiss, true);
+})();
 
 // __overlay_dismiss_focus__ — re-focus game canvas on any click/key
 // so external popups (Twitter/X sign-in, etc.) don't block input
