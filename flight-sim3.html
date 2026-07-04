@@ -810,6 +810,28 @@
     background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.08), rgba(10, 14, 22, 0.44));
   }
   body.preflight #title-backdrop { display: block; }
+  #title-latest {
+    position: relative;
+    margin: 10px 0 2px;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  #title-latest .title-latest-head {
+    font: 900 10px/1 var(--game-font-ui);
+    letter-spacing: 0.2em;
+    color: #ffdf9d;
+    margin-bottom: 6px;
+  }
+  #title-latest .title-latest-row {
+    font: 500 11px/1.5 var(--game-font-ui);
+    color: rgba(255, 244, 214, 0.82);
+  }
+  #title-latest .title-latest-row strong {
+    color: #fff0c8;
+    font-weight: 800;
+  }
   #title .title-logo {
     position: relative;
     display: block;
@@ -2223,6 +2245,20 @@ const PROP_MODEL_PRESETS = [
   { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
   { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/stunt_plane.glb', variant: '3' },
   { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
+  // Calibrated warbirds/props (existing entries in plane-tweaks.json)
+  { key: 'corsair', label: 'F4U CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Warbird', badge: 'WWII', file: 'models/corsair_f4u-1_airplane.glb' },
+  { key: 'macchi', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird', badge: 'WWII', file: 'models/italian_macchi_c.202_folgore.glb' },
+  { key: 'yak9', label: 'YAK-9', name: 'Yakovlev Yak-9', hudLabel: 'YAK-9', type: 'Warbird', badge: 'WWII', file: 'models/yak-9.glb' },
+  { key: 'tucano', label: 'EMB-314 TUCANO', name: 'EMB-314 Super Tucano', hudLabel: 'TUCANO', type: 'Turboprop', badge: 'COIN', file: 'models/colombian_emb_314_tucano.glb' },
+  { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIP', type: 'Racing Prop', badge: 'RACE', file: 'models/ripslinger.glb' },
+  { key: 'p100', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'P-100', type: 'Sport Prop', badge: 'SPORT', file: 'models/p-100_avenger_-_free.glb' },
+  { key: 'lowpolytrainer', label: 'LOW POLY TRAINER', name: 'Low Poly Trainer', hudLabel: 'TRAINER', type: 'Utility Prop', badge: 'TRAIN', file: 'models/low_poly_plane.glb' },
+  // Jets (auto-calibrated on load; "Low poly F-15" by SIpriv on Sketchfab, CC-BY).
+  // jet:true skips prop detection/synthesis, keeps afterburner FX + jet audio;
+  // ry flips models authored facing +Z into the game's -Z forward.
+  { key: 'f15', label: 'F-15 EAGLE', name: 'F-15 Eagle', hudLabel: 'F-15', type: 'Jet Fighter', badge: 'JET', file: 'models/f-15.glb', jet: true, ry: 0 },
+  { key: 'f15lp', label: 'F-15 STRIKE', name: 'F-15 Strike (low poly)', hudLabel: 'F-15 LP', type: 'Jet Fighter', badge: 'JET', file: 'models/low_poly_f-15.glb', jet: true, ry: 0 },
+  { key: 'a10', label: 'A-10 WARTHOG', name: 'A-10C Thunderbolt II', hudLabel: 'A-10', type: 'Attack Jet', badge: 'JET', file: 'models/a-10c_thunderbolt_ii.glb', jet: true, ry: 0 },
 ];
 const REMOVED_PROP_MODEL_FILES = new Set([
   'models/claude_scruggs.glb',
@@ -2260,6 +2296,7 @@ function applyPropPresetToParams(params, preset) {
   if (preset.ry != null) params.set('ry', String(preset.ry)); else params.delete('ry');
   if (preset.rz != null) params.set('rz', String(preset.rz)); else params.delete('rz');
   if (preset.dy != null) params.set('dy', String(preset.dy)); else params.delete('dy');
+  if (preset.jet) params.set('jet', '1'); else params.delete('jet');
 }
 
 function getActivePropPreset() {
@@ -2852,7 +2889,7 @@ const MOTION_BLUR_SHADER = {
       // Direction from center outward — motion blur trails behind
       vec2 dir = normalize(vec2(centered.x, centered.y * aspect) + vec2(0.0001));
       float dist = length(centered);
-      float edgeFalloff = smoothstep(0.16, 0.72, dist);
+      float edgeFalloff = smoothstep(0.30, 0.78, dist); // keep the frame centre clean
       float positionalStrength = edgeFalloff * strength * 0.018;
       vec4 accum = vec4(0.0);
       float total = 0.0;
@@ -2970,7 +3007,8 @@ function updateMotionBlurPostFX() {
   const speedKts = plane.vel.length() * 1.94;
   const throttleFactor = clamp01((plane.throttle - 0.42) / 0.58);
   const speedFactor = clamp01((speedKts - 45) / 230);
-  const baseStrength = clamp01(speedFactor * (0.22 + throttleFactor * 0.92)) * 0.82;
+  // Cap well below the old 0.82 — high strengths smear the whole frame.
+  const baseStrength = clamp01(speedFactor * (0.22 + throttleFactor * 0.92)) * 0.5;
   const targetStrength = blurEnabled ? baseStrength * blurAmount : 0;
   const current = postFX.motionBlurPass.uniforms.strength.value || 0;
   const blend = targetStrength < current ? 0.24 : 0.14;
@@ -7015,7 +7053,11 @@ function updateMultiplayer(dt) {
   // URL params for tweaking: #plane=X&s=<scale>&rx=&ry=&rz=&dy=
   const userScale = parseFloat(params.get('s'));
   const rx = (parseFloat(params.get('rx')) || 0) * Math.PI / 180;
-  const ry = (parseFloat(params.get('ry')) || 180) * Math.PI / 180; // most models face +Z, sim is -Z
+  // Most models face +Z (sim forward is -Z) so the DEFAULT is a 180 flip —
+  // but an explicit ry must win, INCLUDING ry=0 for models authored facing -Z
+  // (the old `|| 180` treated 0 as "unset" and made ry=0 impossible to express).
+  const ryRaw = parseFloat(params.get('ry'));
+  const ry = (Number.isFinite(ryRaw) ? ryRaw : 180) * Math.PI / 180;
   const rz = (parseFloat(params.get('rz')) || 0) * Math.PI / 180;
   const dy = parseFloat(params.get('dy')) || 0;
 
@@ -7198,12 +7240,18 @@ function updateMultiplayer(dt) {
         if (gearRow.parentElement) gearRow.parentElement.style.display = '';
       }
 
-      // ——— Kill jet-specific FX on swapped-in planes ———
-      // The procedural afterburner + engine contrail + heat-haze only
-      // make sense for fighter jets. Hide them; suppress their emitters.
-      if (jet.userData.afterburner) jet.userData.afterburner.visible = false;
-      if (jet.userData.ab2)         jet.userData.ab2.visible = false;
-      plane.suppressJetFX = true;
+      // ——— Kill jet-specific FX on swapped-in PROP planes only ———
+      // The procedural afterburner + engine contrail + heat-haze only make
+      // sense for fighters. GLB presets flagged jet:true (F-15, A-10) keep
+      // them and get jet engine audio instead of the prop sample loop.
+      const jetSwap = params.get('jet') === '1';
+      if (!jetSwap) {
+        if (jet.userData.afterburner) jet.userData.afterburner.visible = false;
+        if (jet.userData.ab2)         jet.userData.ab2.visible = false;
+        plane.suppressJetFX = true;
+      } else {
+        plane.suppressJetFX = false;
+      }
 
       // ——— Find propeller meshes to spin ———
       const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
@@ -7601,6 +7649,15 @@ function updateMultiplayer(dt) {
         console.log(`[plane-swap] ${props.length} prop mesh(es): ${tagged}`);
       }
 
+      // Jets never spin props: drop any synthesized spinner outright and
+      // leave misdetected real geometry static (removing it could delete an
+      // actual jet part — nozzle, wheel — that the detector mistook for a prop).
+      if (jetSwap) {
+        for (const p of props) {
+          if (p.userData.__isProceduralProp) jet.remove(p);
+        }
+        props.length = 0;
+      }
       // CRITICAL: always assign props to plane object so telemetry shows prop_count>0
       plane.props = props;
 
@@ -15899,41 +15956,32 @@ function closeFeaturesPopup() {
   try { renderer.domElement.focus(); } catch {}
 }
 function renderFeaturesPopup(data) {
-  const popup = document.getElementById('features-popup');
-  const titleEl = document.getElementById('features-popup-title');
-  const subtitleEl = document.getElementById('features-popup-subtitle');
-  const versionEl = document.getElementById('features-popup-version');
-  const listEl = document.getElementById('features-popup-list');
-  const closeBtn = document.getElementById('features-popup-close');
-  if (!popup || !listEl) return;
+  // No modal anymore — the "Welcome back, pilot" interstitial annoyed more
+  // than it informed. Latest-feature notes render as a compact strip inside
+  // the branded intro card instead.
   const info = data && typeof data === 'object' ? data : latestFeaturesFallback;
   const version = String(info.version || 'dev');
-  // Show once per full page visit. Do not persist dismissal in localStorage,
-  // otherwise release notes vanish forever; and do not reset this on R/reset.
-  const visitKey = `ships-latest-features-shown-this-visit-${version}`;
-  if (window[visitKey]) return;
-  window[visitKey] = true;
-  if (titleEl) titleEl.textContent = info.title || latestFeaturesFallback.title;
-  if (subtitleEl) subtitleEl.textContent = info.subtitle || latestFeaturesFallback.subtitle;
-  if (versionEl) versionEl.textContent = `LATEST FEATURES · ${version}`;
-  listEl.replaceChildren();
+  const host = document.getElementById('title');
+  if (!host || document.getElementById('title-latest')) return;
   const features = Array.isArray(info.features) && info.features.length ? info.features : latestFeaturesFallback.features;
-  for (const feature of features.slice(0, 8)) {
-    const item = document.createElement('li');
-    const heading = document.createElement('strong');
-    const body = document.createElement('span');
-    heading.textContent = feature.title || 'Feature';
-    body.textContent = feature.description || '';
-    item.append(heading, body);
-    listEl.appendChild(item);
+  const wrap = document.createElement('div');
+  wrap.id = 'title-latest';
+  const head = document.createElement('div');
+  head.className = 'title-latest-head';
+  head.textContent = `LATEST · ${version}`;
+  wrap.appendChild(head);
+  for (const feature of features.slice(0, 3)) {
+    const row = document.createElement('div');
+    row.className = 'title-latest-row';
+    const strong = document.createElement('strong');
+    strong.textContent = feature.title || 'Feature';
+    const span = document.createElement('span');
+    span.textContent = ` — ${feature.description || ''}`;
+    row.append(strong, span);
+    wrap.appendChild(row);
   }
-  const dismiss = () => {
-    closeFeaturesPopup();
-  };
-  if (closeBtn) closeBtn.onclick = dismiss;
-  popup.addEventListener('click', (e) => { if (e.target === popup) dismiss(); }, { once: true });
-  popup.classList.add('is-visible');
-  popup.setAttribute('aria-hidden', 'false');
+  const anchor = host.querySelector('.multiplayer-setup-card');
+  if (anchor) host.insertBefore(wrap, anchor); else host.appendChild(wrap);
 }
 fetch('latest-features.json', { cache: 'no-store' })
   .then((res) => res.ok ? res.json() : latestFeaturesFallback)
@@ -19147,13 +19195,13 @@ function updatePracticeRingCourse(dt) {
     flightAccel: 1.28, topSpeedKts: 720, liftAssist: 1.06, idlePower: 1.0, pitchAuthority: 0.92, rollAuthority: 0.88, rudderAuthority: 0.86, autoRudder: 1.28,
     brakeStrength: 1.10, pitchDamping: 1.14, rollDamping: 1.18, rudderDamping: 1.10, stallSoftness: 1.24, maneuverAssist: 1.18, selfLevel: 1.36, weathervaneYaw: 1.18, gearDrag: 1.02, groundEffectStrength: 1.08,
     cameraClimbReveal: 0.95, cameraDiveReveal: 1.0, cameraLag: 0.78,
-    fps: false, renderScale: 1.0, resolutionScale: 1.0, adaptiveRes: true, renderDistance: 1.0, motionBlur: true, motionBlurAmount: 0.40,
+    fps: false, renderScale: 1.0, resolutionScale: 1.0, adaptiveRes: true, renderDistance: 1.0, motionBlur: false, motionBlurAmount: 0.30,
   };
   const PRESETS = {
     low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'fluffy', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.85, resolutionScale: 0.95, motionBlur: false, motionBlurAmount: 0.30, renderDistance: 1.0 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: false, motionBlurAmount: 0.40, renderDistance: 1.3 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'fluffy', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: false, motionBlurAmount: 0.50, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -19179,6 +19227,14 @@ function updatePracticeRingCourse(dt) {
   // per-frame geometry cost for a near-invisible blur, so force it off once.
   // Users can still re-enable it in the graphics panel afterwards.
   if (gfx.__dofPerfMigration == null) { gfx.dof = false; gfx.__dofPerfMigration = 1; }
+  // __mbShakeMigration__ — the radial motion blur at high strength smears the
+  // whole lower screen and re-aims with every micro camera move; users read it
+  // as violent shaking ("everything shaking"). Off by default, amount clamped.
+  if (gfx.__mbShakeMigration == null) {
+    gfx.motionBlur = false;
+    if (gfx.motionBlurAmount == null || gfx.motionBlurAmount > 0.5) gfx.motionBlurAmount = 0.30;
+    gfx.__mbShakeMigration = 1;
+  }
   if (gfx.motionBlurAmount == null) {
     gfx.motionBlur = true;
     gfx.motionBlurAmount = DEFAULTS.motionBlurAmount;

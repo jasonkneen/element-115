@@ -47,3 +47,7 @@ MIT — see [LICENSE](LICENSE)
 ---
 
 Built with ❤️ for the love of flight sims and browser tech. Fly safe.
+
+## Credits
+
+- **F-15 model**: ["Low poly F-15"](https://sketchfab.com/3d-models/low-poly-f-15-0c1cfa22d7094556914fcdfba75bef5d) by [SIpriv](https://sketchfab.com/sipriv), licensed [CC Attribution](https://creativecommons.org/licenses/by/4.0/).
