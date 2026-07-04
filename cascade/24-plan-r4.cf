@@ -1,0 +1,272 @@
+HUMAN: Extract hardened shared mp-core, wire both servers to it, add client dead-reckoning.
+PLAN P1<-F12 op=create at=mp-core.mjs why=shared-core ref=multiplayer-server.mjs:4-49,multiplayer-server.mjs:63-107,tweaks-server.mjs:42-85,tweaks-server.mjs:197-240 test="node --check mp-core.mjs" order=1 fill=-
+<<<P1
+// Shared multiplayer room core for the flight-sim websocket host.
+// Imported by multiplayer-server.mjs and tweaks-server.mjs so id-binding,
+// caps, and broadcast logic live in exactly one place (F11 hardening baked in).
+
+const PLAYER_TTL_MS = 15000;
+const MAX_MSG_BYTES = 4096;
+const MAX_PLAYERS_PER_ROOM = 16;
+const MAX_ROOMS = 64;
+
+export const rooms = new Map();
+
+export function getRoom(name) {
+  if (!rooms.has(name)) {
+    rooms.set(name, { players: new Map(), sockets: new Set() });
+  }
+  return rooms.get(name);
+}
+
+export function roomStats() {
+  let players = 0;
+  for (const room of rooms.values()) players += room.players.size;
+  return { rooms: rooms.size, players };
+}
+
+export function broadcast(roomName, payload, except = null) {
+  const room = rooms.get(roomName);
+  if (!room) return;
+  const data = JSON.stringify(payload);
+  for (const ws of room.sockets) {
+    if (ws === except) continue;
+    try { ws.send(data); } catch {}
+  }
+}
+
+export function removeSocket(ws) {
+  const data = ws.data || {};
+  if (!data.room) return;
+  const room = rooms.get(data.room);
+  if (!room) return;
+  room.sockets.delete(ws);
+  if (data.id && room.players.has(data.id)) {
+    room.players.delete(data.id);
+    broadcast(data.room, { type: 'leave', id: data.id });
+  }
+  if (room.sockets.size === 0 && room.players.size === 0) {
+    rooms.delete(data.room);
+  }
+}
+
+export function handleMessage(ws, raw) {
+  const text = typeof raw === 'string' ? raw : raw.toString();
+  if (text.length > MAX_MSG_BYTES) return; // drop oversized before parse
+  let msg;
+  try { msg = JSON.parse(text); }
+  catch { return; }
+  if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'join') {
+    removeSocket(ws);
+    const roomName = String(msg.room || 'default');
+    if (!rooms.has(roomName) && rooms.size >= MAX_ROOMS) {
+      try { ws.send(JSON.stringify({ type: 'full', scope: 'rooms' })); } catch {}
+      return;
+    }
+    const id = String(msg.id || crypto.randomUUID());
+    const room = getRoom(roomName);
+    if (!room.players.has(id) && room.players.size >= MAX_PLAYERS_PER_ROOM) {
+      try { ws.send(JSON.stringify({ type: 'full', scope: 'players' })); } catch {}
+      return;
+    }
+    const state = msg.state || {};
+    ws.data = { id, room: roomName };
+    room.sockets.add(ws);
+    room.players.set(id, { state, lastSeen: Date.now() });
+    const players = [...room.players.entries()].map(([pid, player]) => ({ id: pid, state: player.state }));
+    ws.send(JSON.stringify({ type: 'welcome', id, players }));
+    broadcast(roomName, { type: 'state', id, state }, ws);
+    return;
+  }
+
+  if (msg.type === 'state') {
+    // Identity is bound at join; ignore state from unjoined sockets or spoofed ids.
+    if (!ws.data || !ws.data.id) return;
+    if (String(msg.id || '') !== ws.data.id) return;
+    const id = ws.data.id;
+    const roomName = ws.data.room || 'default';
+    const room = getRoom(roomName);
+    room.sockets.add(ws);
+    room.players.set(id, { state: msg.state || {}, lastSeen: Date.now() });
+    broadcast(roomName, { type: 'state', id, state: msg.state || {} }, ws);
+    return;
+  }
+
+  if (msg.type === 'ping') {
+    try { ws.send(JSON.stringify({ type: 'pong', t: Date.now() })); } catch {}
+  }
+}
+
+export function startTtlSweep(intervalMs = 3000) {
+  return setInterval(() => {
+    const now = Date.now();
+    for (const [roomName, room] of rooms) {
+      for (const [id, player] of room.players) {
+        if (now - player.lastSeen > PLAYER_TTL_MS) {
+          room.players.delete(id);
+          broadcast(roomName, { type: 'leave', id });
+        }
+      }
+      if (room.sockets.size === 0 && room.players.size === 0) rooms.delete(roomName);
+    }
+  }, intervalMs);
+}
+
+export const websocketHandlers = {
+  open(ws) {
+    ws.data = { id: null, room: 'default' };
+  },
+  message(ws, raw) {
+    handleMessage(ws, raw);
+  },
+  close(ws) {
+    removeSocket(ws);
+  },
+};
+>>>
+PLAN P2<-F12 op=create at=cascade/tmp-mp-test.mjs why=roundtrip-test ref=multiplayer-server.mjs:73-101#"if (msg.type === 'join')" test="node --check cascade/tmp-mp-test.mjs" order=2 fill=-
+<<<P2
+// Round-trip + hardening test for the shared multiplayer core.
+// Run:  bun cascade/tmp-mp-test.mjs          (spawns multiplayer-server.mjs)
+//       bun cascade/tmp-mp-test.mjs tweaks   (spawns tweaks-server.mjs)
+// Exits 0 on pass, 1 on fail.
+const MODE = process.argv[2] || 'mp';
+const PORT = 8799;
+const cmd = MODE === 'tweaks'
+  ? ['bun', new URL('../tweaks-server.mjs', import.meta.url).pathname]
+  : ['bun', new URL('../multiplayer-server.mjs', import.meta.url).pathname, String(PORT)];
+const env = MODE === 'tweaks' ? { ...process.env, PORT: String(PORT) } : process.env;
+const WS = `ws://127.0.0.1:${PORT}`;
+
+const proc = Bun.spawn(cmd, { env, stdout: 'inherit', stderr: 'inherit' });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const fail = (m) => { console.error('FAIL:', m); try { proc.kill(); } catch {} process.exit(1); };
+
+function open() {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(WS);
+    ws.inbox = [];
+    ws.addEventListener('message', (e) => { ws.inbox.push(JSON.parse(e.data)); });
+    ws.addEventListener('open', () => resolve(ws));
+    ws.addEventListener('error', reject);
+  });
+}
+
+try {
+  await sleep(600); // let server boot
+  const a = await open();
+  a.send(JSON.stringify({ type: 'join', room: 'r', id: 'A', state: { pos: { x: 0, y: 0, z: 0 } } }));
+  await sleep(150);
+  if (!a.inbox.some(m => m.type === 'welcome' && m.id === 'A')) fail('A did not get welcome');
+
+  const b = await open();
+  b.send(JSON.stringify({ type: 'join', room: 'r', id: 'B', state: { pos: { x: 1, y: 1, z: 1 } } }));
+  await sleep(150);
+  if (!b.inbox.some(m => m.type === 'welcome')) fail('B did not get welcome');
+  if (!a.inbox.some(m => m.type === 'state' && m.id === 'B')) fail('A did not get B join broadcast');
+
+  a.inbox.length = 0;
+  b.send(JSON.stringify({ type: 'state', id: 'B', state: { pos: { x: 2, y: 2, z: 2 } } }));
+  await sleep(150);
+  if (!a.inbox.some(m => m.type === 'state' && m.id === 'B')) fail('A did not get valid B state broadcast');
+
+  a.inbox.length = 0;
+  b.send(JSON.stringify({ type: 'state', id: 'A', state: { pos: { x: 999, y: 999, z: 999 } } }));
+  await sleep(150);
+  if (a.inbox.some(m => m.type === 'state' && m.id === 'A' && m.state && m.state.pos && m.state.pos.x === 999)) fail('spoofed id was accepted');
+
+  a.inbox.length = 0;
+  b.send(JSON.stringify({ type: 'state', id: 'B', state: { blob: 'x'.repeat(5000) } }));
+  await sleep(150);
+  if (a.inbox.some(m => m.type === 'state')) fail('oversized payload was broadcast');
+  b.send(JSON.stringify({ type: 'ping' }));
+  await sleep(150);
+  if (!b.inbox.some(m => m.type === 'pong')) fail('server dead after oversized payload');
+
+  a.inbox.length = 0;
+  b.close();
+  await sleep(250);
+  if (!a.inbox.some(m => m.type === 'leave' && m.id === 'B')) fail('A did not get B leave');
+
+  console.log('PASS: all multiplayer core assertions');
+  try { proc.kill(); } catch {}
+  process.exit(0);
+} catch (e) {
+  fail((e && e.message) || String(e));
+}
+>>>
+PLAN P3<-F11 op=replace at=multiplayer-server.mjs:1-110#"const port = Number(process.argv[2]" why=wire-core ref=multiplayer-server.mjs:51-107#"Bun.serve({" test="bun cascade/tmp-mp-test.mjs" order=3 fill=-
+<<<P3
+import { roomStats, startTtlSweep, websocketHandlers } from './mp-core.mjs';
+
+const port = Number(process.argv[2] || process.env.PORT || 8787);
+
+startTtlSweep();
+
+Bun.serve({
+  port,
+  fetch(req, server) {
+    const url = new URL(req.url);
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({ ok: true, ...roomStats() }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (server.upgrade(req)) return;
+    return new Response('Multiplayer websocket server is running. Connect via ws://host:' + port, { status: 200 });
+  },
+  websocket: websocketHandlers,
+});
+
+console.log(`[multiplayer] listening on ws://0.0.0.0:${port}`);
+>>>
+PLAN P4a<-F11 op=insert at=tweaks-server.mjs:14#"import url from 'node:url';" why=import-core ref=tweaks-server.mjs:12-14#"import fsp" test="node --check tweaks-server.mjs" order=4 fill=-
+<<<P4a
+import { roomStats, startTtlSweep, websocketHandlers } from './mp-core.mjs';
+>>>
+PLAN P4b<-F11 op=delete at=tweaks-server.mjs:19#"const PLAYER_TTL_MS = 15000;" why=dead-const ref=tweaks-server.mjs:74-85#"setInterval" test="node --check tweaks-server.mjs" order=4 fill=-
+PLAN P4c<-F12 op=replace at=tweaks-server.mjs:42-85#"const rooms = new Map();" why=drop-dup-block ref=tweaks-server.mjs:42-85#"const rooms = new Map();" test="node --check tweaks-server.mjs" order=4 fill=-
+<<<P4c
+startTtlSweep();
+>>>
+PLAN P4d<-F12 op=delete at=tweaks-server.mjs:124-128#"function roomStats() {" why=use-imported-roomstats ref=tweaks-server.mjs:141#"...roomStats()" test="node --check tweaks-server.mjs" order=4 fill=-
+PLAN P4e<-F11 op=replace at=tweaks-server.mjs:197-240#"websocket: {" why=wire-core ref=tweaks-server.mjs:197-240#"websocket: {" test="bun cascade/tmp-mp-test.mjs tweaks" order=4 fill=-
+<<<P4e
+  websocket: websocketHandlers,
+>>>
+PLAN P5a<-F10 op=insert at=flight-sim3.html:6189#"speedKts: Math.min(999, plane.vel.length() * 1.94)," why=send-vel ref=flight-sim3.html:6179-6193#"function buildLocalMultiplayerState" test="grep -q 'vel: { x: Math.round(plane.vel.x' flight-sim3.html" order=5 fill=-
+<<<P5a
+    vel: { x: Math.round(plane.vel.x * 100) / 100, y: Math.round(plane.vel.y * 100) / 100, z: Math.round(plane.vel.z * 100) / 100 },
+>>>
+PLAN P5b<-F10 op=insert at=flight-sim3.html:6267#"targetQuat: new THREE.Quaternion()," why=rec-vel-fields ref=flight-sim3.html:6257-6269#"multiplayerState.remotePlayers.set" test="grep -q 'targetVel: new THREE.Vector3()' flight-sim3.html" order=5 fill=-
+<<<P5b
+      targetVel: new THREE.Vector3(),
+      receivedAt: performance.now(),
+>>>
+PLAN P5c<-F10 op=insert at=flight-sim3.html:6301#"rec.targetQuat.set(msg.state.quat.x" why=stamp-recv ref=flight-sim3.html:6298-6309#"if (msg.type === 'state' && msg.state)" test="grep -q 'rec.receivedAt = performance.now()' flight-sim3.html" order=5 fill=-
+<<<P5c
+    if (msg.state.vel) rec.targetVel.set(msg.state.vel.x, msg.state.vel.y, msg.state.vel.z);
+    else rec.targetVel.set(0, 0, 0);
+    rec.receivedAt = performance.now();
+>>>
+PLAN P5d<-F10 op=replace at=flight-sim3.html:6393#"function updateMultiplayer(dt) {" why=scratch-vec ref=flight-sim3.html:6383-6393#"function sendMultiplayerState" test="grep -q 'const _mpPredicted = new THREE.Vector3()' flight-sim3.html" order=5 fill=-
+<<<P5d
+const _mpPredicted = new THREE.Vector3();
+
+function updateMultiplayer(dt) {
+>>>
+PLAN P5e<-F10 op=replace at=flight-sim3.html:6402-6404#"const t = 1 - Math.exp(-8 * dt)" why=dead-reckoning ref=flight-sim3.html:6397-6405#"for (const [id, rec] of multiplayerState.remotePlayers)" test="grep -q '_mpPredicted.copy(rec.targetPos)' flight-sim3.html" order=5 fill=-
+<<<P5e
+    const lead = Math.min((performance.now() - rec.receivedAt) / 1000, 0.35);
+    _mpPredicted.copy(rec.targetPos).addScaledVector(rec.targetVel, lead);
+    const smooth = 1 - Math.exp(-8 * dt);
+    if (rec.group.position.distanceTo(_mpPredicted) > 80) {
+      rec.group.position.copy(_mpPredicted);
+    } else {
+      rec.group.position.lerp(_mpPredicted, smooth);
+    }
+    rec.group.quaternion.slerp(rec.targetQuat, smooth);
+>>>
+DONE stage=O plan=13 tok~=2600

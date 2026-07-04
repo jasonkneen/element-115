@@ -12,11 +12,11 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
+import { roomStats, startTtlSweep, websocketHandlers } from './mp-core.mjs';
 
 const PORT = Number(process.env.PORT) || 8765;
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)));
 const TWEAKS_FILE = path.join(ROOT, 'plane-tweaks.json');
-const PLAYER_TTL_MS = 15000;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -39,50 +39,7 @@ const MIME = {
   '.opus': 'audio/opus',
 };
 
-const rooms = new Map();
-
-function getRoom(name) {
-  if (!rooms.has(name)) {
-    rooms.set(name, { players: new Map(), sockets: new Set() });
-  }
-  return rooms.get(name);
-}
-
-function broadcast(roomName, payload, except = null) {
-  const room = rooms.get(roomName);
-  if (!room) return;
-  const data = JSON.stringify(payload);
-  for (const ws of room.sockets) {
-    if (ws === except) continue;
-    try { ws.send(data); } catch {}
-  }
-}
-
-function removeSocket(ws) {
-  const data = ws.data || {};
-  if (!data.room) return;
-  const room = rooms.get(data.room);
-  if (!room) return;
-  room.sockets.delete(ws);
-  if (data.id && room.players.has(data.id)) {
-    room.players.delete(data.id);
-    broadcast(data.room, { type: 'leave', id: data.id });
-  }
-  if (room.sockets.size === 0 && room.players.size === 0) rooms.delete(data.room);
-}
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [roomName, room] of rooms) {
-    for (const [id, player] of room.players) {
-      if (now - player.lastSeen > PLAYER_TTL_MS) {
-        room.players.delete(id);
-        broadcast(roomName, { type: 'leave', id });
-      }
-    }
-    if (room.sockets.size === 0 && room.players.size === 0) rooms.delete(roomName);
-  }
-}, 3000);
+startTtlSweep();
 
 const isLocalhost = (req, server) => {
   const addr = server.requestIP(req)?.address || '';
@@ -120,12 +77,6 @@ const sanitiseTweak = (input) => {
   }
   return out;
 };
-
-function roomStats() {
-  let players = 0;
-  for (const room of rooms.values()) players += room.players.size;
-  return { rooms: rooms.size, players };
-}
 
 const server = Bun.serve({
   port: PORT,
@@ -194,50 +145,7 @@ const server = Bun.serve({
       return new Response('Server error', { status: 500 });
     }
   },
-  websocket: {
-    open(ws) {
-      ws.data = { id: null, room: 'default' };
-    },
-    message(ws, raw) {
-      let msg;
-      try { msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString()); }
-      catch { return; }
-      if (!msg || typeof msg !== 'object') return;
-
-      if (msg.type === 'join') {
-        removeSocket(ws);
-        const roomName = String(msg.room || 'default');
-        const id = String(msg.id || crypto.randomUUID());
-        const state = msg.state || {};
-        ws.data = { id, room: roomName };
-        const room = getRoom(roomName);
-        room.sockets.add(ws);
-        room.players.set(id, { state, lastSeen: Date.now() });
-        const players = [...room.players.entries()].map(([pid, player]) => ({ id: pid, state: player.state }));
-        ws.send(JSON.stringify({ type: 'welcome', id, players }));
-        broadcast(roomName, { type: 'state', id, state }, ws);
-        return;
-      }
-
-      if (msg.type === 'state') {
-        const roomName = String(msg.room || ws.data?.room || 'default');
-        const id = String(msg.id || ws.data?.id || '');
-        if (!id) return;
-        const room = getRoom(roomName);
-        room.sockets.add(ws);
-        room.players.set(id, { state: msg.state || {}, lastSeen: Date.now() });
-        broadcast(roomName, { type: 'state', id, state: msg.state || {} }, ws);
-        return;
-      }
-
-      if (msg.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong', t: Date.now() }));
-      }
-    },
-    close(ws) {
-      removeSocket(ws);
-    },
-  },
+  websocket: websocketHandlers,
 });
 
 console.log(`\n  ✈  tweaks-server listening on http://localhost:${PORT}`);

@@ -6187,6 +6187,7 @@ function buildLocalMultiplayerState() {
     spawnMode: playerProfileState.spawnMode,
     planeKey: getActivePropPreset().key,
     speedKts: Math.min(999, plane.vel.length() * 1.94),
+    vel: { x: Math.round(plane.vel.x * 100) / 100, y: Math.round(plane.vel.y * 100) / 100, z: Math.round(plane.vel.z * 100) / 100 },
     race: buildLocalRaceState(),
     t: Date.now(),
   };
@@ -6265,6 +6266,8 @@ function ensureRemotePlayer(id) {
       speedKts: 0,
       targetPos: new THREE.Vector3(),
       targetQuat: new THREE.Quaternion(),
+      targetVel: new THREE.Vector3(),
+      receivedAt: performance.now(),
       lastSeen: Date.now(),
     });
   }
@@ -6299,6 +6302,9 @@ function handleMultiplayerMessage(raw) {
     const rec = ensureRemotePlayer(msg.id);
     rec.targetPos.set(msg.state.pos.x, msg.state.pos.y, msg.state.pos.z);
     rec.targetQuat.set(msg.state.quat.x, msg.state.quat.y, msg.state.quat.z, msg.state.quat.w);
+    if (msg.state.vel) rec.targetVel.set(msg.state.vel.x, msg.state.vel.y, msg.state.vel.z);
+    else rec.targetVel.set(0, 0, 0);
+    rec.receivedAt = performance.now();
     rec.planeKey = msg.state.planeKey || rec.planeKey || '';
     rec.speedKts = msg.state.speedKts != null ? msg.state.speedKts : rec.speedKts || 0;
     rec.race = msg.state.race || rec.race || null;
@@ -6390,6 +6396,8 @@ function sendMultiplayerState() {
   }));
 }
 
+const _mpPredicted = new THREE.Vector3();
+
 function updateMultiplayer(dt) {
   if (MULTIPLAYER_URL && multiplayerState.enabled !== false && !multiplayerState.connected && !multiplayerState.connecting && Date.now() >= multiplayerState.reconnectAt) {
     connectMultiplayer();
@@ -6399,9 +6407,15 @@ function updateMultiplayer(dt) {
       removeRemotePlayer(id);
       continue;
     }
-    const t = 1 - Math.exp(-8 * dt);
-    rec.group.position.lerp(rec.targetPos, t);
-    rec.group.quaternion.slerp(rec.targetQuat, t);
+    const lead = Math.min((performance.now() - rec.receivedAt) / 1000, 0.35);
+    _mpPredicted.copy(rec.targetPos).addScaledVector(rec.targetVel, lead);
+    const smooth = 1 - Math.exp(-8 * dt);
+    if (rec.group.position.distanceTo(_mpPredicted) > 80) {
+      rec.group.position.copy(_mpPredicted);
+    } else {
+      rec.group.position.lerp(_mpPredicted, smooth);
+    }
+    rec.group.quaternion.slerp(rec.targetQuat, smooth);
   }
   if (!running) return;
   multiplayerState.sendTimer += dt;

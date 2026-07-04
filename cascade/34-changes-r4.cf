@@ -1,0 +1,17 @@
+HUMAN: Extracted shared mp-core, rewired both servers, added client dead-reckoning; all tests pass.
+CHG C1<-P1 st=ok ver=pass t="node --check mp-core.mjs -> OK" drift=0 note=create-mp-core
+CHG C2<-P2 st=adapt ver=pass t="node --check + bun run -> PASS: all multiplayer core assertions" drift=0 note=port-8799-to-8801-conflict-with-orchestrator-dev-server
+CHG C3<-P3 st=ok ver=pass t="node --check tweaks-server.mjs/multiplayer-server.mjs OK; bun cascade/tmp-mp-test.mjs -> PASS" drift=0 note=wire-core
+CHG C4<-P4a st=ok ver=pass t="node --check tweaks-server.mjs -> OK" drift=0 note=import-core-merged-with-p4b
+CHG C5<-P4b st=ok ver=pass t="folded into P4a edit (adjacent const removed same hunk)" drift=0 note=dead-const-removed
+CHG C6<-P4c st=ok ver=pass t="node --check tweaks-server.mjs -> OK" drift=0 note=drop-dup-block
+CHG C7<-P4d st=ok ver=pass t="node --check tweaks-server.mjs -> OK" drift=0 note=use-imported-roomstats
+CHG C8<-P4e st=ok ver=pass t="bun cascade/tmp-mp-test.mjs tweaks -> PASS: all multiplayer core assertions" drift=0 note=wire-core
+CHG C9<-P5a st=ok ver=pass t="grep -q 'vel: { x: Math.round(plane.vel.x' flight-sim3.html -> match" drift=0 note=send-vel
+CHG C10<-P5b st=ok ver=pass t="grep -q 'targetVel: new THREE.Vector3()' flight-sim3.html -> match" drift=0 note=rec-vel-fields
+CHG C11<-P5c st=ok ver=pass t="grep -q 'rec.receivedAt = performance.now()' flight-sim3.html -> match" drift=0 note=stamp-recv
+CHG C12<-P5d st=ok ver=pass t="grep -q 'const _mpPredicted = new THREE.Vector3()' flight-sim3.html -> match" drift=0 note=scratch-vec
+CHG C13<-P5e st=ok ver=pass t="grep -q '_mpPredicted.copy(rec.targetPos)' flight-sim3.html -> match; node --check on extracted main <script> -> OK" drift=0 note=dead-reckoning
+DONE stage=S ok=13 adapt=1 blk=0 deleg=0 esc=0 tok~=3400
+CHG V1<-C1..C13 st=ok ver=pass t="browser E2E: client connected to hardened server on 8801, remote BOT mesh spawned via welcome/state flow; dead-reckoning live — after last packet (x=180, vel.x=80) mesh continued 178.4->190.4->201.6->206.1 converging on the 0.35s lead cap (208); console 0 errors" note=orchestrator-browser-verify
+DONE stage=verify ok=1 tok~=90
