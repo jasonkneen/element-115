@@ -7431,14 +7431,61 @@ function updateMultiplayer(dt) {
       plane.gear = 1;
       plane.gearTarget = 1;
 
-      // Keep the HUD gear chip visible for fixed-gear aircraft so the thin
-      // top strip still has a complete systems readout, but label it as
-      // fixed rather than implying retractable gear is available.
+      // ——— GLB retractable-gear detection (visual-only track, F18) ———
+      // Four Sketchfab prop models ship named wheel/strut nodes. Wire them to
+      // the G key as a cosmetic retract animation. plane.fixedGear STAYS true
+      // so gear physics (drag / landing safety / crash path) is unchanged — the
+      // only new state is plane.glbGear. Models with no matching nodes leave
+      // glbGear null and behave exactly as fixed-gear did before.
+      plane.glbGear = null;
+      try {
+        const gearNameRx = /gear|wheel|tyre|tire|strut|undercarriage|lg_|oleo/i;
+        const paintChildRx = /_paint_0$|_plane_0$/i;   // skip texture-only child nodes
+        const rawGear = [];
+        model.traverse(o => {
+          if (!o || o === model) return;
+          const nm = o.name || '';
+          if (gearNameRx.test(nm) && !paintChildRx.test(nm)) rawGear.push(o);
+        });
+        const gearSet = new Set(rawGear);
+        // Prefer the top-most matched transform node (drop matched descendants).
+        const topGear = rawGear.filter(o => {
+          let p = o.parent;
+          while (p && p !== model) { if (gearSet.has(p)) return false; p = p.parent; }
+          return true;
+        });
+        if (topGear.length) {
+          jet.updateMatrixWorld(true);
+          const pScale = new THREE.Vector3();
+          const nodes = topGear.map(node => {
+            const box = new THREE.Box3().setFromObject(node);   // world-space AABB
+            const h = box.isEmpty() ? 0.5 : (box.max.y - box.min.y);
+            if (node.parent) node.parent.getWorldScale(pScale); else pScale.set(1, 1, 1);
+            // Spin only true wheels (not housings/struts) on ground roll.
+            const spin = /wheel|tyre|tire/i.test(node.name || '')
+              && !/box|strut|oleo|undercarriage/i.test(node.name || '');
+            return {
+              node,
+              baseY: node.position.y,
+              baseScaleY: node.scale.y,
+              tuck: (h * 1.2) / (pScale.y || 1),   // retract lift in node-local units
+              spin,
+              radius: Math.max(0.15, h * 0.5),     // world-unit wheel radius for spin
+            };
+          });
+          plane.glbGear = { nodes, deployed: true, anim: 1 };
+          console.log(`[plane-swap] GLB gear: ${nodes.length} node(s) [${topGear.map(n => n.name).join(', ')}], `
+            + `${nodes.filter(n => n.spin).length} spinning`);
+        }
+      } catch (e) { plane.glbGear = null; }
+
+      // Keep the HUD gear chip visible. Retractable GLB gear starts DOWN and is
+      // driven per-frame in updateHUD (P8); fixed-gear models stay FIXED.
       const ch2 = document.getElementById('ch-line2');
       if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · P OPTIONS · R RESET';
       const gearRow = document.getElementById('gear');
       if (gearRow) {
-        gearRow.textContent = 'FIXED';
+        gearRow.textContent = plane.glbGear ? 'DOWN' : 'FIXED';
         gearRow.className = 'ok';
         if (gearRow.parentElement) gearRow.parentElement.style.display = '';
       }
@@ -7460,6 +7507,10 @@ function updateMultiplayer(dt) {
       const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
       const props = [];
       const rawProps = [];
+      // Set when geometry extraction FOUND a cluster but the confidence
+      // checks (P3) rejected it as a mis-detection. Suppresses the procedural
+      // spinner fallback so we prefer NO prop over a visibly wrong one.
+      let extractionRejected = false;
       const addPropDiscToPivot = (pivot, sweepR) => {
         if (!(sweepR > 0.12)) return;
         const discGeo = new THREE.CircleGeometry(sweepR * 1.02, 40);
@@ -7563,11 +7614,28 @@ function updateMultiplayer(dt) {
           const cutZ = endSign < 0
             ? modelBoxLocal.min.z + spanZ * 0.10
             : modelBoxLocal.max.z - spanZ * 0.10;
+          // Nose-third cut for the fuselage centreline estimate (P3 recenters
+          // the extracted hub's Y onto this so blades spin on the body axis).
+          const fuseCutZ = endSign < 0
+            ? modelBoxLocal.min.z + spanZ * 0.33
+            : modelBoxLocal.max.z - spanZ * 0.33;
 
           const per = [];                    // per-source-mesh extraction plans
           const blendAccum = { x: 0, y: 0, z: 0, n: 0 };
           // For tightness scoring: mean XY radius of extracted triangles
           let radiusSum = 0;
+          // Fuselage-centreline estimate: mean Y of ALL geometry in the nose third.
+          let fuseYSum = 0, fuseN = 0;
+          // Extracted-cluster AABB (jet-local) — P3 uses depth-vs-sweep to
+          // confirm the blades form a disc roughly perpendicular to +Z.
+          let cbMinX = Infinity, cbMaxX = -Infinity;
+          let cbMinY = Infinity, cbMaxY = -Infinity;
+          let cbMinZ = Infinity, cbMaxZ = -Infinity;
+          const expandCB = (vx, vy, vz) => {
+            if (vx < cbMinX) cbMinX = vx; if (vx > cbMaxX) cbMaxX = vx;
+            if (vy < cbMinY) cbMinY = vy; if (vy > cbMaxY) cbMaxY = vy;
+            if (vz < cbMinZ) cbMinZ = vz; if (vz > cbMaxZ) cbMaxZ = vz;
+          };
 
           model.traverse(o => {
             if (!o.isMesh || !o.geometry) return;
@@ -7589,6 +7657,8 @@ function updateMultiplayer(dt) {
               jlVerts[i*3]   = tmp.x;
               jlVerts[i*3+1] = tmp.y;
               jlVerts[i*3+2] = tmp.z;
+              const inThird = endSign < 0 ? (tmp.z <= fuseCutZ) : (tmp.z >= fuseCutZ);
+              if (inThird) { fuseYSum += tmp.y; fuseN++; }
             }
 
             const srcIndex = idxAttr ? idxAttr.array : null;
@@ -7615,6 +7685,7 @@ function updateMultiplayer(dt) {
               if (maxEdge2 > sizeLimit2) { newStaticIdx.push(i0, i1, i2); continue; }
 
               propIdx.push(i0, i1, i2);
+              expandCB(x0, y0, z0); expandCB(x1, y1, z1); expandCB(x2, y2, z2);
               const cxT = (x0 + x1 + x2) / 3;
               const cyT = (y0 + y1 + y2) / 3;
               const czT = (z0 + z1 + z2) / 3;
@@ -7645,6 +7716,8 @@ function updateMultiplayer(dt) {
               y: blendAccum.y / blendAccum.n,
               z: blendAccum.z / blendAccum.n,
             },
+            cbox: { minX: cbMinX, maxX: cbMaxX, minY: cbMinY, maxY: cbMaxY, minZ: cbMinZ, maxZ: cbMaxZ },
+            fuseY: fuseN ? fuseYSum / fuseN : (blendAccum.y / blendAccum.n),
           };
         }
 
@@ -7656,6 +7729,34 @@ function updateMultiplayer(dt) {
         let best = null;
         if (fwd && aft) best = (fwd.tightness < aft.tightness) ? fwd : aft;
         else best = fwd || aft;
+
+        // ——— Confidence gate: prefer NO spin over a wrong one (F17) ———
+        // A real propeller is a thin disc on the fuselage axis at the nose.
+        // Reject clusters that are (a) too deep in Z to be a blade plane
+        // perpendicular to +Z, (b) not near the model's nose extreme, or
+        // (c) off the fuselage centreline in X beyond the recenter band.
+        if (best) {
+          const cz  = best.cbox.maxZ - best.cbox.minZ;
+          const cxy = Math.max(best.cbox.maxX - best.cbox.minX, best.cbox.maxY - best.cbox.minY);
+          const perpOK   = cz <= cxy * 0.8 + 0.05;
+          const noseZ    = best.endSign < 0 ? modelBoxLocal.min.z : modelBoxLocal.max.z;
+          const nearNose = Math.abs(best.hub.z - noseZ) <= spanZ * 0.15;
+          const axisOK   = Math.abs(best.hub.x) <= 0.6;
+          if (!perpOK || !nearNose || !axisOK) {
+            console.log(`[plane-swap] prop-extraction REJECTED perp=${perpOK} nearNose=${nearNose} axis=${axisOK} `
+              + `(cz=${cz.toFixed(2)} cxy=${cxy.toFixed(2)} hubX=${best.hub.x.toFixed(2)} hubZ=${best.hub.z.toFixed(2)}) — static, no wrong spin`);
+            best = null;
+            extractionRejected = true;
+          } else {
+            // (1) Recenter the spin axis: snap X to the fuselage line and Y
+            // onto the nose-third centreline. Applied to best.hub BEFORE the
+            // extraction bake (line ~7712) and pivot placement (~7734) below,
+            // so blades keep their true world position while rotating about
+            // the real prop axis instead of a biased triangle centroid.
+            best.hub.x = 0;
+            if (Math.abs(best.hub.y - best.fuseY) > 0.5) best.hub.y = best.fuseY;
+          }
+        }
 
         if (best) {
           console.log(`[plane-swap] prop-extraction scan: `
@@ -7787,7 +7888,7 @@ function updateMultiplayer(dt) {
       // handles the common Sketchfab "baked prop" case; this fallback is
       // here for degenerate models (e.g. no nose verts at all).
       // BUGFIX: force fallback when props array is empty (prop_count == 0)
-      if (props.length === 0) {
+      if (props.length === 0 && !extractionRejected) {
         // Use the pre-attach jet-local bounds captured above. The nose of
         // a +Z-natural model that's been rotated 180° around Y sits at
         // modelBoxLocal.min.z in jet-local space, so we place the prop
@@ -12683,6 +12784,7 @@ function updateInputLatches(dt) {
       // Fixed-gear aircraft (e.g. the swapped-in Disney Dusty prop) ignore
       // the retract toggle — their gear is always down.
       if (!plane.fixedGear) plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
+      else if (plane.glbGear) plane.glbGear.deployed = !plane.glbGear.deployed;
       gearPressed = true;
     }
   } else gearPressed = false;
@@ -13488,6 +13590,26 @@ function updateJetVisual() {
           }
           mat.opacity = bladeOpacity;
         });
+      }
+    }
+  }
+
+  // ——— GLB retractable-gear animation (F18, visual only) ———
+  // Nodes translate up by 1.2× their height and squash to 0.15 Y over 0.6s to
+  // fake tucking into the wing/fuselage; wheels spin on ground roll. Physics
+  // gear (plane.gear) is untouched — this is purely cosmetic.
+  if (plane.glbGear) {
+    const gg = plane.glbGear;
+    const target = gg.deployed ? 1 : 0;
+    const step = _jvDt / 0.6;                    // full travel in 0.6s
+    if (gg.anim < target) gg.anim = Math.min(target, gg.anim + step);
+    else if (gg.anim > target) gg.anim = Math.max(target, gg.anim - step);
+    const a = gg.anim;                           // 1 = down, 0 = tucked
+    for (const rec of gg.nodes) {
+      rec.node.position.y = rec.baseY + (1 - a) * rec.tuck;
+      rec.node.scale.y = rec.baseScaleY * (0.15 + 0.85 * a);
+      if (rec.spin && plane.onGround && a > 0.5) {
+        rec.node.rotation.x -= (groundSpeed / rec.radius) * _jvDt;
       }
     }
   }
@@ -14421,18 +14543,18 @@ function syncInputIndicator() {
     const touchInputActive = gamepadState.source === 'virtual' && /touch/i.test(gamepadState.id || '');
     if (touchInputActive) {
       if (ch1) ch1.textContent = 'TOUCH STICK PITCH/BANK · RIGHT THROTTLE SLIDER';
-      if (ch2) ch2.textContent = plane.fixedGear
+      if (ch2) ch2.textContent = (plane.fixedGear && !plane.glbGear)
         ? 'FIRE · MSL · BRAKE · RESET · C TARGET ON KEYBOARD'
         : 'FIRE · MSL · BRAKE · GEAR · RESET · C TARGET ON KEYBOARD';
     } else {
       if (ch1) ch1.textContent = 'PAD LS PITCH/BANK · RS/LB/RB YAW · A FIRE · Y MSL';
-      if (ch2) ch2.textContent = plane.fixedGear
+      if (ch2) ch2.textContent = (plane.fixedGear && !plane.glbGear)
         ? 'C KEY TARGET · RT/LT THROTTLE · B BRAKE · DPAD-L LIGHTS · BACK RACE · START RESET'
         : 'C KEY TARGET · RT/LT THROTTLE · B BRAKE · X GEAR · DPAD-L LIGHTS · BACK RACE · START RESET';
     }
   } else {
     if (ch1) ch1.textContent = 'W/S PITCH · A/D BANK · Q/E RUDDER';
-    if (ch2) ch2.textContent = plane.fixedGear
+    if (ch2) ch2.textContent = (plane.fixedGear && !plane.glbGear)
       ? 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · F FULLSCREEN · R RESET'
       : 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · G GEAR · M MODEL · F FULLSCREEN · R RESET';
   }
@@ -16794,7 +16916,12 @@ function updateHUD(dt = 1 / 60) {
   // Gear status
   let gearText = '';
   let gearClass = '';
-  if (plane.fixedGear) {
+  if (plane.glbGear) {
+    const gg = plane.glbGear;
+    if (gg.anim > 0.02 && gg.anim < 0.98) { gearText = 'MOVING'; gearClass = 'warn'; }
+    else if (gg.deployed) { gearText = 'DOWN'; gearClass = 'ok'; }
+    else { gearText = 'UP'; gearClass = ''; }
+  } else if (plane.fixedGear) {
     gearText = 'FIXED';
     gearClass = 'ok';
   } else if (plane.gear > 0.95) {

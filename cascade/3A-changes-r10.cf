@@ -1,0 +1,11 @@
+HUMAN: R10 applied — prop-extraction confidence gate + GLB visual-only undercarriage, wired to G key/HUD.
+CHG C1<-P1 st=ok ver=pass t="grep -c 'let extractionRejected = false' =1" drift=0 note=reject-flag
+CHG C2<-P2 st=ok ver=pass t="node --check on extracted script OK" drift=0 note=cluster-shape-metrics
+CHG C3<-P3 st=ok ver=pass t="node --check OK; confidence gate + recenter inserted before existing scan log" drift=0 note=confidence-gate-and-recenter
+CHG C4<-P4 st=ok ver=pass t="grep -c 'props.length === 0 && !extractionRejected' =1" drift=0 note=suppress-fallback-on-reject
+CHG C5<-P5 st=ok ver=pass t="node --check OK; removed pre-existing duplicate gearRow block left over from original code" drift=0 note=glb-gear-collect
+CHG C6<-P6 st=ok ver=pass t="grep -c 'else if (plane.glbGear) plane.glbGear.deployed' =1" drift=0 note=g-key-toggles-glbgear
+CHG C7<-P7 st=ok ver=pass t="node --check OK; _jvDt/groundSpeed/plane.onGround confirmed in-scope" drift=0 note=glb-gear-animation
+CHG C8<-P8 st=ok ver=pass t="grep -c \"gearText = 'UP'\" =2 (expect >=2)" drift=0 note=hud-chip-down-up
+CHG C9<-P9 st=ok ver=pass t="grep -c 'plane.fixedGear && !plane.glbGear' =3 (expect 3)" drift=0 note=advertise-g-key
+DONE stage=S ok=9 adapt=1 blk=0 deleg=0 esc=0 tok~=9800
