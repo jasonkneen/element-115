@@ -5504,6 +5504,16 @@ function makeJet() {
   hstab.add(hstabR); hstab.add(hstabL);
   hstab.position.set(0, 0.1, 6.3);
   root.add(hstab);
+  // Register the all-moving stabs as live elevator surfaces. The aero-flex
+  // animator previously only knew GLB-named nodes, so the procedural tail
+  // never deflected with pitch input. Registered in userData BEFORE the
+  // merge pass runs — the exclusion walk keeps these nodes animatable.
+  root.userData.controlSurfaces = {
+    aileronL: [], aileronR: [],
+    elevatorL: [{ node: hstabL, rx: hstabL.rotation.x, ry: hstabL.rotation.y, rz: hstabL.rotation.z }],
+    elevatorR: [{ node: hstabR, rx: hstabR.rotation.x, ry: hstabR.rotation.y, rz: hstabR.rotation.z }],
+    rudder: [],
+  };
 
   // Engine intakes (sides) — curved bodies, splitter gap, ramped throat, diverter.
   // Fuselage half-width at the intake station (z~-0.5) is ~1.18, so seat the
