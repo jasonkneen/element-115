@@ -2818,7 +2818,22 @@ function updateFxaaPassResolution() {
 function initPostFX() {
   if (typeof THREE.EffectComposer !== 'function' || typeof THREE.RenderPass !== 'function') return;
   try {
-    postFX.composer = new THREE.EffectComposer(renderer);
+    // The GL context is created with antialias:false, so the composer path
+    // has zero geometric AA and FXAA alone leaves hard sawtooth edges on
+    // low-poly silhouettes. On WebGL2, render into a 4x MSAA target instead
+    // (r128: WebGLMultisampleRenderTarget; EffectComposer.clone() preserves
+    // the samples count for its second buffer).
+    let composerTarget;
+    if (renderer.capabilities && renderer.capabilities.isWebGL2 && typeof THREE.WebGLMultisampleRenderTarget === 'function') {
+      const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+      composerTarget = new THREE.WebGLMultisampleRenderTarget(dbSize.x, dbSize.y, { format: THREE.RGBAFormat });
+      composerTarget.samples = 4;
+      composerTarget.texture.name = 'EffectComposer.rt1';
+    }
+    postFX.composer = composerTarget
+      ? new THREE.EffectComposer(renderer, composerTarget)
+      : new THREE.EffectComposer(renderer);
+    postFX.msaa = !!composerTarget;
     const renderPass = new THREE.RenderPass(scene, camera);
     postFX.composer.addPass(renderPass);
 
@@ -11136,11 +11151,13 @@ function maybeTriggerEngineStart() {
 function getSpawnProfileState(mode = playerProfileState.spawnMode) {
   const key = normalizeSpawnMode(mode);
   if (key === 'sky') {
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.04, 0, 0, 'YXZ'));
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.02, 0, 0, 'YXZ'));
     return {
       mode: key,
-      pos: new THREE.Vector3(0, 132, -720),
-      vel: new THREE.Vector3(0, -0.6, -62),
+      // Spawn well above the ~300-500m terrain peaks — 132m put the hands-off
+      // auto-fly straight into a mountainside within seconds.
+      pos: new THREE.Vector3(0, 640, -720),
+      vel: new THREE.Vector3(0, -0.2, -62),
       quat: q,
       throttle: 0.50,
       onGround: false,
@@ -11359,7 +11376,13 @@ const MAX_ROLL_RATE = 2.35;    // rad/s, ~135 deg/s
 const MAX_YAW_RATE = 0.82;     // rad/s, ~47 deg/s
 
 const keys = {};
+// True when the user is typing into a form field — flight keys must not
+// fire and the canvas must not steal focus while a field is active.
+function isTypingTarget(el) {
+  return !!(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable));
+}
 window.addEventListener('keydown', e => {
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
   if (e.code === 'Space' && !e.repeat && typeof combatState !== 'undefined') {
     const now = performance.now();
     const doubleTapWindow = 280;
@@ -15837,17 +15860,25 @@ beginFlight({ enableAudio: false, focusCanvas: false });
 
 // __overlay_dismiss_focus__ — re-focus game canvas on any click/key
 // so external popups (Twitter/X sign-in, etc.) don't block input
-window.addEventListener('click', () => renderer.domElement.focus());
-window.addEventListener('keydown', () => renderer.domElement.focus());
+window.addEventListener('click', (e) => {
+  if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
+  renderer.domElement.focus();
+});
+window.addEventListener('keydown', (e) => {
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
+  renderer.domElement.focus();
+});
 
 // __popup_focus_recovery__ — detect when browser UI/popups steal focus
 // and aggressively reclaim it for the game canvas so flight controls
 // remain responsive during all flight stages
 window.addEventListener('blur', () => {
-  // Delay slightly to let popup finish opening, then reclaim focus
-  setTimeout(() => renderer.domElement.focus(), 50);
+  // Delay slightly to let popup finish opening, then reclaim focus —
+  // unless the user is mid-typing in a form field.
+  setTimeout(() => { if (!isTypingTarget(document.activeElement)) renderer.domElement.focus(); }, 50);
 });
 window.addEventListener('focus', () => {
+  if (isTypingTarget(document.activeElement)) return;
   renderer.domElement.focus();
 });
 
@@ -19055,10 +19086,12 @@ requestAnimationFrame(animate);
 // remain responsive during all flight stages. Also handles visibility
 // changes to pause/resume gracefully when tab is backgrounded.
 window.addEventListener('blur', () => {
-  // Delay slightly to let popup finish opening, then reclaim focus
-  setTimeout(() => renderer.domElement.focus(), 50);
+  // Delay slightly to let popup finish opening, then reclaim focus —
+  // unless the user is mid-typing in a form field.
+  setTimeout(() => { if (!isTypingTarget(document.activeElement)) renderer.domElement.focus(); }, 50);
 });
 window.addEventListener('focus', () => {
+  if (isTypingTarget(document.activeElement)) return;
   renderer.domElement.focus();
 });
 
@@ -19076,11 +19109,15 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // __popup_blocker_workaround__ — aggressive focus reclamation for overlay dismissal
-// Twitter/X and other OAuth popups steal focus; reclaim it on any user interaction
-window.addEventListener('click', () => {
+// Twitter/X and other OAuth popups steal focus; reclaim it on any user interaction.
+// Guarded: never steal focus from form fields (leaderboard / multiplayer setup)
+// or from clicks on interactive controls, or typing into them is impossible.
+window.addEventListener('click', (e) => {
+  if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
   if (running) renderer.domElement.focus();
 }, { capture: true });
-window.addEventListener('keydown', () => {
+window.addEventListener('keydown', (e) => {
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
   if (running) renderer.domElement.focus();
 }, { capture: true });
 
