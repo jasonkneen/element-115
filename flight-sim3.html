@@ -2892,7 +2892,10 @@ function initPostFX() {
     if (renderer.capabilities && renderer.capabilities.isWebGL2 && typeof THREE.WebGLMultisampleRenderTarget === 'function') {
       const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
       composerTarget = new THREE.WebGLMultisampleRenderTarget(dbSize.x, dbSize.y, { format: THREE.RGBAFormat });
-      composerTarget.samples = 4;
+      // 2x, not 4x: at pixelRatio ~1.6 the visual difference is marginal but
+      // 4x MSAA doubles AA fill-rate cost and pushed frame time into the
+      // 55-58fps judder band on mid GPUs.
+      composerTarget.samples = 2;
       composerTarget.texture.name = 'EffectComposer.rt1';
     }
     postFX.composer = composerTarget
@@ -19358,7 +19361,10 @@ function updatePracticeRingCourse(dt) {
   // it only scales DOWN from the user's chosen renderScale/resolutionScale so the
   // user's sliders stay the ceiling. Folded into applyRenderScale's setPixelRatio.
   let adaptiveScale = 1.0, adaptiveCooldown = 0, adaptiveWarmup = 0, wasAdaptRunning = false;
-  const ADAPT_MIN = 0.6, ADAPT_STEP = 0.1, FPS_LOW = 55, FPS_GOOD = 58;
+  // FPS_LOW 57 (was 55): the 55-58 zone previously sat in the dead band —
+  // full resolution with 3-6% missed vsyncs = sustained judder that reads
+  // as "everything shaking". Let adaptive res engage there instead.
+  const ADAPT_MIN = 0.6, ADAPT_STEP = 0.1, FPS_LOW = 57, FPS_GOOD = 59;
   function tickFps() {
     fpsFrames++;
     const now = performance.now();
