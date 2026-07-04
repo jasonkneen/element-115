@@ -8556,7 +8556,7 @@ function spawnSaucerMissileExplosion(pos, killShot = false, intensity = 1.0) {
   if (killShot) setTimeout(() => spawnExplosion(offsetB, boom * 0.62, boom * 0.72), 185);
   impactSparkPool.emitCluster(pos, killShot ? 42 : 24, killShot ? 2.5 : 1.45, 0.42, killShot ? 1.35 : 0.88, killShot ? 2.2 : 1.35);
   explosionSmokePool.emitCluster(pos.clone().add(new THREE.Vector3(0, 2.2, 0)), killShot ? 38 : 18, killShot ? 4.8 : 2.5, 0.75, killShot ? 2.3 : 1.45, killShot ? 2.2 : 1.2);
-  if (typeof playSfx === 'function') playSfx('explosion', { volume: killShot ? 0.96 : 0.72, throttleMs: killShot ? 35 : 70, rate: killShot ? 0.88 : 0.96 });
+  if (typeof playSfx3D === 'function') playSfx3D('explosion', pos, { volume: killShot ? 0.96 : 0.72, throttleMs: killShot ? 35 : 70, rate: killShot ? 0.88 : 0.96 });
 }
 
 function spawnGroundImpactExplosion(pos, intensity = 1.0) {
@@ -8580,8 +8580,8 @@ function spawnGroundImpactExplosion(pos, intensity = 1.0) {
     groundScorchFX.spawn(flankA, 0.45 + intensity * 0.24);
     groundScorchFX.spawn(flankB, 0.45 + intensity * 0.24);
   }
-  if (typeof playSfx === 'function') {
-    playSfx('explosion', { volume: 0.46 + intensity * 0.10, rate: 0.98 + Math.random() * 0.06, throttleMs: 45 });
+  if (typeof playSfx3D === 'function') {
+    playSfx3D('explosion', pos, { volume: 0.46 + intensity * 0.10, rate: 0.98 + Math.random() * 0.06, throttleMs: 45 });
   }
 }
 
@@ -8642,8 +8642,8 @@ function damageDestructible(target, pos, damage = 1.0, intensity = 1.0, source =
   }
 
   markAlienReaction(target, source);
-  if (typeof playSfx === 'function') {
-    playSfx(source === 'missile' ? 'explosion' : 'mg-hit', { volume: source === 'missile' ? 0.56 : 0.44 + intensity * 0.12, throttleMs: source === 'missile' ? 120 : 60 });
+  if (typeof playSfx3D === 'function') {
+    playSfx3D(source === 'missile' ? 'explosion' : 'mg-hit', pos, { volume: source === 'missile' ? 0.56 : 0.44 + intensity * 0.12, throttleMs: source === 'missile' ? 120 : 60 });
   }
   if (target.health <= 0) {
     destroyTarget(target, pos, intensity, source);
@@ -9070,7 +9070,7 @@ function fireUfoPulse(t, originPos, dt = 1 / 60) {
   p.mesh.quaternion.setFromUnitVectors(_projectileForward, p.vel.clone().normalize());
   muzzleFlashPool.emitCluster(p.pos, 5, 0.24, 0.08, 0.34, 0.72);
   impactBlastPool.emitCluster(p.pos, 3, 0.52, 0.06, 0.18, 0.42);
-  if (typeof playSfx === 'function') playSfx('dogfight', { throttleMs: 190, maxMs: 160, volume: 0.34, rate: 1.38 + Math.random() * 0.18 });
+  if (typeof playSfx3D === 'function') playSfx3D('dogfight', originPos, { throttleMs: 190, maxMs: 160, volume: 0.34, rate: 1.38 + Math.random() * 0.18 });
   return true;
 }
 
@@ -10597,7 +10597,14 @@ function playSfx(event, opts = {}) {
   const baseVol = opts.volume != null ? opts.volume : 1;
   const ct = audio.ctx.currentTime;
   g.gain.setValueAtTime(baseVol, ct);
-  src.connect(g).connect(audio.master);
+  let panner = null;
+  if (opts.pan != null && typeof audio.ctx.createStereoPanner === 'function') {
+    panner = audio.ctx.createStereoPanner();
+    panner.pan.value = Math.max(-1, Math.min(1, opts.pan));
+    src.connect(g).connect(panner).connect(audio.master);
+  } else {
+    src.connect(g).connect(audio.master);
+  }
   src.start();
 
   if (opts.maxMs) {
@@ -10609,7 +10616,26 @@ function playSfx(event, opts = {}) {
   }
 
   // Clean up when done
-  src.onended = () => { try { src.disconnect(); g.disconnect(); } catch {} };
+  src.onended = () => { try { src.disconnect(); g.disconnect(); if (panner) panner.disconnect(); } catch {} };
+}
+
+// Spatial one-shot: distance attenuation + equal-power stereo pan from the
+// camera, routed through the shared playSfx pool so throttle/cleanup are reused.
+// opts.radialVel (m/s, +=receding) optionally shifts pitch +/-8% for doppler.
+const _sfx3DCam = new THREE.Vector3();
+const _sfx3DLocal = new THREE.Vector3();
+function playSfx3D(event, worldPos, opts = {}) {
+  if (!audio.ctx || !audio.enabled || !worldPos) return;
+  camera.getWorldPosition(_sfx3DCam);
+  const dist = _sfx3DCam.distanceTo(worldPos);
+  const baseVol = (opts.volume != null ? opts.volume : 1) / (1 + dist / 220);
+  if (baseVol < 0.02) return;
+  _sfx3DLocal.copy(worldPos);
+  camera.worldToLocal(_sfx3DLocal);
+  const pan = Math.max(-1, Math.min(1, _sfx3DLocal.x / Math.max(1, dist)));
+  let rate = opts.rate || 1;
+  if (opts.radialVel) rate *= Math.max(0.92, Math.min(1.08, 1 - opts.radialVel / 343));
+  playSfx(event, { ...opts, volume: baseVol, rate, pan });
 }
 
 const audio = {
@@ -10881,7 +10907,15 @@ function initAudio() {
   audio.ctx = new Ctx();
   audio.master = audio.ctx.createGain();
   audio.master.gain.value = 0.55;
-  audio.master.connect(audio.ctx.destination);
+  // Glue bus: DynamicsCompressor tames stacked-explosion clipping, no per-frame cost.
+  const masterComp = audio.ctx.createDynamicsCompressor();
+  masterComp.threshold.value = -14;
+  masterComp.knee.value = 24;
+  masterComp.ratio.value = 5;
+  masterComp.attack.value = 0.004;
+  masterComp.release.value = 0.18;
+  audio.masterComp = masterComp;
+  audio.master.connect(masterComp).connect(audio.ctx.destination);
 
   // Preload the combat + impact SFX so the first gun trigger isn't silent
   // while the fetch+decode happens. Engine audio stays as the continuous
@@ -11055,12 +11089,12 @@ function updateAudio(dt) {
 
   if (audio.propSampleReady) {
     if (propSampleActive) syncPropSamplePlayback();
-    // One clear engine voice only: fixed playback rate, fixed filter tone,
-    // no extra detail beds, and only a small gain change from throttle.
-    const BASE_RATE = 1.14;
-    audio.propPlaybackRate = BASE_RATE;
+    // Throttle-linked pitch: idle->full spans 1.06->1.20 playback rate. Slow tau
+    // (0.25) keeps the one-clear-voice design with no swell/duck artifact.
+    const targetRate = 1.06 + t * 0.14;
+    audio.propPlaybackRate = targetRate;
     if (audio.propBufferNode) {
-      audio.propBufferNode.playbackRate.setTargetAtTime(BASE_RATE, ct, 0.18);
+      audio.propBufferNode.playbackRate.setTargetAtTime(targetRate, ct, 0.25);
     }
     audio.propTextureBlend = 0;
     const sampleVol = propSampleActive

@@ -1,0 +1,90 @@
+HUMAN: R2 audio planned. F4 spatializes remote SFX only; player gun/flares (8919/8969) stay 2D — author mislabel.
+PLAN P1<-F5 op=replace at=flight-sim3.html:10869#"audio.master.connect(audio.ctx.destination)" why=glue-bus-compressor ref=flight-sim3.html:10867#"audio.master = audio.ctx.createGain",flight-sim3.html:11038#"audio.master.gain.setTargetAtTime" test="boot+eval: (initAudio(), audio.masterComp instanceof DynamicsCompressorNode)" order=1 fill=-
+<<<P1
+  // Glue bus: DynamicsCompressor tames stacked-explosion clipping, no per-frame cost.
+  const masterComp = audio.ctx.createDynamicsCompressor();
+  masterComp.threshold.value = -14;
+  masterComp.knee.value = 24;
+  masterComp.ratio.value = 5;
+  masterComp.attack.value = 0.004;
+  masterComp.release.value = 0.18;
+  audio.masterComp = masterComp;
+  audio.master.connect(masterComp).connect(audio.ctx.destination);
+>>>
+PLAN P2<-F4 op=diff at=flight-sim3.html:10585-10597#"src.connect(g).connect(audio.master)" why=optional-stereo-panner ref=flight-sim3.html:10581#"const g = audio.ctx.createGain()",flight-sim3.html:10597#"src.onended = () =>" test="boot+eval: (initAudio(), audio.enabled=true, typeof audio.ctx.createStereoPanner==='function' && playSfx('mg-burst',{pan:0.6})===undefined)" order=2 fill=-
+<<<P2
+@@
+   g.gain.setValueAtTime(baseVol, ct);
+-  src.connect(g).connect(audio.master);
++  let panner = null;
++  if (opts.pan != null && typeof audio.ctx.createStereoPanner === 'function') {
++    panner = audio.ctx.createStereoPanner();
++    panner.pan.value = Math.max(-1, Math.min(1, opts.pan));
++    src.connect(g).connect(panner).connect(audio.master);
++  } else {
++    src.connect(g).connect(audio.master);
++  }
+   src.start();
+@@
+   // Clean up when done
+-  src.onended = () => { try { src.disconnect(); g.disconnect(); } catch {} };
++  src.onended = () => { try { src.disconnect(); g.disconnect(); if (panner) panner.disconnect(); } catch {} };
+ }
+>>>
+PLAN P3<-F4 op=insert at=flight-sim3.html:10599#"const audio = {" why=playSfx3D-helper ref=flight-sim3.html:10562#"function playSfx(event, opts",flight-sim3.html:2725#"const camera = new THREE.PerspectiveCamera",flight-sim3.html:10580#"src.playbackRate.value = opts.rate" test="boot+eval: (initAudio(), audio.enabled=true, typeof playSfx3D==='function' && playSfx3D('explosion', camera.position.clone(), {volume:1})===undefined)" order=3 fill=-
+<<<P3
+// Spatial one-shot: distance attenuation + equal-power stereo pan from the
+// camera, routed through the shared playSfx pool so throttle/cleanup are reused.
+// opts.radialVel (m/s, +=receding) optionally shifts pitch +/-8% for doppler.
+const _sfx3DCam = new THREE.Vector3();
+const _sfx3DLocal = new THREE.Vector3();
+function playSfx3D(event, worldPos, opts = {}) {
+  if (!audio.ctx || !audio.enabled || !worldPos) return;
+  camera.getWorldPosition(_sfx3DCam);
+  const dist = _sfx3DCam.distanceTo(worldPos);
+  const baseVol = (opts.volume != null ? opts.volume : 1) / (1 + dist / 220);
+  if (baseVol < 0.02) return;
+  _sfx3DLocal.copy(worldPos);
+  camera.worldToLocal(_sfx3DLocal);
+  const pan = Math.max(-1, Math.min(1, _sfx3DLocal.x / Math.max(1, dist)));
+  let rate = opts.rate || 1;
+  if (opts.radialVel) rate *= Math.max(0.92, Math.min(1.08, 1 - opts.radialVel / 343));
+  playSfx(event, { ...opts, volume: baseVol, rate, pan });
+}
+
+>>>
+PLAN P4<-F4 op=replace at=flight-sim3.html:8544#"playSfx('explosion', { volume: killShot" why=saucer-boom-3d ref=flight-sim3.html:8535#"function spawnSaucerMissileExplosion(pos" test="boot+eval: (initAudio(), audio.enabled=true, (spawnSaucerMissileExplosion(plane.pos.clone(), true, 1), true))" order=4 fill=-
+<<<P4
+  if (typeof playSfx3D === 'function') playSfx3D('explosion', pos, { volume: killShot ? 0.96 : 0.72, throttleMs: killShot ? 35 : 70, rate: killShot ? 0.88 : 0.96 });
+>>>
+PLAN P5<-F4 op=replace at=flight-sim3.html:8568-8570#"volume: 0.46 + intensity * 0.10" why=ground-boom-3d ref=flight-sim3.html:8547#"function spawnGroundImpactExplosion(pos" test="boot+eval: (initAudio(), audio.enabled=true, (spawnGroundImpactExplosion(plane.pos.clone(), 1), true))" order=4 fill=-
+<<<P5
+  if (typeof playSfx3D === 'function') {
+    playSfx3D('explosion', pos, { volume: 0.46 + intensity * 0.10, rate: 0.98 + Math.random() * 0.06, throttleMs: 45 });
+  }
+>>>
+PLAN P6<-F4 op=replace at=flight-sim3.html:8630-8632#"source === 'missile' ? 'explosion' : 'mg-hit'" why=hit-3d ref=flight-sim3.html:8585#"function damageDestructible(target, pos" test="boot+eval: (initAudio(), audio.enabled=true, typeof damageDestructible==='function' && typeof playSfx3D==='function')" order=4 fill=-
+<<<P6
+  if (typeof playSfx3D === 'function') {
+    playSfx3D(source === 'missile' ? 'explosion' : 'mg-hit', pos, { volume: source === 'missile' ? 0.56 : 0.44 + intensity * 0.12, throttleMs: source === 'missile' ? 120 : 60 });
+  }
+>>>
+PLAN P7<-F4 op=replace at=flight-sim3.html:9058#"playSfx('dogfight', { throttleMs: 190" why=ufo-pulse-3d ref=flight-sim3.html:9001#"function fireUfoPulse(t, originPos",flight-sim3.html:9042#"const dir = aim.sub(originPos)" test="boot+eval: (initAudio(), audio.enabled=true, typeof fireUfoPulse==='function' && typeof playSfx3D==='function')" order=4 fill=-
+<<<P7
+  if (typeof playSfx3D === 'function') playSfx3D('dogfight', originPos, { throttleMs: 190, maxMs: 160, volume: 0.34, rate: 1.38 + Math.random() * 0.18 });
+>>>
+PLAN P8<-F6 op=replace at=flight-sim3.html:11045-11053#"const BASE_RATE = 1.14" why=throttle-linked-prop-pitch ref=flight-sim3.html:11041#"if (audio.propSampleReady)",flight-sim3.html:11034#"Keep the master gain steady" test="boot+eval: (initAudio(), audio.propSampleReady=true, audio.propBufferNode!=null || true)" order=1 fill=-
+<<<P8
+    // Throttle-linked pitch: idle->full spans 1.06->1.20 playback rate. Slow tau
+    // (0.25) keeps the one-clear-voice design with no swell/duck artifact.
+    const targetRate = 1.06 + t * 0.14;
+    audio.propPlaybackRate = targetRate;
+    if (audio.propBufferNode) {
+      audio.propBufferNode.playbackRate.setTargetAtTime(targetRate, ct, 0.25);
+    }
+    audio.propTextureBlend = 0;
+    const sampleVol = propSampleActive
+      ? Math.min(0.80, 0.46 + t * 0.18)
+      : 0;
+>>>
+DONE stage=O plan=8 tok~=1150

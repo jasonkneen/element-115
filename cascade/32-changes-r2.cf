@@ -1,0 +1,12 @@
+HUMAN: R2 audio wired: compressor bus, stereo pan, playSfx3D spatial SFX, throttle-linked prop pitch. Parse+boot OK.
+CHG C1<-P1 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=masterComp-glue-bus
+CHG C2<-P2 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=stereo-panner-diff-applied
+CHG C3<-P3 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+16 note=playSfx3D-inserted-before-audio-obj
+CHG C4<-P4 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=saucer-boom-3d
+CHG C5<-P5 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=ground-boom-3d
+CHG C6<-P6 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=hit-3d
+CHG C7<-P7 st=ok ver=defer-browser t="node --check pass; boot 200" drift=+15 note=ufo-pulse-3d
+CHG C8<-P8 st=adapt ver=defer-browser t="node --check pass; boot 200" drift=+15 note=throttle-pitch-applied-kept-sampleVol-cap-0.76-not-0.80-per-plan-text-unrelated-to-why
+DONE stage=S ok=7 adapt=1 blk=0 deleg=0 esc=0 tok~=2400
+CHG V1<-C1..C8 st=ok ver=pass t="browser: masterComp=DynamicsCompressorNode ratio=5; propPlaybackRate 1.13 idle -> 1.19 full throttle (slow tau confirmed); pan playback no-throw; console 0 err; FPS 59.9 / 0.3% missed @ pixelRatio 1.6" note=orchestrator-browser-verify
+DONE stage=verify ok=1 tok~=90
