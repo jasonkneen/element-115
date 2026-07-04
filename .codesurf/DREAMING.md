@@ -1,166 +1,130 @@
-# CodeSurf Workspace Memory — ships (Element-115)
+Now I have sufficient context to write the updated DREAMING.md. Key new facts from this session cycle:
 
-*Generated: 2026-05-31*
+- `git status` shows only `.codesurf/DREAMING.md` and `.mcp.json` as dirty — `flight-sim3.html` is no longer dirty (reticle scaffolding state needs updating)
+- Session evidence from 2026-06-07 shows continued OpenClaw heartbeat polls (Ava), mc-gateway failures, and Tom Doerr tweet tracker cron failures
+- New muxy repo sessions (entirely unrelated to ships)
+- MCP contex URL confirmed at `http://127.0.0.1:53961/mcp`
+
+# ships — Generated Workspace Memory
+
+*Last updated: 2026-06-07. Grounded in disk inspection, git log, and verified session evidence.*
 
 ---
 
 ## Overview
 
-Primary workspace at `/Users/jkneen/Downloads/ships` contains **Element-115**, a browser-based 3D arcade flight simulator built with Three.js. The entire game client is a single self-contained HTML file (`flight-sim3.html`). Optional Bun/Node backends handle live tweaks and WebSocket multiplayer. Netlify-ready build pipeline.
+**element-115-flight-sim** is a browser-based arcade flight sim at `/Users/jkneen/Downloads/ships`. The entire game is a single monolithic file: `flight-sim3.html`. There is no `engine/`, `hud/`, `player/`, or `tests/` directory structure on disk — every subsystem is inline. Several past agents described a modular layout that does not exist; disregard any such descriptions.
 
 ---
 
-## Durable Facts
+## Durable Architecture Facts
 
-### Project Identity
-
-- Canonical name: **Element-115** (rebranded 2026-05-23, commit `d9d2d09`)
-- Package: `element-115-flight-sim` v0.1.0
-- Main game file: `flight-sim3.html` — self-contained, no framework dependency; Three.js r128
-- Runtime / package manager: **bun** (≥ 1.1.0)
-- Deploy target: **Netlify** via `netlify.toml`; build output → `dist/`
-- License: MIT
-
-### Key File Map
-
-- `flight-sim3.html` — entire game client; dirty (uncommitted distance-culling pass)
-- `flight-sim3.html.bak` — backup of pre-dirty state
-- `tweaks-server.mjs` — live plane-tweaks HTTP backend on `:8765`
-- `multiplayer-server.mjs` — WebSocket room / race server on `:3000`
-- `autopilot.mjs` — autopilot tooling
-- `self-evolve.mjs` — experimental evolution tooling
-- `world-designer.mjs` — world design tooling
-- `HERMES_HANDOFF_RETICLE_TARGETING.md` — cross-session handoff for reticle/targeting work
-- `progress.md` — running improvement log since 2026-04-25
-- `plane-tweaks.json` — active tuning state
-- `world-state.json` — world state persistence
-- `feature-requests.json`, `latest-features.json` — feature tracking
-- `models/` — GLB plane meshes including `stunt_plane.glb`
-- `.mcp.json` — contex MCP config; port changed to `60768` (dirty, uncommitted)
-
-### npm Scripts
-
-- `bun run start` — tweaks-server + multiplayer-server concurrently
-- `bun run build` — builds via `tools/build-game.mjs` → `dist/`
-- `bun run autopilot`, `bun run designer`, `bun run evolve` — experimental tooling
-
-### Settings Persistence
-
-- Key: `gfx-settings-v5`; legacy v2/v3/v4 cleared on load/reset
-- Defaults: `flight_profile: trainer`, `control_preset: casual`, `flight_accel: 0.96`
-- Fog density per GFX preset: ultra=0.0006, high=0.0008, medium=0.0012, low=0.002
-- `floraCullDistance` per preset: low=250, medium=350, high=450, ultra=600, default=450
+- **Primary game file**: `flight-sim3.html` (~19,141 lines; all physics, AI, HUD, camera, combat inline)
+- **Entry HTML**: `index.html` at repo root (512 bytes; never move it — Bun resolves relative to root)
+- **Dev server**: `bun run dev` → `tweaks-server.mjs`, served at `http://localhost:8766`
+- **Both servers**: `bun run start` → web + multiplayer via `concurrently`
+- **Multiplayer relay**: `multiplayer-server.mjs`
+- **Build**: `bun run build` → `tools/build-game.mjs` → `dist/`
+- **Preview built dist**: `bun run preview:dist` → `tools/serve-dist.mjs`
+- **Package name**: `element-115-flight-sim`, ESM, Bun ≥ 1.1.0, no Vite
+- **GLB models**: `models/` — key asset `stunt_plane.glb` (was misplaced at `../stunt_plane.glb`, corrected previously)
+- **Settings key**: `gfx-settings-v5` in localStorage; v2–v4 are cleared on load/reset
+- **Plane selection page**: `plane-select.html` at repo root
+- **MCP contex server**: `http://127.0.0.1:53961/mcp` (confirmed in `.mcp.json`; uncommitted update pending)
+- **Last commit**: `b491d0f` — "Add distance culling, horizon LOD, and instancing" (2026-06-01)
 
 ---
 
-## Uncommitted Changes (as of 2026-05-31)
+## Verified Working Features (as of 2026-06-01)
 
-### `flight-sim3.html` — Distance Culling Pass
+- Arcade flight physics, chase camera (60–68° FOV), HUD, combat, multiplayer, gamepad
+- Settings baseline: `flight_accel: 0.96`, `control_preset: casual`, `flight_profile: trainer`
 
-- Adds `applyDistanceCulling(material, defaultCullDistance)` injecting GLSL via `onBeforeCompile`
-- Culls instanced vertices beyond threshold with soft fade over last 15% of range
-- Applied to: `rockMat` (350), `floraMat` (500), `floraMatLow` (500), `rockMatLowPoly` (350)
-- New `floraCullDistance` GFX setting in DEFAULTS (450) and all four presets
-- `window.gfx.floraCullDistance` is the live runtime knob; shader reads it via getter uniform
-- Plumbed into `applyTerrainClutter()` via `scene.userData.__floraCullDistance`
-- **Status: browser-unverified; not committed. Blocking action: smoke-test in browser for pop-in and JS errors, then commit.**
+### Performance work (shipped 2026-06-01, commit `b491d0f`)
 
-### `.mcp.json` — contex MCP port changed to `60768` (uncommitted)
+- Adaptive resolution, pre-warm shaders, time-budgeted chunk queue, airfield lights → 2 draw calls, 3rd horizon ring LOD (15–24 km), low preset bypasses EffectComposer entirely, device-tier autodetect on first run, `fireHeld` gamepad fix
 
 ---
 
-## Recent Commit History
+## Known Bugs (2026-04-27 audit, unresolved)
 
-- `27c98b2` — Optimize flight-sim performance and HUD *(most recent committed state)*
-- `f8d3e4d` — Replace flight simulator image with a new URL
-- `d9d2d09` — Rebrand project to Element-115
-- `5d54386` — Add README, CONTRIBUTING, LICENSE; update files
+- **Free traffic kill on spawn**: runway AI intersects parked player at t=0
+- **Reticle hidden for keyboard players**: gated behind `INPUT_FLAGS.mouseFlight` (default `false`)
+- **Mouse aim corrupts after resize**: resize handler clamps normalised values as pixels
+- **Reticle uses NDC, not gun-line**: follows mouse position rather than forward weapon vector
 
-The 2026-05-28 feature bundle (engine sound, fog toggle, screen shake, audio management, stall/spin animation, cloud fly-through, building collision detection) is committed in `27c98b2`.
+---
+
+## Test Hooks
+
+- `window.__sim.spawnPlayer({ x: 0, y: 500, z: 0 })` — safe altitude spawn (minimum y: 500; runway spawn crashes)
+- `window.render_game_to_text()` — telemetry snapshot: speed, altitude, score, combat state
+- `window.advanceTime()` — step game clock; also polls gamepad input
+- `window.__ap.setGamepad()` / `.clearGamepad()` — inject virtual controller
+- `window.__ap.telemetry()` — richer block including multiplayer/traffic/combat data (around line 11970+)
+- Playwright smoke outputs to `output/`; WebGL ReadPixels and AudioContext autoplay warnings are expected noise
+
+---
+
+## Non-Game Runtime Scripts
+
+- `autopilot.mjs` — `bun autopilot`; AI autopilot harness
+- `world-designer.mjs` — `bun designer`; world layout tool
+- `self-evolve.mjs` — `bun evolve`; experimental self-modification
+- `tweaks-server.mjs` — dev server
+- `multiplayer-server.mjs` — WebSocket relay
 
 ---
 
 ## Open Threads
 
-### High Priority
+### Reticle + Targeting — STATUS UNCERTAIN
 
-- **Distance culling smoke-test + commit** — `applyDistanceCulling()` and `floraCullDistance` implemented but browser-unverified. Open `flight-sim3.html`, verify no pop-in and no JS errors, then commit all three dirty files together.
+`HERMES_HANDOFF_RETICLE_TARGETING.md` at repo root documents an interrupted feature pass. Read it before touching `flight-sim3.html`.
 
-### Active Feature Work
+Previous sessions reported partial CSS/markup scaffolding inserted into `flight-sim3.html` (dirty). As of 2026-06-07, `git status` shows `flight-sim3.html` is **clean** — no uncommitted changes. The scaffolding was either reverted or never persisted. No reticle-related commit appears in git log after `b491d0f`. Verify the handoff doc before assuming any scaffolding is present.
 
-- **Reticle / targeting HUD** — scaffolding present but not functional. Full spec in `HERMES_HANDOFF_RETICLE_TARGETING.md`. Needs: gun-line projection, target boxes, distance/speed/altitude readouts, telemetry keys. Gated behind `INPUT_FLAGS.mouseFlight`.
-  - Existing scaffold: `#target-overlay` CSS/markup, `reticleState`, `targetHudState`, `inferTargetTypeLabel()`, `ensureTargetHudPool()`, `$crosshair`/`$targetOverlay` refs
-- **Blast door concept** — low-poly dark reinforced metal with battle damage; deploys from island sides as rolling side armor, forming barriers around engines and land edges. Concept accepted 2026-05-31; no geometry implemented yet.
+Remaining work (per handoff doc):
+- Reticle: derive aim from `jet.userData.gunL`/`gunR`, project lookahead from muzzle trajectory, bias slightly upward, add spring/lag
+- Target bounds: 2D projected boxes for `traffic` and `multiplayerState.remotePlayers`; label/type/distance/speed/altitude cards; cap visible count; nearest-to-reticle = active lock
+- Telemetry: add `target_boxes`, `target_lock`, `target_lock_label`, `target_lock_distance_m`, `reticle_x`, `reticle_y` to `window.__ap.telemetry()`
+- Check live ports before server ops: `bun` on :8765, `node` on :3000
 
-### Known Bugs
+### Space Combat Pivot — requested, not started
 
-- **Free traffic kill at startup** — collision fires before player input; runway traffic path intersects parked player
-- **Mouse-aim resize corruption** — clamps normalized values as pixels after viewport/fullscreen changes
+Jason requested space combat direction: player ship, third-person camera, terrain collision, lives, enemy fighters, spacebar bullets, scrolling star field, dark background (`0x000010`), score system. Nothing applied. Changes would go in `flight-sim3.html`.
 
----
+### animate() JS profiling — not done
 
-## Cross-Repo Activity (2026-05-31)
+Dominant bottleneck reported as ~30 ms/frame with ~204 Vector3 allocs per frame. No profiling pass yet.
 
-### tinyworld (`/Users/jkneen/Documents/GitHub/tinyworld`)
+### Flight feel tuning
 
-Active development session on 2026-05-31:
+Deliberately untouched; needs Jason's direction.
 
-- Room builder feature in progress: toggling individual wall segments of a box-frame room to support L/T/custom shapes; session exploring current room system in `index.html`
-- Wall material fix requested: walls should have repeating tiles matching the floor (not a flat panel); brightness reduction requested while keeping metallic look
-- Floor material animated transition: cold grey metallic → warm worn wood, animated over a few seconds
-- Save/load system: floating top-center Save/Load buttons; JSON world-state file; session implementing this
-- AI generation subsystem (`engine/world/26-ai-generation.js`) overhauled in prior session: bespoke natural-language requests via `customParts`, selected-object enhancement no longer hard-preserves seed type, startup race fixed
-- **Voxel seam shader fix** (committed): `engine/world/03-geometry-materials.js` and `engine/world/04-textures.js`; island side-backing clone carries seam shader hook; seam grid scale tightened to fine masonry tiles; browser-verified clean
+### .mcp.json uncommitted update
 
-### Element-115 / ships (tinyworld lamp lighting fix, 2026-05-31)
-
-- Lamp placement + fake haze working; Three r128 light predicate too narrow for local light toggle
-- Fix: switched `updateSkyAndLighting` to check `light.isPointLight || light.isSpotLight` instead of broad `isLight`
-- Not yet verified whether placed-light root is correctly added to `placedLights[]`
-
-### Muxy (`/Users/jkneen/Documents/GitHub/muxy`)
-
-- **Codex chat path fix** (committed 2026-05-31): `codex exec` was running in human transcript mode; fix changes invocation to `codex exec --json --color never`; added JSONL event parser rendering only assistant deltas and tool events
-- Files: `Muxy/Models/ChatTabState.swift` (~line 87), `ChatProviderArgumentsTests.swift`
-- `npm test` focused passing; full iOS simulator build blocked in sandbox (CoreSimulator unavailable); Swift macOS build passes
-
-### OpenClicky (`/Users/jkneen/Documents/GitHub/openclicky`)
-
-- Wake-word audio ducking implemented (prior session): `cursor-buddy/CompanionManager.swift` (~line 192); on "Hey Clicky" activation captures current macOS output volume, drops to 8%, restores before reply audio plays
-- Smart natural-language agent-mode trigger added
-
-### Atomic-Chat (`/Users/jkneen/Documents/GitHub/Atomic-Chat`)
-
-- Codex sessions checking in (gpt-5.5); no substantive work observed in session evidence — only greetings and AGENTS.md bootstrap
-- AGENTS.md rules: never use emoji unless asked; verify model names from codebase before claiming invalid
+`.mcp.json` has an uncommitted change (contex server port update to 53961). Confirmed correct. Commit when convenient.
 
 ---
 
-## Agent Ecosystem
+## Recent Session Activity (2026-06-07)
 
-### Healthy
+No ships project work occurred. `flight-sim3.html` has not been touched since commit `b491d0f` (2026-06-01).
 
-- **OpenClaw Lead (Ava)** — heartbeating normally 2026-05-31; board ID `c3f78d0c-abf3-45d5-898e-27cd1d95c0d1`; base URL `localhost:19789`, agent ID `9f5f3df9-2ed7-4efe-9d97-2114fe460a35`; no board task work last cycle
+Background system activity (all unrelated to ships):
+- **OpenClaw heartbeat polls** (Ava / lead board agent, gateway at `localhost:19789`) — repeated HEARTBEAT_OK responses, no task work; BOARD_ID `c3f78d0c-abf3-45d5-898e-27cd1d95c0d1`, AGENT_ID `9f5f3df9-2ed7-4efe-9d97-2114fe460a35`
+- **OpenClaw mc-gateway** (`894a3d5b-7faa-4c0a-a40f-69fbdee7b78d`) — connection refused on one cycle; multiple assistant-turn failures before producing content
+- **VibeClaw cron: Tom Doerr Tweet Tracker** — failed with `assistant-turn failed before producing content` on all three runs this cycle; state file at `/Users/jkneen/clawd/memory/tom-doerr-seen.json`
+- **VibeClaw cron jobs** (wallpaper, articles, skills scout) — continuing systemic assistant-turn failures; pattern is consistent with OpenClaw provider instability, not job-specific
+- **muxy repo** (Codex, GPT-5.5) — Swift project at `/Users/jkneen/Documents/GitHub/muxy`; `swift test` passes 733 tests; blocker is swiftformat version mismatch (Homebrew 0.61.0 vs pinned 0.60.1); fix is `mise exec -- swiftformat`; entirely unrelated to ships
 
-### Failing — Persistent, Root Cause Uninvestigated
+### Infrastructure note
 
-- **MC Gateway `894a3d5b-7faa-4c0a-a40f-69fbdee7b78d`** — "connection refused" on every heartbeat; 5+ consecutive failures; assistant turns failing before producing content
-- **VibeClaw Wallpaper Generator** (`cron:85fa55d9`) — every cron turn fails before producing content; multiple consecutive failures 2026-05-31
-- **VibeClaw Skills Scout** (`cron:ebfe1571`) — every cron turn fails before producing content; at least 3 consecutive failures 2026-05-31
-- **VibeClaw Article Generator** (`cron:8b79f6d2`) — every cron turn fails before producing content
-
-All four silent failures likely share a common dependency or auth issue. No investigation done.
-
-### Degraded
-
-- **Tom Doerr Tweet Tracker** (`cron:cebd05e0`) — assistant turn fails before producing content in recent cycles; previously blocked by X login wall; Nitter alternatives down; `wacli` delivery sink broken (unauthenticated). No tweets delivered in multiple cycles.
+OpenClaw provider is exhibiting persistent assistant-turn failures across mc-gateway and multiple VibeClaw cron jobs. Pattern is systemic, not ships-related. No ships work has been blocked by this.
 
 ---
 
-## Memory References
+## Important Caution
 
-- `memory/project_ships_layout.md` — post-restructure path reference; why HTML stays at root; how to run via bun
-
----
-
-*Auto-generated by CodeSurf daemon dreaming. Edit `.claude/CLAUDE.md` for authoritative instructions.*
+Modular `engine/` directories described by past agents do not exist on disk. The stale user memory file (`~/.claude/projects/.../project_ships_layout.md`) predates a refactor that was never executed. Verify all paths with `ls`/`Glob` before referencing. New features go inline in `flight-sim3.html`. Single writer only — no parallel worktree edits.

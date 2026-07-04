@@ -35,3 +35,6 @@ research/_agent_ids.txt
 /.contex
 .gstack/
 /.antigravitycli
+
+# Local Netlify folder
+.netlify
