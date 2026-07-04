@@ -1,0 +1,307 @@
+HUMAN: Rebuild makeJet incrementally — lofted fuselage, airfoil wings/tail, teardrop canopy, oleo gear; grey+orange-accent livery, all anchors kept.
+PLAN P1<-F16,F17,F18 op=insert at=flight-sim3.html:5050#"function makeJet() {" why=jet-build-helpers ref=flight-sim3.html:5070-5086#"const fuse = new THREE.Mesh",flight-sim3.html:5146-5177#"function makeWing()",flight-sim3.html:4366-4375#"function applyShadowFlags" test="cd /Users/jkneen/Downloads/ships && grep -c 'function buildFuselageGeom\|function airfoilSurface\|function buildJetEnvCube' flight-sim3.html (expect 3); then bun web (bg,:8765); PW load http://localhost:8765/flight-sim3.html; expect ✓ [flight-sim] boot lines + 0 console/THREE errors (V2). NOTE: helpers unused until P4/P6 — boot only proves syntax." order=1 fill=-
+<<<P1
+  // ===== JET BUILD HELPERS (Round 6) =====
+  // Generated once at module load; shared by every makeJet mesh.
+  // WINDING NOTE for buildFuselageGeom + airfoilSurface: index order below
+  // yields OUTWARD normals (verified: ring in local plane advancing along the
+  // loft axis, cross-product points out). If a hero mesh renders inside-out at
+  // boot (dark/back-culled interior), swap each face pair a,b,c / b,d,c -> a,c,b / b,c,d.
+
+  // Teardrop cube-env for glass + subtle metal reflections (F17). 6 tiny
+  // canvas faces: sky-blue top, warm-horizon sides, dark ground. No fetch,
+  // not a light (I5 safe), CubeReflectionMapping default.
+  function buildJetEnvCube() {
+    const S = 32;
+    const face = (top, bot) => {
+      const c = document.createElement('canvas'); c.width = c.height = S;
+      const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 0, S);
+      g.addColorStop(0, top); g.addColorStop(1, bot);
+      x.fillStyle = g; x.fillRect(0, 0, S, S);
+      return c;
+    };
+    const side = face('#cfe0ee', '#e8cf9e');   // sky-top into warm horizon
+    // order: +x, -x, +y, -y, +z, -z
+    const imgs = [ side, face('#cfe0ee', '#e8cf9e'), face('#7fb2e6', '#8fbdec'),
+                   face('#35322e', '#2a2724'), face('#cfe0ee', '#e8cf9e'),
+                   face('#cfe0ee', '#e8cf9e') ];
+    const tex = new THREE.CubeTexture(imgs);
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  // Lofted fuselage (F16): ~12 elliptical superellipse stations, wider-than-tall
+  // with soft chine, radome taper, raised dorsal spine behind the canopy fading
+  // to the tailcone. Plane forward = -Z. Cylindrical UVs for the F22 skin.
+  function buildFuselageGeom() {
+    // {z, w:half-width, h:half-height, cy:vertical-center-offset, e:superellipse-exp}
+    const st = [
+      { z: -8.40, w: 0.02, h: 0.02, cy: 0.00, e: 2.0 },  // radome tip
+      { z: -7.60, w: 0.30, h: 0.28, cy: 0.00, e: 2.2 },
+      { z: -6.40, w: 0.62, h: 0.55, cy: 0.02, e: 2.3 },
+      { z: -4.80, w: 0.92, h: 0.78, cy: 0.05, e: 2.5 },
+      { z: -3.00, w: 1.12, h: 0.92, cy: 0.08, e: 2.6 },
+      { z: -1.20, w: 1.20, h: 1.00, cy: 0.10, e: 2.6 },  // cockpit / mid
+      { z:  0.60, w: 1.18, h: 1.02, cy: 0.16, e: 2.6 },  // dorsal spine rises
+      { z:  2.40, w: 1.08, h: 0.98, cy: 0.20, e: 2.5 },  // spine peak
+      { z:  4.20, w: 0.92, h: 0.85, cy: 0.14, e: 2.4 },
+      { z:  5.80, w: 0.76, h: 0.72, cy: 0.06, e: 2.3 },
+      { z:  7.00, w: 0.64, h: 0.62, cy: 0.02, e: 2.2 },
+      { z:  7.90, w: 0.56, h: 0.54, cy: 0.00, e: 2.1 },  // tailcone -> nozzle
+    ];
+    const N = 18, rings = st.length, stride = N + 1;
+    const pos = [], uv = [];
+    for (let s = 0; s < rings; s++) {
+      const S = st[s];
+      for (let i = 0; i <= N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const px = Math.sign(ca) * Math.pow(Math.abs(ca), 2 / S.e) * S.w;
+        const py = Math.sign(sa) * Math.pow(Math.abs(sa), 2 / S.e) * S.h + S.cy;
+        pos.push(px, py, S.z);
+        uv.push(i / N, s / (rings - 1));
+      }
+    }
+    const idx = [];
+    for (let s = 0; s < rings - 1; s++) {
+      for (let i = 0; i < N; i++) {
+        const a = s * stride + i, b = a + 1, c = a + stride, d = c + 1;
+        idx.push(a, b, c, b, d, c);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  // Airfoil loft (F18/F19): one panel from root(x=0) to tip(x=span) — rounded
+  // leading edge, cambered upper, sharp trailing edge, plus sweep/taper/dihedral.
+  // Two-tone vertexColors (upper cTop, lower cBot). Caller mirrors (scale.x=-1)
+  // for the opposite wing or rotates for the fin. Root/tip left open (root buried
+  // in fuselage, tip edge is a negligible thin slit).
+  function airfoilSurface(o) {
+    const spanN = 6, chordC = [0, 0.06, 0.18, 0.40, 0.68, 1.0];
+    const cTop = new THREE.Color(o.cTop), cBot = new THREE.Color(o.cBot);
+    const camber = o.camber || 0, thick = o.thick;
+    const yt = (c) => thick * (1.4845 * Math.sqrt(c) - 0.63 * c - 1.758 * c * c + 1.4215 * c * c * c - 0.5075 * c * c * c * c);
+    const cm = (c) => camber * Math.sin(Math.PI * Math.pow(c, 0.8));
+    const ring = chordC.length * 2;
+    const pos = [], col = [];
+    for (let s = 0; s < spanN; s++) {
+      const f = s / (spanN - 1);
+      const x = f * o.span;
+      const chord = o.rootChord + (o.tipChord - o.rootChord) * f;
+      const zLE = -chord * 0.5 + f * o.sweep;
+      const y0 = f * o.dihedral;
+      for (let k = 0; k < chordC.length; k++) {            // upper LE->TE
+        const c = chordC[k], z = zLE + c * chord;
+        pos.push(x, y0 + (cm(c) + yt(c)) * chord, z);
+        col.push(cTop.r, cTop.g, cTop.b);
+      }
+      for (let k = chordC.length - 1; k >= 0; k--) {        // lower TE->LE
+        const c = chordC[k], z = zLE + c * chord;
+        pos.push(x, y0 + (cm(c) - yt(c)) * chord, z);
+        col.push(cBot.r, cBot.g, cBot.b);
+      }
+    }
+    const idx = [];
+    for (let s = 0; s < spanN - 1; s++) {
+      for (let k = 0; k < ring; k++) {
+        const a = s * ring + k, b = s * ring + (k + 1) % ring;
+        const c = (s + 1) * ring + k, d = (s + 1) * ring + (k + 1) % ring;
+        idx.push(a, b, c, b, d, c);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+  // --- end jet build helpers ---
+>>>
+PLAN P2<-F22 op=insert at=flight-sim3.html#"// --- end jet build helpers ---" why=skin-texture-helpers ref=flight-sim3.html:7692#"function makeSpriteTexture" test="cd /Users/jkneen/Downloads/ships && grep -c 'function buildJetSkinTexture\|function buildJetRoughTexture' flight-sim3.html (expect 2); bun web (bg,:8765); PW load /flight-sim3.html; 0 console errors (V2)" order=2 fill=S
+<<<P2
+SPEC (fill=S, insert AFTER the P1 end-marker line, still above `function makeJet()`):
+Author two functions returning THREE.CanvasTexture, generated once (pattern like makeSpriteTexture @7692). NO fetches.
+buildJetSkinTexture(): canvas 1024x1024, ctx.
+  - base fill #6d7580 (matches matFuse tint so .map*color stays neutral); overlay 3-4 soft camo blocks in #5f6771 and #7a828d (rounded rects, ~180-320px, low-contrast).
+  - panel lines: 1px strokes rgba(30,34,40,0.55) on an irregular grid — verticals every ~90px, horizontals every ~120px, jittered +/-12px.
+  - rivet rows: dot rows rgba(40,44,52,0.5) r=1.2 spaced 14px ALONG each panel line.
+  - livery accents (O5 grey+orange, NOT clown): two orange #d9721f stripes ~18px tall across upper band; roundel = orange ring + grey center r~46 at (300,300) and (720,700); stencil text 'ELEMENT-115' (orange, 22px bold) near (120,150); tail code 'E-115' (light-grey, 34px) near (860,120); thin off-white anti-slip walkway strip beside centerline.
+  return new THREE.CanvasTexture(canvas); set .wrapS=.wrapT=THREE.RepeatWrapping.
+buildJetRoughTexture(): canvas 512x512, mid-grey #808080 base; redraw ONLY the same panel-line grid darker (#5a5a5a) so seams read rougher; return THREE.CanvasTexture (RepeatWrapping).
+>>>
+PLAN P3<-F22,F17 op=replace at=flight-sim3.html:5053-5068#"const matFuse = new THREE.MeshStandardMaterial" why=wire-skin-env-into-materials ref=flight-sim3.html:5059-5062#"const matCanopy",flight-sim3.html:12740#"jet.userData.scanner.scale" test="cd /Users/jkneen/Downloads/ships && grep -c 'matFuse.map = jetSkin\|matFuse.envMap\|jetEnvCube' flight-sim3.html (>=3); bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 dusk screenshot — fuselage shows panel-line/rivet skin + faint reflections (V2/V4)" order=3 fill=S
+<<<P3
+SPEC (fill=S): Keep all 5 const declarations (matFuse,matDark,matCanopy,matAccent,matTire) with current color/metalness/roughness, EXCEPT matCanopy -> opacity:0.42, roughness:0.06 (keep color 0x1a3045, metalness 1.0, transparent true). Then append inside the block (jetEnvCube MUST stay in makeJet scope; P6 reuses it):
+  const jetEnvCube = buildJetEnvCube();
+  const jetSkin = buildJetSkinTexture();  jetSkin.anisotropy = 4;
+  const jetRough = buildJetRoughTexture(); jetRough.anisotropy = 4;
+  matFuse.map = jetSkin; matFuse.roughnessMap = jetRough;
+  matFuse.envMap = jetEnvCube; matFuse.envMapIntensity = 0.5;
+  matDark.envMap = jetEnvCube; matDark.envMapIntensity = 0.5;
+  matCanopy.envMap = jetEnvCube; matCanopy.envMapIntensity = 1.1;
+Do NOT put .map on wingMat (it keeps vertexColors two-tone; map would muddy it — wingMat gets envMap only, done in P6).
+>>>
+PLAN P4<-F16 op=replace at=flight-sim3.html:5070-5086#"// Fuselage — elongated along Z" why=swap-in-lofted-fuselage ref=flight-sim3.html:5397-5403#"// PITOT TUBE on nose tip",flight-sim3.html:5705-5717#"Sensor array panels on nose" test="cd /Users/jkneen/Downloads/ships && grep -c 'buildFuselageGeom()' flight-sim3.html (expect 1); bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 noon screenshot — smooth wider-than-tall fuselage with radome + dorsal spine, NOT inside-out (V2/V4)" order=4 fill=S
+<<<P4
+SPEC (fill=S): Replace BOTH the fuse cylinder and the nose cone meshes (the loft spans radome z=-8.40 to tailcone z=7.90, so the separate cone is gone) with:
+  const fuse = new THREE.Mesh(buildFuselageGeom(), matFuse);
+  root.add(fuse);
+Pitot (@5397, z=-8.3) and nose sensor panels (@5705, z=-7.2) are unchanged and still sit at the radome. If fuselage boots inside-out, apply the P1 winding-swap note.
+>>>
+PLAN P5<-F17 op=replace at=flight-sim3.html:5137-5144#"// Canopy — stretched half-sphere" why=teardrop-canopy-plus-frame ref=flight-sim3.html:5314-5369#"COCKPIT INTERIOR",flight-sim3.html:5740#"root.userData.cockpitGlow" test="cd /Users/jkneen/Downloads/ships && grep -c 'LatheGeometry' flight-sim3.html (>=1); bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 dusk — teardrop bubble canopy with dark frame rails, cockpit still visible through glass (V2/V4). matCanopy still referenced by cockpitGlow @5740 (unchanged)." order=5 fill=-
+<<<P5
+  // Canopy — teardrop bubble via lathe profile (windscreen rake -> apex ->
+  // spine fairing), thin dark frame rails, envMap glass (matCanopy set in P3).
+  const canopyProfile = [
+    new THREE.Vector2(0.00, 0.00),   // windscreen base tip (forward)
+    new THREE.Vector2(0.34, 0.28),
+    new THREE.Vector2(0.60, 0.95),   // bubble max
+    new THREE.Vector2(0.58, 1.70),
+    new THREE.Vector2(0.40, 2.55),
+    new THREE.Vector2(0.17, 3.35),   // spine fairing taper
+    new THREE.Vector2(0.00, 3.90),   // tail point
+  ];
+  const canopy = new THREE.Mesh(
+    new THREE.LatheGeometry(canopyProfile, 20),
+    matCanopy
+  );
+  // Lathe axis is +Y (length 0..3.9). Rotate axis to plane-forward (-Z) and
+  // seat over the cockpit: nose end near z=-2.7, tail near z=+1.2.
+  canopy.rotation.x = -Math.PI / 2;
+  canopy.scale.set(1.05, 1.0, 1.0);        // slightly wider than tall
+  canopy.position.set(0, 0.62, -2.7);
+  root.add(canopy);
+  // Frame rails — thin dark arcs (windscreen bow + mid hoop)
+  const canopyFrameMat = matDark;
+  const wsBow = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.03, 6, 16, Math.PI),
+    canopyFrameMat
+  );
+  wsBow.rotation.y = Math.PI / 2;
+  wsBow.position.set(0, 0.55, -2.35);
+  root.add(wsBow);
+  const midHoop = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5, 0.028, 6, 16, Math.PI),
+    canopyFrameMat
+  );
+  midHoop.rotation.y = Math.PI / 2;
+  midHoop.position.set(0, 0.52, -0.7);
+  root.add(midHoop);
+>>>
+PLAN P6<-F18 op=replace at=flight-sim3.html:5146-5177#"// --- Wings: swept delta" why=airfoil-wings-plus-lerx ref=flight-sim3.html:5088-5117#"function addWingGun",flight-sim3.html:5749-5750#"root.userData.wingtipL" test="cd /Users/jkneen/Downloads/ships && grep -c 'airfoilSurface({' flight-sim3.html (>=1); bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 noon — cambered swept wings with LERX strakes, two-tone top/belly, NOT inside-out. Guns @4.55 / rails @4.15 still on the wing surface (V2/V4)." order=6 fill=-
+<<<P6
+  // --- Wings: airfoil loft (rounded LE, cambered upper, sharp TE), swept delta
+  // with LERX strakes. Span/sweep/dihedral preserved from the old slab so the
+  // gun (x=+/-4.55), rail/missile (x=+/-4.15) and wingtip FX anchors stay valid. ---
+  const wingMat = new THREE.MeshStandardMaterial({
+    vertexColors: true, metalness: 0.55, roughness: 0.5
+  });
+  wingMat.envMap = jetEnvCube; wingMat.envMapIntensity = 0.5;
+  const wingGeoR = airfoilSurface({
+    span: 5.4, rootChord: 3.4, tipChord: 1.35, sweep: 2.05,
+    dihedral: 0.22, thick: 0.10, camber: 0.015, cTop: 0x5a626d, cBot: 0x8a96a8
+  });
+  const wingR = new THREE.Mesh(wingGeoR, wingMat);
+  const wingL = new THREE.Mesh(wingGeoR.clone(), wingMat);
+  wingL.scale.x = -1;
+  const wings = new THREE.Group();
+  wings.add(wingR); wings.add(wingL);
+  wings.position.set(0, -0.1, 0.8);
+  root.add(wings);
+  // LERX strakes — thin flat triangle blending each wing root forward along the
+  // fuselage. matFuse (grey, no vertexColors) to avoid black-vertex artifacts.
+  for (const s of [-1, 1]) {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(s * 1.15, 0);
+    shape.lineTo(s * 0.30, 3.2);
+    shape.closePath();
+    const lerxGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: false });
+    const lerx = new THREE.Mesh(lerxGeo, matFuse);
+    lerx.rotation.x = Math.PI / 2;          // shape XY -> world XZ (lays flat)
+    lerx.position.set(0, 0.0, -0.9);
+    root.add(lerx);
+  }
+>>>
+PLAN P7<-F19 op=replace at=flight-sim3.html:5189-5222#"// --- Vertical tail ---" why=airfoil-fin-and-stabs ref=flight-sim3.html:5203#"const tail = new THREE.Mesh(makeTail()",flight-sim3.html:5220#"const hstab = new THREE.Mesh(makeHStab()" test="cd /Users/jkneen/Downloads/ships && bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 noon — swept airfoil fin + all-moving stabs with slight anhedral, NOT inside-out (V2/V4)" order=7 fill=S
+<<<P7
+SPEC (fill=S): Replace makeTail()/makeHStab() box builders and their two meshes with airfoilSurface panels reusing matFuse.
+Vertical FIN: build one airfoilSurface({span:2.1, rootChord:2.6, tipChord:1.0, sweep:1.5, dihedral:0, thick:0.09, camber:0, cTop:0x6d7580, cBot:0x6d7580}); it builds along +x — rotate the mesh rotation.z = Math.PI/2 to stand it vertical (span -> +y), then position (0, 1.1, 5.5). Add a thin dark recessed rudder shadow-line: a 0.02x1.6x0.05 matDark box inset at the fin trailing edge (~z 6.4, y 1.7). Add a small tip antenna fairing pod: CylinderGeometry(0.05,0.03,0.5,6) matDark near fin tip (0,2.9,6.2).
+HORIZONTAL STABS (all-moving, slight anhedral): airfoilSurface({span:2.2, rootChord:1.5, tipChord:0.7, sweep:0.9, dihedral:-0.10, thick:0.07, camber:0, cTop:0x6d7580, cBot:0x8089}) for the right half; mesh + scale.x=-1 clone for left; group at (0, 0.1, 6.3). (dihedral negative = anhedral droop.)
+If any panel boots inside-out, apply the P1 winding-swap note.
+>>>
+PLAN P8<-F20 op=replace at=flight-sim3.html:5224-5240#"// Engine intakes (sides)" why=curved-intakes-splitter-diverter ref=flight-sim3.html:5070#"// Fuselage" test="cd /Users/jkneen/Downloads/ships && bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 noon — intakes read as curved bodies with a dark ramped throat + splitter gap, no z-fight with fuselage (V2/V4)" order=8 fill=S
+<<<P8
+SPEC (fill=S): Replace addIntake(x). Fuselage half-width at the intake station (z~-0.5) is ~1.18, so seat intakes at x=+/-1.28 (outboard of the hull, ~0.1 splitter gap).
+Per side: (1) intake body = BoxGeometry(0.62,0.9,2.4) matFuse, then round the OUTER lip — displace the 4 outer-top/outer-bottom corner verts of the +x (or -x) face inward by ~0.12 on y OR simply add a chamfer via scaling the outer edge; acceptable minimum: a BoxGeometry with a CylinderGeometry(0.28,0.28,2.4,10, open) matFuse fitted on the outer edge to fake the rounded lip. Position body (x, -0.25, -0.5).
+(2) dark ramped throat = BoxGeometry(0.4,0.6,0.35) with MeshBasicMaterial(color:0x050608) at (x, -0.25, -1.62), tilted rotation.x=0.12 (ramp).
+(3) splitter plate = thin BoxGeometry(0.04,0.7,1.6) matDark between hull and intake at (x*0.86, -0.25, -0.6).
+(4) boundary-layer diverter = small BoxGeometry(0.06,0.5,0.5) matDark just ahead of the throat.
+Reuse matFuse/matDark (no new materials).
+>>>
+PLAN P9<-F20 op=replace at=flight-sim3.html:5119-5135#"// Engine nozzle" why=petal-nozzle-hot-ring ref=flight-sim3.html:5283-5296#"// --- Afterburner glow ---",flight-sim3.html:5676-5691#"Vectored-thrust nozzle petals" test="cd /Users/jkneen/Downloads/ships && bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; afterburner still emits (throttle up via __ap) — nozzle shows 12 petal facets + hotter inner ring, no double-petal cluster (V2/V4)" order=9 fill=S
+<<<P9
+SPEC (fill=S): Replace the nozzle cylinder + nozRing meshes with a faceted convergent nozzle:
+(1) outer petals via a single LatheGeometry with flatShading: profile Vector2 points [(0.85,0),(0.78,0.4),(0.62,1.0),(0.66,1.2)] lathed with 12 segments (radialSegments:12) -> facets read as petals; material matDark with flatShading:true; rotate rotation.x=Math.PI/2, position z=8.0.
+(2) hotter inner ring = CylinderGeometry(0.6,0.6,0.22,14, open) MeshBasicMaterial(color:0x662200, toneMapped:false), rotation.x=Math.PI/2, z=8.5 (keeps the old glow-ring role; brighter core).
+This subsumes the old outer vectored petals — see P10 which DELETES @5676-5691 so petals aren't doubled. Do NOT touch afterburner/ab2 (@5283+).
+>>>
+PLAN P10<-F20 op=delete at=flight-sim3.html:5676-5691#"// Vectored-thrust nozzle petals" why=remove-old-outer-petals ref=flight-sim3.html:5119#"// Engine nozzle" test="cd /Users/jkneen/Downloads/ships && grep -c 'Vectored-thrust nozzle petals' flight-sim3.html (expect 0); bun web (bg,:8765); PW load /flight-sim3.html; 0 errors (V2)" order=9 fill=S
+<<<P10
+SPEC (fill=S): Delete the whole `for (let i = 0; i < 8; i++) { ... petal ... }` block (@5676-5691, the 8 splayed outer plates). The new P9 lathe nozzle replaces them; this nets -8 draw calls toward the F23 budget.
+>>>
+PLAN P11<-F21 op=replace at=flight-sim3.html:5242-5281#"// --- Landing gear ---" why=oleo-gear-scissor-doors ref=flight-sim3.html:12581-12609#"jet.userData.gearNose.rotation.x",flight-sim3.html:12593#"for (const gear of [jet.userData.gearL" test="cd /Users/jkneen/Downloads/ships && grep -c 'grp.userData.baseStrutY\|grp.userData.baseWheelY\|grp.userData.strut\|grp.userData.wheel' flight-sim3.html (expect 4); bun web (bg,:8765); PW load /flight-sim3.html then eval __ap.setSpawnMode('sky');__ap.reset() (gear up) then a ground spawn — gear retracts AND wheels spin with NO console error; V4 — detailed oleo strut, scissor link, twin nose wheels, bay doors (V2/V4)" order=10 fill=S
+<<<P11
+SPEC (fill=S): Rewrite makeGear(isNose, side=0) richer BUT keep the exact userData contract and the 3 instantiations unchanged.
+Structure per gear group `grp`:
+  const strutH = isNose ? 1.3 : 1.6, wheelR = isNose ? 0.22 : 0.30;
+  strut = new THREE.Group()  // load-bearing; frame code drives its position.x/y + rotation.z
+    - outer strut: CylinderGeometry(0.08,0.08, strutH*0.6, 8) matDark, y = -strutH*0.30
+    - polished piston: CylinderGeometry(0.05,0.05, strutH*0.55, 8) new MeshStandardMaterial({color:0xb8bcc0, metalness:0.95, roughness:0.15}) [ONE shared const, hoist above makeGear], y = -strutH*0.72
+    - scissor link: 2x BoxGeometry(0.02,0.18,0.02) matDark, angled rotation.x = +/-0.5, on the front face
+    - drag brace: BoxGeometry(0.035,0.035,0.5) matDark angled rotation.x=0.6 up toward fuselage
+    strut.position.y = -strutH/2;
+  wheel = new THREE.Group()  // frame code spins rotation.x + sets position.x/y
+    - tire: TorusGeometry(wheelR*0.72, wheelR*0.30, 8, 16) matTire, rotation.y = Math.PI/2 (axle along X so rotation.x rolls it)
+    - hub: CylinderGeometry(wheelR*0.42, wheelR*0.42, 0.16, 12) polishedMat, rotation.z = Math.PI/2
+    - brake disc: CylinderGeometry(wheelR*0.5, wheelR*0.5, 0.03, 16) matDark, rotation.z = Math.PI/2, x offset 0.1
+    - 6 bolt studs: tiny CylinderGeometry(0.015,0.015,0.05,6) matDark in a ring on the hub face
+    - if isNose: build TWO such wheel sub-groups at x = +/-0.13 and add BOTH to `wheel` (twin nose wheels); mudguard = BoxGeometry(0.4,0.03,0.5) matDark above them
+    wheel.position.y = -strutH;
+  bay doors (parented to grp, NOT strut, so retract rotation animates them): 2x BoxGeometry(0.5,0.02,0.7) matFuse at grp top, angled ~0.4 rad open.
+  grp.add(strut); grp.add(wheel); grp.add(...doors);
+CONTRACT (verbatim, unchanged semantics):
+  grp.userData.strut = strut;
+  grp.userData.wheel = wheel;
+  grp.userData.side = side;
+  grp.userData.baseStrutY = strut.position.y;
+  grp.userData.baseWheelY = wheel.position.y;
+  return grp;
+KEEP the 3 calls + positions exactly: gearNose=makeGear(true,0) @ (0,-0.6,-4.2); gearL=makeGear(false,-1) @ (-1.8,-0.4,1.2); gearR=makeGear(false,1) @ (1.8,-0.4,1.2); root.add each.
+>>>
+PLAN P12<-F23 op=insert at=flight-sim3.html:5411#"root.add(ant2);" why=merged-greebles ref=flight-sim3.html:5397-5411#"PITOT TUBE",flight-sim3.html:5736-5737#"root.userData.navRed" test="cd /Users/jkneen/Downloads/ships && bun web (bg,:8765); PW load /flight-sim3.html; 0 errors; V4 noon — AoA vanes + blade antennas + RWR bumps present, no draw-call blowup (V2/V4)" order=11 fill=S
+<<<P12
+SPEC (fill=S): Insert AFTER ant2 (pitot @5398 + ant1/ant2 @5406-5411 already exist — do NOT duplicate them). Add believable detail sharing matDark (keep to <=2 extra meshes):
+  - 2 AoA vanes: BoxGeometry(0.02,0.14,0.06) matDark on the forward fuselage sides at (+/-0.9, 0.15, -6.2).
+  - 2 blade antennas: BoxGeometry(0.03,0.28,0.14) matDark, dorsal (0,1.15,-1.0) + belly (0,-0.95,-0.5).
+  - 4 RWR bumps: small BoxGeometry(0.08,0.05,0.08) matDark at fuselage corners (+/-1.1, 0.2, -6.6) and (+/-0.5, 0.9, 6.0).
+  - formation-light strips: 2 thin PlaneGeometry(0.5,0.04) MeshBasicMaterial({color:0x9fd8ff, toneMapped:false, transparent:true, opacity:0.35}) on the fuselage spine sides. Static 0.35 (nav-blink wiring not trivially reachable here).
+Reuse matDark for all metal greebles — 0 new metal materials; +1 formation-light basic material. Keep net additions minimal (budget checked in P13).
+>>>
+PLAN P13<-F23 op=insert at=flight-sim3.html:5753#"return root;" why=draw-call-material-budget-and-fps-gate ref=flight-sim3.html:5763-5767#"const jet = makeJet()",flight-sim3.html:12581-12609#"gear anim" test="cd /Users/jkneen/Downloads/ships && bun web (bg,:8765); PW load /flight-sim3.html; read console — expect one '[flight-sim] jet budget: meshes=N materials=M' line, REQUIRE meshes<=100 AND materials<=34 (net +<=15 draws vs pre-round baseline; -8 from P10, -1 fuse merge give headroom). THEN V3: eval __ap.setSpawnMode('sky');__ap.reset(); keys['ShiftLeft']=true; measure 12s stream + 15s settled cruise via rAF deltas; REQUIRE mean>=58fps AND missed-vsync(>17.7ms)<=2% (log renderer.getPixelRatio()). THEN V4: pause __ap, place plane y=1500, screenshots at timeOfDay 0.25 / dusk / night — hero fighter reads world-class, gear retract+wheel-spin intact, canopy glass reflective (V2/V3/V4)" order=12 fill=S
+<<<P13
+SPEC (fill=S): Insert immediately BEFORE `return root;` a one-line boot audit (always on; shows in V2 boot log):
+  { let meshes = 0; const mats = new Set();
+    root.traverse(o => { if (o.isMesh) { meshes++; (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m && mats.add(m)); } });
+    console.log(`[flight-sim] jet budget: meshes=${meshes} materials=${mats.size}`); }
+This is the final gate: the test= above runs the full V2+V3+V4 protocol. If meshes>100 or materials>34, merge the P12 greebles / share more materials before declaring pass.
+>>>
+DONE stage=O plan=13 tok~=4200
