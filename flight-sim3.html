@@ -797,19 +797,31 @@
     color: rgba(182, 255, 143, 0.98);
   }
 
-  /* Generated title art (assets/ui) — full-screen backdrop while preflight */
+  /* Retro poster main menu (assets/ui/menu) — full-screen backdrop while preflight */
   #title-backdrop {
     display: none;
     position: fixed; inset: 0;
-    background: url('assets/ui/title-backdrop.jpg') center / cover no-repeat;
+    background: url('assets/ui/menu/bg-169.jpg') center / cover no-repeat;
     pointer-events: none;
+  }
+  @media (min-aspect-ratio: 1.9/1) {
+    #title-backdrop { background-image: url('assets/ui/menu/bg-wide.jpg'); }
   }
   #title-backdrop::after {
     content: '';
     position: absolute; inset: 0;
-    background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.08), rgba(10, 14, 22, 0.44));
+    background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.04), rgba(10, 14, 22, 0.25));
   }
   body.preflight #title-backdrop { display: block; }
+  #poster-bottom-statement {
+    position: absolute;
+    left: 50%; bottom: calc(14px + var(--safe-bottom));
+    transform: translateX(-50%);
+    width: min(760px, 82vw);
+    height: auto;
+    pointer-events: none;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.5));
+  }
   #title-latest {
     position: relative;
     margin: 10px 0 2px;
@@ -832,54 +844,93 @@
     color: #fff0c8;
     font-weight: 800;
   }
-  #title .title-logo {
+  #title {
+    position: fixed; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: clamp(6px, 1.6vh, 14px);
+    padding: clamp(14px, 4vh, 40px) 16px clamp(90px, 12vh, 140px);
+    overflow-y: auto;
+    text-align: center;
+    pointer-events: auto; cursor: default;
+    font-family: var(--game-font-ui);
+    transition: opacity 0.4s;
+  }
+  #title .menu-top-title {
+    width: min(300px, 70vw);
+    height: auto;
+    margin-bottom: 2px;
+    filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.45));
+  }
+  #title h1.menu-main-title { margin: 0; line-height: 0; }
+  #title h1.menu-main-title img {
+    width: min(420px, 82vw);
+    height: auto;
+    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.5));
+  }
+  #title .menu-subtitle {
+    width: min(340px, 76vw);
+    height: auto;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.4));
+  }
+  #title .menu-nav {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(2px, 1vh, 8px);
+    margin-top: clamp(4px, 1vh, 10px);
+  }
+  #title .menu-banner {
     position: relative;
     display: block;
-    width: min(440px, 74%);
+    width: min(320px, 60vw);
+    min-height: 44px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transform: rotate(var(--tilt, 0deg));
+    transition: transform 0.15s ease;
+  }
+  #title .menu-banner img {
+    display: block;
+    width: 100%;
     height: auto;
-    margin: 2px 0 4px;
-    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.45));
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.4));
   }
-  #title.flight-briefing-card {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(780px, calc(100vw - 44px));
-    text-align: left; padding: 28px 30px 24px;
-    border-radius: 28px;
-    pointer-events: auto; cursor: pointer;
-    transition: opacity 0.4s, transform 0.22s ease;
-    font-family: var(--game-font-ui);
-    overflow: hidden;
-  }
-  #title.flight-briefing-card::before {
-    content: '';
+  #title .menu-banner .menu-banner-selected {
     position: absolute; inset: 0;
-    background: radial-gradient(circle at top right, rgba(108, 170, 255, 0.14), transparent 34%), radial-gradient(circle at bottom left, rgba(255, 170, 90, 0.12), transparent 38%);
-    pointer-events: none;
+    width: 100%; height: 100%;
+    opacity: 0;
+    transition: opacity 0.12s ease;
   }
-  #title .briefing-kicker {
-    position: relative;
-    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
-    color: rgba(255, 231, 176, 0.75); margin-bottom: 10px;
+  #title .menu-banner:hover,
+  #title .menu-banner:focus-visible {
+    transform: rotate(var(--tilt, 0deg)) scale(1.04);
+    outline: none;
   }
-  #title h1 {
-    position: relative;
-    margin: 0;
-    font-size: clamp(34px, 5vw, 58px);
-    line-height: 0.96;
-    letter-spacing: -0.03em;
-    color: #fff4d6;
-    text-shadow: 0 10px 34px rgba(0,0,0,0.48);
+  #title .menu-banner:hover .menu-banner-selected,
+  #title .menu-banner:focus-visible .menu-banner-selected,
+  #title .menu-banner[aria-expanded="true"] .menu-banner-selected {
+    opacity: 1;
   }
-  #title .briefing-subtitle {
-    position: relative;
-    margin: 14px 0 0;
-    font-size: 13px;
-    opacity: 0.82;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(255, 226, 170, 0.82);
+  #menu-panels { width: min(560px, 92vw); margin-top: 4px; }
+  .menu-panel {
+    text-align: left;
+    padding: 16px 18px 14px;
+    border-radius: 14px;
+    background: rgba(10, 12, 18, 0.78);
+    border: 1px solid rgba(255, 215, 150, 0.14);
+    color: rgba(255, 240, 214, 0.88);
+    font-size: 12px;
+    line-height: 1.5;
   }
+  .menu-panel[hidden] { display: none; }
+  .menu-panel .multiplayer-setup-card,
+  .menu-panel .start-steps { margin-top: 0; }
   #title .start-steps {
     position: relative;
     display: grid;
@@ -978,25 +1029,13 @@
     line-height: 1.4;
   }
   #title .meta {
-    position: relative;
-    margin-top: 14px; font-size: 10px; opacity: 0.62; letter-spacing: 0.12em;
+    position: fixed;
+    left: calc(10px + var(--safe-left));
+    bottom: calc(8px + var(--safe-bottom));
+    margin: 0;
+    font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;
     color: rgba(255, 231, 176, 0.72);
-  }
-  #title .cta {
-    position: relative;
-    display: inline-flex; align-items: center; gap: 10px;
-    margin-top: 18px; padding: 11px 16px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 215, 150, 0.26);
-    background: rgba(255, 204, 102, 0.08);
-    font-size: 13px; color: #fff0c6; letter-spacing: 0.16em;
-  }
-  #title .cta::after {
-    content: 'DEPLOY';
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 5px 9px; border-radius: 999px;
-    background: rgba(255, 204, 102, 0.16);
-    color: #ffcc66; font-size: 10px; letter-spacing: 0.18em;
+    pointer-events: none;
   }
   .review-panel-shell {
     border-radius: 24px;
@@ -1290,17 +1329,20 @@
   }
   @media (max-width: 720px), (pointer: coarse) and (max-width: 920px) {
     #hud { font-size: 10px; letter-spacing: 0.055em; }
-    #title.flight-briefing-card {
-      width: calc(100vw - 20px - var(--safe-left) - var(--safe-right));
-      max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
-      padding: 20px 18px 18px;
-      overflow: auto;
+    #title {
+      padding: 10px 12px calc(64px + var(--safe-bottom));
+      gap: 6px;
       -webkit-overflow-scrolling: touch;
     }
+    #title .menu-top-title { width: min(220px, 64vw); }
+    #title h1.menu-main-title img { width: min(300px, 78vw); }
+    #title .menu-subtitle { width: min(240px, 70vw); }
+    #title .menu-banner { width: min(280px, 66vw); }
+    #menu-panels { width: min(94vw, 480px); }
     #title .start-steps,
     #title .multiplayer-setup-grid { grid-template-columns: 1fr; }
     #title .plane-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    #title .cta { width: 100%; justify-content: center; text-align: center; }
+    #poster-bottom-statement { width: min(88vw, 460px); bottom: calc(6px + var(--safe-bottom)); }
     #status-msg,
     .review-panel-shell,
     .mission-banner-shell { min-width: 0; width: min(100%, calc(100vw - 28px)); }
@@ -2078,35 +2120,67 @@
     <div id="input-debug-line4">AX —</div>
     <div id="input-debug-line5">BTN —</div>
   </div>
-  <div id="title-backdrop" aria-hidden="true"></div>
-  <div id="title" class="game-dialog-chrome flight-briefing-card hide">
-    <div class="briefing-kicker">TRAINING SECTOR // CANYON RUN</div>
-    <h1 aria-label="Element-115 — Canyon Airstrip"><img class="title-logo" src="assets/ui/element115-logo.png" alt="ELEMENT-115"></h1>
-    <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
-    <div class="start-steps">
-      <div>W/S, PAD LS, or TOUCH STICK — PITCH</div>
-      <div>A/D, PAD LS, or TOUCH STICK — BANK · Q/E or RB/LB — RUDDER</div>
-      <div>SHIFT/CTRL, RT/LT, or TOUCH THROTTLE — POWER</div>
-      <div>SPACE, A, or FIRE — BULLET GUNS · C — CYCLE TARGET · X or MSL — MISSILE</div>
-      <div>M or DPAD RIGHT — NEXT PLANE · R, START, or RESET — RESTART · BACK — RACE · F — FULLSCREEN</div>
-    </div>
-    <div class="multiplayer-setup-card">
-      <div class="multiplayer-setup-grid">
-        <label class="mp-field">CALLSIGN
-          <input id="mp-callsign" type="text" maxlength="16" placeholder="PILOT">
-        </label>
-        <label class="mp-field">SERVER
-          <input id="mp-url" type="text" placeholder="ws://127.0.0.1:8787">
-        </label>
-        <label class="mp-field">ROOM
-          <input id="mp-room" type="text" maxlength="20" placeholder="default">
-        </label>
+  <div id="title-backdrop" aria-hidden="true">
+    <img id="poster-bottom-statement" src="assets/ui/menu/10_bottom_statement.png" alt="">
+  </div>
+  <div id="title" class="hide">
+    <img class="menu-top-title" src="assets/ui/menu/02_top_title_canyon_flight_sim.png" alt="CANYON FLIGHT SIM">
+    <h1 class="menu-main-title" aria-label="Element-115 — Canyon Airstrip"><img src="assets/ui/menu/03_main_title_element_115.png" alt="ELEMENT-115"></h1>
+    <img class="menu-subtitle" src="assets/ui/menu/04_subtitle_fly_fight_survive.png" alt="FLY. FIGHT. SURVIVE.">
+    <nav class="menu-nav" id="menu-nav">
+      <button type="button" class="menu-banner" id="menu-btn-solo" style="--tilt: -1.5deg">
+        <img class="menu-banner-normal" src="assets/ui/menu/05_play_solo_normal.png" alt="PLAY SOLO">
+        <img class="menu-banner-selected" src="assets/ui/menu/05_play_solo_selected.png" alt="">
+      </button>
+      <button type="button" class="menu-banner" id="menu-btn-mp" style="--tilt: 1.2deg" aria-controls="menu-panel-mp" aria-expanded="false">
+        <img class="menu-banner-normal" src="assets/ui/menu/06_multiplayer_normal.png" alt="MULTIPLAYER">
+        <img class="menu-banner-selected" src="assets/ui/menu/06_multiplayer_selected.png" alt="">
+      </button>
+      <button type="button" class="menu-banner" id="menu-btn-controls" style="--tilt: -1.5deg" aria-controls="menu-panel-controls" aria-expanded="false">
+        <img class="menu-banner-normal" src="assets/ui/menu/07_controls_normal.png" alt="CONTROLS">
+        <img class="menu-banner-selected" src="assets/ui/menu/07_controls_selected.png" alt="">
+      </button>
+      <button type="button" class="menu-banner" id="menu-btn-settings" style="--tilt: 1.2deg">
+        <img class="menu-banner-normal" src="assets/ui/menu/08_settings_normal.png" alt="SETTINGS">
+        <img class="menu-banner-selected" src="assets/ui/menu/08_settings_selected.png" alt="">
+      </button>
+      <button type="button" class="menu-banner" id="menu-btn-about" style="--tilt: -1.5deg" aria-controls="menu-panel-about" aria-expanded="false">
+        <img class="menu-banner-normal" src="assets/ui/menu/09_about_normal.png" alt="ABOUT">
+        <img class="menu-banner-selected" src="assets/ui/menu/09_about_selected.png" alt="">
+      </button>
+    </nav>
+    <div id="menu-panels">
+      <div class="menu-panel" id="menu-panel-mp" hidden>
+        <div class="multiplayer-setup-card">
+          <div class="multiplayer-setup-grid">
+            <label class="mp-field">CALLSIGN
+              <input id="mp-callsign" type="text" maxlength="16" placeholder="PILOT">
+            </label>
+            <label class="mp-field">SERVER
+              <input id="mp-url" type="text" placeholder="ws://127.0.0.1:8787">
+            </label>
+            <label class="mp-field">ROOM
+              <input id="mp-room" type="text" maxlength="20" placeholder="default">
+            </label>
+          </div>
+          <div class="mp-spawn-row" id="mp-spawn-row"></div>
+          <div class="mp-setup-note" id="mp-setup-note">Leave server blank for SOLO. When network flight is enabled, random traffic clears out and everyone uses their chosen callsign + spawn profile.</div>
+        </div>
       </div>
-      <div class="mp-spawn-row" id="mp-spawn-row"></div>
-      <div class="mp-setup-note" id="mp-setup-note">Leave server blank for SOLO. When network flight is enabled, random traffic clears out and everyone uses their chosen callsign + spawn profile.</div>
+      <div class="menu-panel" id="menu-panel-controls" hidden>
+        <div class="start-steps">
+          <div>W/S, PAD LS, or TOUCH STICK — PITCH</div>
+          <div>A/D, PAD LS, or TOUCH STICK — BANK · Q/E or RB/LB — RUDDER</div>
+          <div>SHIFT/CTRL, RT/LT, or TOUCH THROTTLE — POWER</div>
+          <div>SPACE, A, or FIRE — BULLET GUNS · C — CYCLE TARGET · X or MSL — MISSILE</div>
+          <div>M or DPAD RIGHT — NEXT PLANE · R, START, or RESET — RESTART · BACK — RACE · F — FULLSCREEN</div>
+        </div>
+      </div>
+      <div class="menu-panel" id="menu-panel-about" hidden>
+        <p>ELEMENT-115 — a canyon flight sim built for free dogfighting, landing practice, and regenerative terrain runs. F-15 model &quot;Low poly F-15&quot; by SIpriv on Sketchfab, CC-BY.</p>
+      </div>
     </div>
     <p class="meta">KEYBOARD · CONTROLLER · TOUCH · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
-    <div class="cta">CLICK, TAP, PRESS ANY KEY, OR PRESS A ON CONTROLLER TO FLY</div>
   </div>
 </div>
 <div id="features-popup" class="features-popup" aria-hidden="true">
@@ -14789,7 +14863,11 @@ function updateCamera(dt) {
     ? rawFocusYOffset
     : prevFocusState + (rawFocusYOffset - prevFocusState) * focusBlend;
   camera.userData.focusYOffsetState = focusYOffset;
-  const lookForward = _camLookForward.copy(delayedForward).lerp(planeForward, 0.38 + maneuverReveal * 0.14).normalize();
+  // was: .lerp(planeForward, 0.38 + maneuverReveal * 0.14) — a raw per-frame
+  // constant with no dt term, unlike every other blend in this function.
+  const lookBlendC = 0.38 + maneuverReveal * 0.14;
+  const lookBlendK = -60 * Math.log(1 - lookBlendC);
+  const lookForward = _camLookForward.copy(delayedForward).lerp(planeForward, 1 - Math.exp(-lookBlendK * dt)).normalize();
   const lookTarget = _camLookTarget.copy(jet.position)
     .addScaledVector(lookForward, lookDist)
     .addScaledVector(worldUp, focusYOffset);
@@ -15968,10 +16046,10 @@ function closeFeaturesPopup() {
 function renderFeaturesPopup(data) {
   // No modal anymore — the "Welcome back, pilot" interstitial annoyed more
   // than it informed. Latest-feature notes render as a compact strip inside
-  // the branded intro card instead.
+  // the ABOUT sub-panel of the main menu instead.
   const info = data && typeof data === 'object' ? data : latestFeaturesFallback;
   const version = String(info.version || 'dev');
-  const host = document.getElementById('title');
+  const host = document.getElementById('menu-panel-about');
   if (!host || document.getElementById('title-latest')) return;
   const features = Array.isArray(info.features) && info.features.length ? info.features : latestFeaturesFallback.features;
   const wrap = document.createElement('div');
@@ -15990,8 +16068,7 @@ function renderFeaturesPopup(data) {
     row.append(strong, span);
     wrap.appendChild(row);
   }
-  const anchor = host.querySelector('.multiplayer-setup-card');
-  if (anchor) host.insertBefore(wrap, anchor); else host.appendChild(wrap);
+  host.appendChild(wrap);
 }
 fetch('latest-features.json', { cache: 'no-store' })
   .then((res) => res.ok ? res.json() : latestFeaturesFallback)
@@ -16773,7 +16850,7 @@ renderScene();
 const title = document.getElementById('title');
 document.getElementById('seed-display').textContent = SEED;
 function isPreflightInteractiveTarget(target) {
-  return !!(target && target.closest && target.closest('input, button, label, .multiplayer-setup-card'));
+  return !!(target && target.closest && target.closest('input, button, label, .multiplayer-setup-card, .menu-banner, #menu-panels'));
 }
 function beginFlight(opts = {}) {
   if (running) return;
@@ -16826,17 +16903,59 @@ beginFlight({ enableAudio: false, focusCanvas: false });
 // the intro card + backdrop until the first real user input dismisses it.
 document.body.classList.add('preflight');
 if (title) title.classList.remove('hide');
+let introDismissHandler = null;
+function dismissIntro() {
+  document.body.classList.remove('preflight');
+  if (title) title.classList.add('hide');
+  if (introDismissHandler) {
+    window.removeEventListener('pointerdown', introDismissHandler, true);
+    window.removeEventListener('keydown', introDismissHandler, true);
+  }
+  try { renderer.domElement.focus(); } catch {}
+}
 (function armIntroDismiss() {
-  const dismiss = (e) => {
+  introDismissHandler = (e) => {
     if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
-    document.body.classList.remove('preflight');
-    if (title) title.classList.add('hide');
-    window.removeEventListener('pointerdown', dismiss, true);
-    window.removeEventListener('keydown', dismiss, true);
-    try { renderer.domElement.focus(); } catch {}
+    dismissIntro();
   };
-  window.addEventListener('pointerdown', dismiss, true);
-  window.addEventListener('keydown', dismiss, true);
+  window.addEventListener('pointerdown', introDismissHandler, true);
+  window.addEventListener('keydown', introDismissHandler, true);
+})();
+
+// __retro_menu__ — main menu nav: PLAY SOLO dismisses the intro directly;
+// MULTIPLAYER/CONTROLS/ABOUT toggle a sub-panel (one open at a time);
+// SETTINGS dismisses the intro and opens the same graphics panel as the P key.
+(function wireMenuNav() {
+  const panels = { mp: 'menu-panel-mp', controls: 'menu-panel-controls', about: 'menu-panel-about' };
+  const buttons = { mp: 'menu-btn-mp', controls: 'menu-btn-controls', about: 'menu-btn-about' };
+  let activePanel = null;
+  function setActivePanel(name) {
+    activePanel = name;
+    for (const key of Object.keys(panels)) {
+      const panelEl = document.getElementById(panels[key]);
+      const btnEl = document.getElementById(buttons[key]);
+      const show = key === name;
+      if (panelEl) panelEl.hidden = !show;
+      if (btnEl) btnEl.setAttribute('aria-expanded', String(show));
+    }
+  }
+  function toggleMenuPanel(name) {
+    setActivePanel(activePanel === name ? null : name);
+  }
+  const soloBtn = document.getElementById('menu-btn-solo');
+  if (soloBtn) soloBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissIntro(); });
+  const mpBtn = document.getElementById('menu-btn-mp');
+  if (mpBtn) mpBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('mp'); });
+  const controlsBtn = document.getElementById('menu-btn-controls');
+  if (controlsBtn) controlsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('controls'); });
+  const aboutBtn = document.getElementById('menu-btn-about');
+  if (aboutBtn) aboutBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('about'); });
+  const settingsBtn = document.getElementById('menu-btn-settings');
+  if (settingsBtn) settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismissIntro();
+    if (typeof window.__toggleOptionsPanel === 'function') window.__toggleOptionsPanel();
+  });
 })();
 
 // __overlay_dismiss_focus__ — re-focus game canvas on any click/key

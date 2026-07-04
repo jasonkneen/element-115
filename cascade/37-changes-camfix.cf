@@ -1,0 +1,3 @@
+HUMAN: Fixed one frame-rate-dependent camera blend causing judder at 40-55fps.
+CHG C1<-P1 st=ok ver=pass t="node --check main.js OK; curl 200 :8798/flight-sim3.html" drift=0 note=lookforward-blend-dt-normalized
+DONE stage=S ok=1 adapt=0 blk=0 deleg=0 esc=0 tok~=1800

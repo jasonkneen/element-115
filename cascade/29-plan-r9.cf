@@ -1,0 +1,321 @@
+HUMAN: 7-stage sci-fi HUD revamp; each stage boots alone, JS data-contract ids preserved.
+PLAN P1<-F16 op=insert at=flight-sim3.html:1951#"</style>" why=hud-design-system-css ref=flight-sim3.html:10-22#":root {",flight-sim3.html:1945-1950#"PERF: no frosted glass",flight-sim3.html:1747-1770#"body.preflight #instruments" test="cd /Users/jkneen/Downloads/ships && grep -c '.nhud-panel\|--nh-cyan' flight-sim3.html (expect >=2); grep -c 'backdrop-filter' <(sed -n '/R9 HUD design system/,/end R9 HUD/p' flight-sim3.html) (expect 0 — I3); bun web (bg,:8765); PW load http://localhost:8765/flight-sim3.html; expect ✓ [flight-sim] boot lines + 0 console errors (V2, classes defined but unused yet)" order=1 fill=-
+<<<P1
+  /* ===== R9 HUD design system (sci-fi mock) — persistent HUD, NO backdrop-filter (I3) ===== */
+  :root {
+    --nh-panel: rgba(11,17,25,0.56);
+    --nh-panel-2: rgba(9,14,21,0.72);
+    --nh-line: rgba(128,176,208,0.24);
+    --nh-line-hi: rgba(150,200,225,0.46);
+    --nh-cyan: #58e6d8;
+    --nh-teal: #3fb9c9;
+    --nh-amber: #ffc15a;
+    --nh-red: #ff6a6a;
+    --nh-green: #63d27a;
+    --nh-ink: rgba(214,232,240,0.94);
+    --nh-dim: rgba(150,178,196,0.74);
+    --nh-mono: 'SF Mono','Courier New',ui-monospace,monospace;
+  }
+  .nhud-panel {
+    position: absolute; pointer-events: none; z-index: 40;
+    background: var(--nh-panel);
+    border: 1px solid var(--nh-line);
+    border-radius: 12px;
+    padding: 8px 11px;
+    color: var(--nh-ink);
+    box-shadow: 0 8px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(180,220,240,0.06);
+    /* I3: intentionally NO backdrop-filter on any persistent HUD surface */
+  }
+  body.preflight .nhud-panel, body.review-open .nhud-panel { opacity: 0 !important; pointer-events: none !important; }
+  .nhud-cap { font-family: var(--nh-mono); font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--nh-dim); }
+  .nhud-num { font-family: var(--nh-mono); font-weight: 700; letter-spacing: -0.02em; color: #eef8fc; font-variant-numeric: tabular-nums; line-height: 1; }
+  .nhud-num.big { font-size: 30px; }
+  .nhud-num.xl { font-size: 34px; }
+  .nhud-unit { font-family: var(--nh-mono); font-size: 9px; letter-spacing: 0.14em; color: var(--nh-dim); }
+  .nhud-bar { position: relative; height: 4px; border-radius: 3px; background: rgba(120,160,185,0.16); overflow: hidden; margin-top: 5px; }
+  .nhud-bar > i { display: block; height: 100%; width: 100%; border-radius: 3px; background: var(--nh-cyan); }
+  .nhud-accent { color: var(--nh-cyan); }
+  .nhud-amber { color: var(--nh-amber); }
+  .nhud-row { display: flex; align-items: baseline; gap: 6px; }
+  /* --- top bar --- */
+  #nhud-brand { top: calc(10px + var(--safe-top)); left: calc(12px + var(--safe-left)); display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
+  #nhud-brand .nhud-glyph { color: var(--nh-cyan); font-size: 15px; }
+  #nhud-brand .nhud-brand-name { font-family: var(--nh-mono); letter-spacing: 0.16em; font-size: 11px; color: var(--nh-ink); }
+  #nhud-brand .nhud-ver { color: var(--nh-dim); font-size: 9px; }
+  #nhud-topright { top: calc(10px + var(--safe-top)); right: calc(12px + var(--safe-right)); display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  #nhud-topright .nhud-subrow { display: flex; gap: 5px; }
+  .nhud-mini { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 9px; background: var(--nh-panel); border: 1px solid var(--nh-line); }
+  .nhud-signal { display: inline-flex; align-items: flex-end; gap: 1px; height: 10px; }
+  .nhud-signal > b { width: 2px; background: var(--nh-cyan); border-radius: 1px; }
+  .nhud-signal > b:nth-child(1){height:3px} .nhud-signal > b:nth-child(2){height:5px} .nhud-signal > b:nth-child(3){height:7px} .nhud-signal > b:nth-child(4){height:10px}
+  .nhud-reward-toast { color: var(--nh-amber); font-family: var(--nh-mono); font-size: 11px; opacity: 0; transition: opacity 0.2s; }
+  .nhud-reward-toast.show { opacity: 1; }
+  /* --- left / right clusters --- */
+  #instruments.nhud-cluster { top: 50%; left: calc(14px + var(--safe-left)); right: auto; bottom: auto; width: auto; min-width: 128px; transform: translateY(-50%); border-radius: 14px; display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; }
+  #instruments.nhud-cluster .nhud-stat { display: flex; flex-direction: column; gap: 2px; }
+  #nhud-right-cluster { top: 50%; right: calc(14px + var(--safe-right)); transform: translateY(-50%); width: 156px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 13px; }
+  #nhud-right-cluster .nhud-gauge { display: flex; flex-direction: column; gap: 1px; }
+  #nhud-right-cluster .nhud-gauge .nhud-num { font-size: 16px; }
+  #nhud-legacy { position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  /* --- compass ribbon --- */
+  #nhud-compass { top: calc(10px + var(--safe-top)); left: 50%; transform: translateX(-50%); width: 340px; padding: 6px 0 4px; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+  #nhud-compass-view { position: relative; width: 320px; height: 20px; overflow: hidden; }
+  #nhud-compass-scale { position: absolute; top: 0; left: 0; height: 20px; will-change: transform; }
+  .nhud-tick { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+  .nhud-tick > u { display: block; width: 1px; height: 6px; background: var(--nh-line-hi); }
+  .nhud-tick.card > u { height: 9px; background: var(--nh-cyan); }
+  .nhud-tick > s { font-family: var(--nh-mono); font-size: 8px; color: var(--nh-dim); text-decoration: none; margin-top: 1px; }
+  .nhud-tick.card > s { color: var(--nh-cyan); }
+  #nhud-compass-caret { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--nh-amber); }
+  #nhud-hdg-chip { margin-top: 3px; font-family: var(--nh-mono); font-size: 12px; color: var(--nh-amber); letter-spacing: 0.05em; }
+  /* --- right column: objective + contacts --- */
+  #course-director.nhud-panel, #nhud-contacts { right: calc(14px + var(--safe-right)); width: 210px; }
+  #course-director.nhud-panel { top: calc(72px + var(--safe-top)); }
+  #nhud-contacts { top: calc(190px + var(--safe-top)); display: flex; flex-direction: column; gap: 4px; }
+  .nhud-contact { display: flex; align-items: center; gap: 7px; font-family: var(--nh-mono); font-size: 10px; }
+  .nhud-contact > .dia { color: var(--nh-cyan); font-size: 11px; }
+  .nhud-contact.hostile > .dia { color: var(--nh-red); }
+  .nhud-contact > .cs { color: var(--nh-ink); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nhud-contact > .ty { color: var(--nh-dim); }
+  .nhud-contact > .ds { color: var(--nh-amber); }
+  /* --- radar --- */
+  #nhud-radar { right: calc(16px + var(--safe-right)); bottom: calc(16px + var(--safe-bottom)); width: 188px; height: 188px; padding: 4px; border-radius: 50%; }
+  #nhud-radar-cv { width: 180px; height: 180px; display: block; }
+  /* --- bottom center: checkpoint + icon buttons --- */
+  #nhud-checkpoint { left: 50%; bottom: calc(16px + var(--safe-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
+  #nhud-checkpoint .nhud-num { font-size: 13px; }
+  /* --- comms (bottom-right, left of radar) --- */
+  #status-msg.nhud-comms { right: calc(212px + var(--safe-right)); bottom: calc(18px + var(--safe-bottom)); left: auto; width: 240px; position: absolute; display: flex; flex-direction: column; gap: 4px; }
+  #status-msg.nhud-comms .nhud-wave { height: 12px; background: repeating-linear-gradient(90deg, var(--nh-teal) 0 1px, transparent 1px 4px); opacity: 0.5; border-radius: 2px; }
+  /* --- center reticle furniture: arcs + tapes --- */
+  #nhud-center { inset: 0; pointer-events: none; background: none; border: none; box-shadow: none; }
+  .nhud-arc { position: absolute; top: 50%; width: 34px; height: 74px; border: 2px solid var(--nh-cyan); opacity: 0.5; transform: translateY(-50%); }
+  .nhud-arc.l { left: calc(50% - 62px); border-right: none; border-radius: 20px 0 0 20px; }
+  .nhud-arc.r { left: calc(50% + 28px); border-left: none; border-radius: 0 20px 20px 0; }
+  .nhud-tape { position: absolute; top: 50%; transform: translateY(-50%); width: 58px; height: 150px; overflow: hidden; }
+  .nhud-tape.spd { left: calc(50% - 150px); text-align: right; }
+  .nhud-tape.alt { left: calc(50% + 92px); text-align: left; }
+  .nhud-tape .nhud-chip2 { position: absolute; top: 50%; transform: translateY(-50%); font-family: var(--nh-mono); font-size: 12px; color: var(--nh-cyan); background: var(--nh-panel-2); border: 1px solid var(--nh-line); border-radius: 5px; padding: 2px 5px; }
+  .nhud-tape.spd .nhud-chip2 { right: 0; } .nhud-tape.alt .nhud-chip2 { left: 0; }
+  .nhud-tape-col { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
+  .nhud-tape-col > u { position: absolute; height: 1px; width: 14px; background: var(--nh-line-hi); }
+  .nhud-tape.spd .nhud-tape-col > u { right: 0; } .nhud-tape.alt .nhud-tape-col > u { left: 0; }
+  #nhud-pitch { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; opacity: 0.55; }
+  #nhud-pitch > u { width: 40px; height: 1px; background: var(--nh-cyan); }
+  /* ===== end R9 HUD design system ===== */
+>>>
+PLAN P2<-F16 op=replace at=flight-sim3.html:1979-2010#"top-surface-strip\" id=\"instruments\"" why=top-bar-and-clusters-restructure ref=flight-sim3.html:14820-14857#"const $speed = document.getElementById",flight-sim3.html:16276-16317#"const hudCache = {",flight-sim3.html:16623-16638#"const tp = Math.round(plane.throttle",flight-sim3.html:12468#"function resetPlane()",flight-sim3.html:10504#"plane.damage.engine",flight-sim3.html:16047-16049#"let vsSmoothed = 0" test="cd /Users/jkneen/Downloads/ships && grep -c 'id=\"speed\"\|id=\"altitude\"\|id=\"heading\"\|id=\"hull-pct\"\|id=\"shield-pct\"\|id=\"hull-bar\"\|id=\"score-val\"\|id=\"score-streak\"\|id=\"ammo-val\"\|id=\"weapon-mode\"\|id=\"vspeed\"\|id=\"gear\"' flight-sim3.html (expect 12 — every writer id still present); grep -c 'id=\"eng-pct\"\|id=\"fuel-pct\"\|id=\"nhud-compass\"\|id=\"nhud-legacy\"' flight-sim3.html (expect 4); bun web (bg,:8765); PW load flight-sim3.html then eval __ap.setSpawnMode('sky');__ap.reset(); 0 console errors, no null.textContent (V2)" order=2 fill=S
+<<<P2
+SPEC (fill=S): Replace the whole #instruments block (1979-2010) with the new redesign panels, ALL children of #hud. Read the current markup from disk for the exact id spans. Use ONLY the P1 nhud- classes.
+
+MARKUP to emit (in this order, each a direct child of #hud):
+1. Brand chip: <div id="nhud-brand" class="nhud-panel"><span class="nhud-glyph">◤</span><span class="nhud-brand-name">CANYON FLIGHT SIM</span><span class="nhud-ver">v3</span></div>
+2. Compass mount (P3 fills the scale): <div id="nhud-compass" class="nhud-panel"><div id="nhud-compass-view"><div id="nhud-compass-caret"></div><div id="nhud-compass-scale"></div></div><div id="nhud-hdg-chip"><span id="heading">000</span>°</div></div>   — id="heading" MOVES here (was $hdg target); keep exactly one #heading.
+3. Top-right: <div id="nhud-topright"><div id="hud-score-chip" class="nhud-mini"><span class="nhud-cap">CREDITS</span><span class="nhud-num" id="score-val">0</span></div><div class="nhud-reward-toast" id="nhud-reward"></div><div class="nhud-subrow"><div class="nhud-mini"><span class="nhud-cap">FPS</span><span class="nhud-num" id="fps-val" style="font-size:12px">60</span></div><div class="nhud-mini" id="nhud-ping" style="display:none"><span class="nhud-signal"><b></b><b></b><b></b><b></b></span><span class="nhud-cap">PING</span><span class="nhud-num" id="ping-val" style="font-size:12px">--</span></div></div><span class="nhud-cap" id="score-streak">0×</span></div>
+   — keep ids hud-score-chip, score-val, score-streak (writers @16533-16549 unchanged). #score-streak moves here.
+4. Left cluster (keep id="instruments" for CSS/preflight hooks + add classes): <div class="nhud-panel nhud-cluster" id="instruments"><div class="nhud-stat"><span class="nhud-cap">SPD</span><span class="nhud-num big" id="speed">0</span><span class="nhud-unit">KTS</span></div><div class="nhud-stat"><span class="nhud-cap">ALT</span><span class="nhud-num big" id="altitude">0</span><span class="nhud-unit">FT</span></div><div class="nhud-stat"><span class="nhud-cap">HDG</span><span class="nhud-num" style="font-size:20px"><span id="hdg-mirror">000</span>°</span></div></div>
+   — NOTE: id="heading" already lives in the compass (#2). Add id="hdg-mirror" here as a SECOND heading readout; wire it in updateHUD (see JS below). Do NOT duplicate id="heading".
+5. Right cluster: <div id="nhud-right-cluster" class="nhud-panel"><div class="nhud-gauge"><span class="nhud-cap">HULL</span><span class="nhud-num" id="hull-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="hull-bar" style="width:100%;background:#63d27a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">SHD</span><span class="nhud-num" id="shield-pct">0</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="shd-bar" style="width:0%"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">ENG</span><span class="nhud-num" id="eng-pct">60</span><span class="nhud-unit">°C</span><div class="nhud-bar"><i id="eng-bar" style="width:20%;background:#ffc15a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">FUEL</span><span class="nhud-num" id="fuel-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="fuel-bar" style="width:100%"></i></div></div></div>
+   — keep ids hull-pct, shield-pct, hull-bar (writers @16410-16452 unchanged; hull-bar is now the <i> fill). eng/shd/fuel bars new.
+6. Hidden legacy holder — keeps every remaining writer id alive & written harmlessly until P6 relocates the weapon ids: <div id="nhud-legacy"><span id="vspeed">0</span><span id="aoa">0</span><span id="gforce">1.0</span><span id="gear" class="ok">DOWN</span><span id="ammo-val">120</span><span id="ammo-max">300</span><i id="ammo-bar"></i><span id="missile-val">1</span><span id="supply-val">IDLE</span><span id="weapon-mode">BULLET</span><span id="hud-heading-chip"></span><span id="hud-aero-chip"></span><span id="hud-gear-chip"></span><span id="hud-ammo-chip"></span></div>
+   — every id here is read by $-cache @14820-14857 and written by updateHUD; keeping them present (hidden) prevents null.textContent. Do NOT drop any.
+
+JS edits (also part of this record):
+A. $-cache (@14857, after $scoreChip): add const $engPct=byId('eng-pct'), $engBar=byId('eng-bar'), $shdBar=byId('shd-bar'), $fuelPct=byId('fuel-pct'), $fuelBar=byId('fuel-bar'), $fpsVal=byId('fps-val'), $pingVal=byId('ping-val'), $pingChip=byId('nhud-ping'), $hdgMirror=byId('hdg-mirror') using the same document.getElementById form.
+B. state vars (@16049, beside vsSmoothed): let nhudFuel = 100; let nhudFps = 60;
+C. hudCache (@16316): add fields engPct:-1, fuelPct:-1, fps:-1, hdgMirror:'', pingText:'', pingHidden:null.
+D. resetPlane (@12468 body): add nhudFuel = 100;
+E. In updateHUD, after the heading block (@16344): if(hudCache.hdgMirror!==hdgStr){hudCache.hdgMirror=hdgStr; if($hdgMirror)$hdgMirror.textContent=hdgStr;}
+F. In updateHUD near the throttle block (@16623), add cached writers:
+   - ENG temp: const engC = Math.round(60 + plane.throttle*35 + (plane.damage.engine||0)*40); dirty-check hudCache.engPct -> $engPct.textContent, $engBar.style.width = Math.min(100,(engC-60)/0.75)+'%'.
+   - SHD bar: $shdBar.style.width = shd + '%' (reuse shd already computed in hull block; if out of scope, recompute from plane.shield/plane.shieldMax).
+   - FUEL: nhudFuel = Math.max(15, nhudFuel - dt*0.35); const fuelR = Math.round(nhudFuel); dirty-check -> $fuelPct.textContent + $fuelBar.style.width=fuelR+'%'.
+   - FPS: nhudFps += (1/Math.max(dt,1e-3) - nhudFps)*0.08; const fpsR = Math.round(nhudFps); dirty-check -> $fpsVal.textContent.
+   - PING: const mpOn = !!(typeof multiplayerState!=='undefined' && multiplayerState.connected); const pingHidden = !mpOn; dirty-check hudCache.pingHidden -> $pingChip.style.display = pingHidden?'none':'flex'; if(mpOn){ const ptext = String(Math.round(multiplayerState.pingMs||0)); dirty-check hudCache.pingText -> $pingVal.textContent=ptext; }
+G. updateHUD tail (@16638, right after updateMultiplayerRaceHUD();) add GUARDED feature hooks (functions defined by later stages; guards make each stage independently bootable):
+   if (typeof updateCompassHUD==='function') updateCompassHUD(hdg);
+   if (typeof updateContactsHUD==='function') updateContactsHUD();
+   if (typeof updateRadarHUD==='function') updateRadarHUD();
+   if (typeof updateCenterHUD==='function') updateCenterHUD(spRound, ft);
+DEAD-CODE NOTE (do not delete this round): old #instruments/.hud-compact-grid/.hud-stat-chip CSS (@96-210 and the @media #instruments rules) is now largely unused — leave for P6/cleanup.
+>>>
+PLAN P3<-F16 op=insert at=flight-sim3.html:16318#"function updateHUD(dt = 1 / 60) {" why=compass-ribbon-driver ref=flight-sim3.html:16337-16340#"let hdg = Math.atan2(fwd.x",flight-sim3.html:2#"nhud-compass-scale (mount from P2)" test="cd /Users/jkneen/Downloads/ships && node -e \"const s=require('fs').readFileSync('flight-sim3.html','utf8');new Function(s.slice(s.indexOf('function updateCompassHUD'),s.indexOf('function updateCompassHUD')+1400))\" (syntax ok); grep -c 'function updateCompassHUD' flight-sim3.html (expect 1); bun web (bg,:8765); PW load flight-sim3.html then eval __ap.setSpawnMode('sky');__ap.reset(); 0 console errors; compass ticks scroll with heading (V2/V4)" order=3 fill=-
+<<<P3
+// Compass ribbon — builds a degree scale once into #nhud-compass-scale, then
+// each frame slides it by heading via transform translateX (cheap, no realloc).
+let _nhudCompassBuilt = false;
+const NHUD_PX_PER_DEG = 3.4;      // 320px view ≈ ±47° visible
+const NHUD_CARDINALS = { 0:'N', 90:'E', 180:'S', 270:'W' };
+function nhudBuildCompass() {
+  const scale = document.getElementById('nhud-compass-scale');
+  if (!scale) return false;
+  let html = '';
+  // Overscan -60..420 so the visible window never runs off the strip near N.
+  for (let d = -60; d <= 420; d += 5) {
+    const deg = ((d % 360) + 360) % 360;
+    const x = (d + 60) * NHUD_PX_PER_DEG;           // strip-local px (0-based)
+    const card = NHUD_CARDINALS[deg];
+    const label = card || (deg % 30 === 0 ? String(deg) : '');
+    html += `<div class="nhud-tick${card ? ' card' : ''}" style="left:${x}px"><u></u><s>${label}</s></div>`;
+  }
+  scale.innerHTML = html;
+  scale.style.width = (480 * NHUD_PX_PER_DEG) + 'px';
+  _nhudCompassBuilt = true;
+  return true;
+}
+let _nhudCompassLast = -1;
+function updateCompassHUD(hdg) {
+  if (!_nhudCompassBuilt && !nhudBuildCompass()) return;
+  const r = Math.round(hdg);
+  if (r === _nhudCompassLast) return;
+  _nhudCompassLast = r;
+  const scale = document.getElementById('nhud-compass-scale');
+  if (!scale) return;
+  // Center the current heading under the caret (view center = 160px).
+  const offset = 160 - (hdg + 60) * NHUD_PX_PER_DEG;
+  scale.style.transform = `translateX(${offset.toFixed(1)}px)`;
+}
+>>>
+PLAN P4<-F16 op=replace at=flight-sim3.html:15006-15012#"const tag = document.createElement('div');" why=kill-floating-tags-add-contacts-panel ref=flight-sim3.html:14998-15016#"function ensureTargetHudPool()",flight-sim3.html:15568-15587#"const tagText = isActive",flight-sim3.html:17932#"const traffic = []",flight-sim3.html:18082-18104#"const rec = {",flight-sim3.html:14989-14996#"function inferTargetTypeLabel" test="cd /Users/jkneen/Downloads/ships && grep -c 'poolEntry.tag.textContent\|poolEntry.readout.textContent' flight-sim3.html (expect 0 — floating text writes removed); grep -c 'function updateContactsHUD\|id=\"nhud-contacts\"' flight-sim3.html (expect 2); bun web (bg,:8765); PW load flight-sim3.html; eval __ap.setSpawnMode('sky');__ap.reset(); 0 console errors; in-world diamond brackets still present, no floating text tags in sky, contacts panel lists traffic (V2/V4)" order=4 fill=S
+<<<P4
+SPEC (fill=S): Remove the floating per-target text labels (the sky clutter) but KEEP the in-world diamond bracket (el + frame). Add a right-column CONTACTS panel driven from the global `traffic` array at 10Hz.
+Edits:
+1. ensureTargetHudPool (@14998): stop creating/appending the tag and readout elements — keep only el + frame. Change the push to `targetHudState.boxes.push({ el })`. (el still gets .target-bracket + child .target-frame.)
+2. updateTargetHud (@15568-15587): delete the tagText block, the `poolEntry.tag.textContent` write, and the entire readout block (readout.style.display + lastReadoutAt + readout.textContent). Leave all poolEntry.el transform/class/opacity logic intact.
+3. Add markup: a new panel <div id="nhud-contacts" class="nhud-panel"> with a header <div class="nhud-cap">NEARBY CONTACTS</div> and a pre-built pool of 4 rows: <div class="nhud-contact" id="nhud-contact-0" style="display:none"><span class="dia">◆</span><span class="cs"></span><span class="ty"></span><span class="ds"></span></div> ... -1 -2 -3. Place it as a child of #hud (P1 positions it under #course-director).
+4. Add function updateContactsHUD() (define near flashStatus @15949) with an internal 10Hz gate (module `let _nhudContactsLast=0; const now=performance.now(); if(now-_nhudContactsLast<100)return; _nhudContactsLast=now;`). Build a scratch array (reuse a module-level array, no per-call alloc) of loaded/visible traffic: for each rec in `traffic` where rec.loaded && rec.group.visible, compute dx=rec.group.position.x-plane.pos.x, dz=rec.group.position.z-plane.pos.z, dist=Math.hypot(dx,dz); push {rec,dist}. Sort by dist, take top 4. For each of the 4 rows: if entry present set row.style.display='flex', toggle class 'hostile' = (rec.targetKind==='ufo-saucer'), set .cs textContent = rec.callsign||rec.hudId, .ty = rec.typeLabel||inferTargetTypeLabel(rec.file), .ds = dist>=1000?(dist/1000).toFixed(1)+'KM':Math.round(dist)+'M' — dirty-check each textContent before writing. Hide unused rows via display='none'. Cache the 4 row elements once (lazy) to avoid getElementById churn.
+NOTE: contacts uses `traffic` (world positions) not displayTargets (local to updateTargetHud) — decoupled and always in scope.
+>>>
+PLAN P5<-F16 op=insert at=flight-sim3.html:16318#"function updateHUD(dt = 1 / 60) {" why=radar-canvas-module ref=flight-sim3.html:17932#"const traffic = []",flight-sim3.html:18082-18104#"targetKind: isProceduralUfo",flight-sim3.html:16337-16340#"heading from forward vector",flight-sim3.html:2#"nhud-radar-cv canvas (mount from P2 or self-added)" test="cd /Users/jkneen/Downloads/ships && grep -c 'function updateRadarHUD\|id=\"nhud-radar-cv\"' flight-sim3.html (expect 2); bun web (bg,:8765); PW load flight-sim3.html; eval __ap.setSpawnMode('sky');__ap.reset(); 0 console errors; radar draws rings + player triangle + colored contact diamonds + sweep, updates ~10Hz (V2/V4)" order=5 fill=-
+<<<P5
+// 2D radar — N-up, rings at 1KM/3KM, player triangle center, contact diamonds
+// colored by hostility, faint rotating sweep. Own <canvas>, 2D ctx, 10Hz, no
+// per-frame allocation. Canvas mount #nhud-radar-cv is created in P2; if the
+// panel is absent this self-injects one so the stage boots standalone.
+let _radarCtx = null, _radarLast = 0, _radarSweep = 0;
+const NHUD_RADAR_RANGE = 3000;   // metres to outer ring
+function nhudInitRadar() {
+  let cv = document.getElementById('nhud-radar-cv');
+  if (!cv) {
+    const host = document.getElementById('nhud-radar') || document.getElementById('hud');
+    if (!host) return false;
+    cv = document.createElement('canvas');
+    cv.id = 'nhud-radar-cv';
+    host.appendChild(cv);
+  }
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = 180 * dpr; cv.height = 180 * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  _radarCtx = ctx;
+  return true;
+}
+function updateRadarHUD() {
+  const now = performance.now();
+  if (now - _radarLast < 100) return;   // 10 Hz
+  _radarLast = now;
+  if (!_radarCtx && !nhudInitRadar()) return;
+  const ctx = _radarCtx, C = 90, R = 82;
+  const scale = R / NHUD_RADAR_RANGE;
+  ctx.clearRect(0, 0, 180, 180);
+  // rings
+  ctx.strokeStyle = 'rgba(88,230,216,0.28)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(C, C, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(C, C, R / 3, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(88,230,216,0.14)';
+  ctx.beginPath(); ctx.moveTo(C, C - R); ctx.lineTo(C, C + R); ctx.moveTo(C - R, C); ctx.lineTo(C + R, C); ctx.stroke();
+  // heading (world) so player triangle points its true course, N up
+  const fwd = _hudFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+  const hdgRad = Math.atan2(fwd.x, -fwd.z);
+  // sweep wedge
+  _radarSweep = (_radarSweep + 0.05) % (Math.PI * 2);
+  const g = ctx.createRadialGradient(C, C, 0, C, C, R);
+  g.addColorStop(0, 'rgba(88,230,216,0.16)'); g.addColorStop(1, 'rgba(88,230,216,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.moveTo(C, C);
+  ctx.arc(C, C, R, _radarSweep - 0.35, _radarSweep); ctx.closePath(); ctx.fill();
+  // contacts (N-up: world +z = south = down, +x = east = right)
+  if (typeof traffic !== 'undefined') {
+    for (let i = 0; i < traffic.length; i++) {
+      const rec = traffic[i];
+      if (!rec.loaded || !rec.group || !rec.group.visible) continue;
+      let dx = (rec.group.position.x - plane.pos.x) * scale;
+      let dz = (rec.group.position.z - plane.pos.z) * scale;
+      if (dx * dx + dz * dz > R * R) continue;
+      const hostile = rec.targetKind === 'ufo-saucer';
+      ctx.fillStyle = hostile ? '#ff6a6a' : '#58e6d8';
+      const px = C + dx, py = C + dz, s = 3;
+      ctx.beginPath(); ctx.moveTo(px, py - s); ctx.lineTo(px + s, py); ctx.lineTo(px, py + s); ctx.lineTo(px - s, py); ctx.closePath(); ctx.fill();
+    }
+  }
+  // player triangle (heading-rotated)
+  ctx.save(); ctx.translate(C, C); ctx.rotate(hdgRad);
+  ctx.fillStyle = '#ffc15a';
+  ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+>>>
+PLAN P6<-F16 op=replace at=flight-sim3.html:2011-2039#"telemetry-deck-shell thin-surface-hud-shell bottom-surface-strip\" id=\"throttle-wrap\"" why=bottom-row-chips-and-comms ref=flight-sim3.html:2044#"id=\"status-msg\"",flight-sim3.html:2045-2055#"id=\"course-director\"",flight-sim3.html:2056-2061#"id=\"mp-race-panel\"",flight-sim3.html:16087-16097#"function updateStatusGuidance",flight-sim3.html:16493-16531#"$weaponMode / ammo writers",flight-sim3.html:2029-2035#"hud-action buttons (M/P/L/T/Y/N/audio)" test="cd /Users/jkneen/Downloads/ships && grep -c 'id=\"throttle-val\"\|id=\"ammo-val\"\|id=\"weapon-mode\"\|id=\"missile-val\"\|id=\"status-msg\"\|id=\"race-btn\"\|id=\"prop-model-btn\"\|id=\"options-btn\"' flight-sim3.html (expect 8 — all preserved); grep -c 'id=\"nhud-legacy\"' flight-sim3.html (still 1, now emptier); bun web (bg,:8765); PW load flight-sim3.html; eval __ap.setSpawnMode('sky');__ap.reset(); press keys to fire — GUNS chip shows ammo, COMMS shows last flashStatus line, 0 console errors (V2/V4)" order=6 fill=S
+<<<P6
+SPEC (fill=S): Restyle the bottom row + comms into the mock, reusing every existing id (buttons keep their [key] handlers via id). Read current #throttle-wrap markup (2011-2039) from disk for the exact button ids.
+1. Rebuild #throttle-wrap as a bottom-left FLIGHT MODE + status chips row using nhud- classes: keep id="throttle-wrap"; inside keep the throttle readout (ids throttle-val, throttle-bar as the <i> fill, ab-status). Add three square status chips: BOOST (shows throttle% ≥55 → 'SURGE' else 'RDY'; can reuse ab-status text or a new cosmetic span), GUNS (RELOCATE weapon ids here: move id="ammo-val", id="ammo-max", id="ammo-bar" (<i>), id="weapon-mode" out of #nhud-legacy into this GUNS chip), FLARES→relabel MSL (RELOCATE id="missile-val", id="supply-val" here). After moving these ids OUT of #nhud-legacy, DELETE them from the legacy holder so each id appears exactly once. The FLIGHT MODE dropdown = keep the existing hud-action buttons block (ids prop-model-btn/options-btn/landing-btn/style-btn/biome-btn/race-btn/audio-btn + their -ind spans) restyled with nhud classes; keep #hud-actions-tray/#hud-control-grid ids and the SYSTEMS[TAB] summary.
+2. Bottom-center NEXT CHECKPOINT chip: add <div id="nhud-checkpoint" class="nhud-panel"><span class="nhud-cap">NEXT CP</span><span class="nhud-num" id="nhud-cp-dist">--</span></div> flanked by 4 small icon buttons that reuse existing toggle handlers (waypoint/course toggle→race-btn or a course toggle; target cycle→dispatch 'C'; camera mode→existing cam key; plane cycle→prop-model-btn). Wire nhud-cp-dist from the existing course-director range in updateCourseDirectorHUD (@16110): also write $courseRange's value (or distanceM) to #nhud-cp-dist (dirty-checked). Icon buttons need pointer-events:auto (add inline or class) since #hud is pointer-events:none.
+3. COMMS panel (bottom-right, left of radar): restyle #status-msg — KEEP id="status-msg" (all writers @10098/12309/12512/13011/16090/16095/20512 unchanged). Add class nhud-panel nhud-comms; prepend a static waveform strip <div class="nhud-wave"></div> and a CH pill <span class="nhud-cap">CH 1</span> as SIBLINGS wrapping #status-msg, OR wrap #status-msg inside a comms container that holds the wave + pill + the #status-msg line. The latest flashStatus message already lands in #status-msg via updateStatusGuidance (transientStatus @15948-15952) — no new driver needed.
+4. Restyle #course-director (2045-2055) and #mp-race-panel (2056-2061): swap their shell classes to `nhud-panel` (drop thin-surface-hud-shell/game-dialog-chrome to kill backdrop-filter — I3) and restyle inner labels with nhud-cap/nhud-num. Keep every id (course-title/course-next/course-range/course-turn/course-alt/course-cue, race-room/race-timer/race-status/race-board) — writers unchanged. is-hidden toggle logic unchanged.
+NOTE: after this stage #nhud-legacy should contain only the drop-only readouts (vspeed/aoa/gforce/gear + the 4 chip-wrapper ids). Those stay hidden (mock omits them) but MUST remain present — $vs/$aoa/$gforce/$gear/$headingChip/$aeroChip/$gearChip/$ammoChip writers still fire.
+>>>
+PLAN P7<-F16 op=insert at=flight-sim3.html:16318#"function updateHUD(dt = 1 / 60) {" why=center-arcs-tapes-pitch-and-final-gate ref=flight-sim3.html:16337-16340#"heading/fwd",flight-sim3.html:16605-16621#"_hudEuler.setFromQuaternion",flight-sim3.html:16322-16333#"spRound / ft",flight-sim3.html:2#"nhud-center mount (P2/self-add)" test="cd /Users/jkneen/Downloads/ships && grep -c 'function updateCenterHUD\|id=\"nhud-center\"\|nhud-spd-chip\|nhud-alt-chip' flight-sim3.html (expect >=3); bun web (bg,:8765); PW load http://localhost:8765/flight-sim3.html; eval __ap.setSpawnMode('sky');__ap.reset();keys['ShiftLeft']=true; measure 12s stream + 15s settled cruise via rAF deltas; REQUIRE mean>=58fps AND missed-vsync(>17.7ms)<=2% (log renderer.getPixelRatio()) [V3]; THEN pause __ap, place plane y=1500, screenshots at timeOfDay 0.25 / dusk / night [V4]: reticle arcs + speed tape (left, 'NNN KTS') + alt tape (right, 'FT NNN') + pitch ladder visible, N-up radar + compass + clusters + contacts all styled to mock, 0 console errors (V2/V3/V4 FINAL GATE)" order=7 fill=-
+<<<P7
+// Center reticle furniture — two bracket arcs, speed tape (left), altitude tape
+// (right), pitch ladder. Built once into #nhud-center; tapes slide via transform
+// and value chips update dirty-checked. Cheap: only 2 textContent + 2 transforms.
+let _nhudCenterBuilt = false;
+let _nhudSpdChip = null, _nhudAltChip = null, _nhudSpdCol = null, _nhudAltCol = null, _nhudPitch = null;
+let _nhudCenterSpd = -1, _nhudCenterAlt = -1;
+function nhudBuildCenter() {
+  let host = document.getElementById('nhud-center');
+  if (!host) {
+    const hud = document.getElementById('hud');
+    if (!hud) return false;
+    host = document.createElement('div');
+    host.id = 'nhud-center';
+    host.className = 'nhud-panel';
+    hud.appendChild(host);
+  }
+  let ticks = '';
+  for (let i = 0; i < 22; i++) ticks += `<u style="top:${i * 12}px"></u>`;
+  host.innerHTML =
+    '<div class="nhud-arc l"></div><div class="nhud-arc r"></div>' +
+    `<div class="nhud-tape spd"><div class="nhud-tape-col" id="nhud-spd-col">${ticks}</div><span class="nhud-chip2" id="nhud-spd-chip">0 KTS</span></div>` +
+    `<div class="nhud-tape alt"><div class="nhud-tape-col" id="nhud-alt-col">${ticks}</div><span class="nhud-chip2" id="nhud-alt-chip">FT 0</span></div>` +
+    '<div id="nhud-pitch"><u></u><u></u><u></u></div>';
+  _nhudSpdChip = document.getElementById('nhud-spd-chip');
+  _nhudAltChip = document.getElementById('nhud-alt-chip');
+  _nhudSpdCol = document.getElementById('nhud-spd-col');
+  _nhudAltCol = document.getElementById('nhud-alt-col');
+  _nhudPitch = document.getElementById('nhud-pitch');
+  _nhudCenterBuilt = true;
+  return true;
+}
+function updateCenterHUD(spRound, ft) {
+  if (!_nhudCenterBuilt && !nhudBuildCenter()) return;
+  if (spRound !== _nhudCenterSpd) {
+    _nhudCenterSpd = spRound;
+    if (_nhudSpdChip) _nhudSpdChip.textContent = spRound + ' KTS';
+    // slide the tick column so motion reads at ~1px per knot, wrapped to tick pitch
+    if (_nhudSpdCol) _nhudSpdCol.style.transform = `translateY(${(spRound % 12)}px)`;
+  }
+  if (ft !== _nhudCenterAlt) {
+    _nhudCenterAlt = ft;
+    if (_nhudAltChip) _nhudAltChip.textContent = 'FT ' + ft;
+    if (_nhudAltCol) _nhudAltCol.style.transform = `translateY(${(Math.round(ft / 10) % 12)}px)`;
+  }
+  // pitch ladder tilt from plane attitude (reuse shared euler scratch)
+  if (_nhudPitch) {
+    const e = _hudEuler.setFromQuaternion(plane.quat, 'YXZ');
+    const pitchPx = Math.max(-40, Math.min(40, (e.x * 180 / Math.PI) * 1.4));
+    _nhudPitch.style.transform = `translateX(-50%) translateY(${pitchPx.toFixed(1)}px)`;
+  }
+}
+>>>
+DONE stage=O plan=7 tok~=4600

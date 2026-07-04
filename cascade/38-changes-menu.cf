@@ -1,0 +1,7 @@
+CHG C1<-P1 st=ok ver=pass t="node --check on extracted <script> OK; curl 200 on /flight-sim3.html + /assets/ui/menu/bg-169.jpg + 05_play_solo_selected.png" drift=+43 note=title-backdrop-dual-bg-and-poster-css
+CHG C2<-P1 st=ok ver=pass t="grep unique-count mp-callsign/mp-url/mp-room/mp-spawn-row/mp-setup-note/seed-display = 1 each" drift=+43 note=poster-markup-replace-title-card
+CHG C3<-P1 st=ok ver=pass t="grep confirms briefing-kicker/briefing-subtitle/title-logo/flight-briefing-card/.cta/element115-logo all removed, zero leftover refs" drift=0 note=old-card-chrome-removed
+CHG C4<-P1 st=ok ver=pass t="node --check pass; grep isPreflightInteractiveTarget shows .menu-banner,#menu-panels added" drift=+2 note=preflight-guard-extended
+CHG C5<-P1 st=ok ver=pass t="node --check pass; dismissIntro factored out, reused by armIntroDismiss handler and menu-btn-solo click" drift=+55 note=dismiss-intro-refactor-and-menu-wiring
+CHG C6<-P1 st=ok ver=pass t="grep renderFeaturesPopup host = getElementById('menu-panel-about'); appendChild(wrap)" drift=+6 note=title-latest-anchor-moved-to-about-panel
+DONE stage=S ok=6 adapt=0 blk=0 deleg=0 esc=0 tok~=42000
