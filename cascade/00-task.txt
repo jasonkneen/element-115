@@ -1,0 +1,23 @@
+TASK: Element-115 flight sim (flight-sim3.html) — multi-round total optimization: visual quality, effects, audio, multiplayer, assets. Hold locked 60fps and dynamic-resolution behavior at every step.
+
+ROUND MAP (one cascade round per loop tick; this file persists across rounds):
+  R1: Sky/atmosphere + terrain visual quality  <- CURRENT
+  R2: Audio — layered dynamic engine/wind/doppler, spatial combat sounds
+  R3: Effects — explosions, contrails, particles, clouds
+  R4: Multiplayer — interpolation, validation, server dedupe
+  R5: Generated art assets (Codex imagen sprites/textures) + dynamic-res polish
+
+HARD INVARIANTS (violating any = escalate, do not proceed):
+  I1 Single unminified plain-script HTML; Three.js r128 (GLSL1-era shaders; use `extensions:{derivatives:true}` where dFdx needed).
+  I2 getHeight closure must stay const-only (a Web Worker is built from Function.toString of it + closure consts) — flight-sim3.html, search "heightPrefetch".
+  I3 Never re-add backdrop-filter to persistent HUD (search "PERF: no frosted glass").
+  I4 Any renderer.setPixelRatio change must be mirrored with composer.setPixelRatio.
+  I5 Toggled aux lights flip in matched point/spot count groups, atomically in updateJetVisual — never add an unmatched toggled Point/Spot light.
+  I6 Saucer shared materials (userData.__sharedSaucerMat) — never dispose/mutate per-instance.
+  I7 At most ONE forced chunk build per frame across all tiers (processChunkBuildQueues).
+
+VERIFICATION PROTOCOL (each round):
+  V1 Serve: `bun web` (port 8765), open http://localhost:8765/flight-sim3.html via Playwright.
+  V2 Boot check: console shows only ✓ `[flight-sim]` boot-log lines, zero errors.
+  V3 FPS: run `__ap.setSpawnMode('sky'); __ap.reset(); keys['ShiftLeft']=true`, measure 12s streaming window + 15s settled cruise via rAF deltas; require mean ≥58fps and missed-vsync (>17.7ms) ≤2%. Check renderer.getPixelRatio() to know what was measured.
+  V4 Visual: screenshots at timeOfDay 0.25 (noon), dusk, and night using the frozen high-altitude recipe (pause __ap, place plane at y=1500).

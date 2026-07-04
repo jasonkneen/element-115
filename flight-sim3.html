@@ -2914,6 +2914,11 @@ const skyMat = new THREE.ShaderMaterial({
     bottomColor: { value: SKY_BOT },
     offset: { value: 100 },
     exponent: { value: 0.55 },
+    sunDirection: { value: SUN_DIR.clone() },
+    sunColor: { value: new THREE.Color(0xfff1d4) },
+    daylight: { value: 1.0 },
+    twilight: { value: 0.0 },
+    lowPoly: { value: 1.0 },
   },
   vertexShader: `
     varying vec3 vW;
@@ -2922,14 +2927,59 @@ const skyMat = new THREE.ShaderMaterial({
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`,
   fragmentShader: `
+    precision highp float;
     uniform vec3 topColor;
     uniform vec3 bottomColor;
+    uniform vec3 sunDirection;
+    uniform vec3 sunColor;
     uniform float offset;
     uniform float exponent;
+    uniform float daylight;
+    uniform float twilight;
+    uniform float lowPoly;
     varying vec3 vW;
+
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+
     void main() {
+      // Sky dome follows the camera, so vW - cameraPosition is the view ray.
+      vec3 dir = normalize(vW - cameraPosition);
       float h = normalize(vW + vec3(0.0, offset, 0.0)).y;
-      gl_FragColor = vec4(mix(bottomColor, topColor, pow(max(h, 0.0), exponent)), 1.0);
+      vec3 base = mix(bottomColor, topColor, pow(max(h, 0.0), exponent));
+
+      float mu = max(dot(dir, normalize(sunDirection)), 0.0);
+
+      // Mie forward-scatter halo — broad warm glow around the sun, boosted at twilight
+      float halo = pow(mu, 8.0) * 0.45 + pow(mu, 2.0) * 0.10;
+      halo *= (0.35 + twilight * 0.9) * daylight;
+      base += sunColor * halo;
+
+      // Horizon saturation band — warm haze thickening toward the horizon line
+      float band = pow(1.0 - abs(dir.y), 6.0);
+      base = mix(base, sunColor * 0.6 + bottomColor * 0.5, band * (0.12 + twilight * 0.30) * daylight);
+
+      // Soft sun disc: bright feathered core + faint outer glow
+      float disc = smoothstep(0.9985, 0.99975, mu);
+      float glow = smoothstep(0.995, 1.0, mu);
+      base += sunColor * (disc * 1.6 + glow * 0.5) * daylight;
+
+      // Static star field — hash-cell points in the upper hemisphere, faded in at night
+      float night = 1.0 - daylight;
+      if (night > 0.01 && dir.y > 0.02) {
+        vec2 sc = dir.xz / max(dir.y + 0.35, 0.15);
+        vec2 cell = floor(sc * 26.0);
+        float star = hash21(cell);
+        float bright = smoothstep(0.982, 0.999, star);
+        float tw = 0.6 + 0.4 * sin(hash21(cell + 3.1) * 40.0);
+        float upper = smoothstep(0.02, 0.30, dir.y);
+        base += vec3(0.9, 0.93, 1.0) * bright * tw * upper * night * (1.0 - lowPoly * 0.35);
+      }
+
+      gl_FragColor = vec4(base, 1.0);
     }`,
   side: THREE.BackSide,
   depthWrite: false,
@@ -3044,7 +3094,15 @@ const SAND_FS = `
     float hemi = perturbed.y * 0.5 + 0.5;
     vec3 hemiCol = mix(groundTint, skyTint, hemi);
 
-    vec3 diffuse = vColor * (NdotL * sunColor + hemiCol * 0.45 + ambientColor);
+    // ---- Macro albedo patchiness (2-octave value noise) ----
+    // Low-freq basins + mid-freq mottling break the flat single-colour read at
+    // 100-800m; gated by flatness so cliff faces keep their strata colours.
+    float m1 = vnoise(uv * 0.004);
+    float m2 = vnoise(uv * 0.018);
+    float macro = (m1 - 0.5) * 0.10 + (m2 - 0.5) * 0.06;
+    vec3 hue = mix(vec3(1.0), vec3(1.05, 1.0, 0.95), m1);
+    vec3 albedo = vColor * (1.0 + macro * flatness) * mix(vec3(1.0), hue, flatness);
+    vec3 diffuse = albedo * (NdotL * sunColor + hemiCol * 0.45 + ambientColor);
 
     // ---- Specular + sand sparkle ----
     vec3 V = normalize(cameraPosition - vWorldPos);
@@ -9999,6 +10057,11 @@ function updateTimeOfDay(dt = 0) {
   skyMat.uniforms.topColor.value.copy(todSkyTop);
   skyMat.uniforms.bottomColor.value.copy(todSkyBottom);
   skyMat.uniforms.exponent.value = (lowPoly ? 0.35 : 0.55) + (atmosphereDepth - 1) * 0.14 + twilight * 0.04;
+  skyMat.uniforms.sunDirection.value.copy(sunDir);
+  skyMat.uniforms.sunColor.value.copy(todSun);
+  skyMat.uniforms.daylight.value = daylight;
+  skyMat.uniforms.twilight.value = twilight;
+  skyMat.uniforms.lowPoly.value = lowPoly ? 1.0 : 0.0;
   waterMat.uniforms.fogColor.value.copy(todFog);
   waterMat.uniforms.fogNear.value = lowFogNear;
   waterMat.uniforms.fogFar.value = fogEnabled ? lowFogFar : 1e9;
@@ -18136,7 +18199,7 @@ function updatePracticeRingCourse(dt) {
     low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
     medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
     high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -18393,7 +18456,7 @@ function updatePracticeRingCourse(dt) {
 
   function applyShadows() {
     renderer.shadowMap.enabled = !!gfx.shadowsOn;
-    const sizeMap = { low: 512, med: 1024, high: 2048 };
+    const sizeMap = { low: 512, med: 1024, high: 2048, ultra: 4096 };
     const size = sizeMap[gfx.shadowQuality] || 1024;
     scene.userData.__shadowDistance = gfx.shadowDistance;
     scene.traverse(obj => {
@@ -18865,7 +18928,7 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('motionBlurAmount', 0, 1.2, 0.05, 'MOTION BLUR AMOUNT', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'SHADOWS'));
     advancedVisuals.body.appendChild(row('Cast shadows', makeToggle('shadowsOn')));
-    advancedVisuals.body.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high'])));
+    advancedVisuals.body.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high','ultra'])));
     advancedVisuals.body.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'ENVIRONMENT'));
     advancedVisuals.body.appendChild(row('Fog', makeToggle('fog')));

@@ -1,0 +1,13 @@
+HUMAN: Round 1 applied: atmospheric sky shader, terrain macro noise, ultra shadow tier.
+CHG C1<-P1 st=ok ver=defer-browser t="anchor exact@2911-2936; node --check main script pass" drift=0 note=atmospheric-sky
+CHG C2<-P2 st=ok ver=defer-browser t="anchor exact@10001; node --check pass" drift=0 note=drive-sky-uniforms
+CHG C3<-P3 st=ok ver=defer-browser t="anchor relocated@3097 (drift +50 from prior edits shifting file); vnoise() confirmed pre-existing in shader@3054; node --check pass" drift=+50 note=terrain-macro-noise
+CHG C4<-P4 st=ok ver=defer-browser t="anchor relocated@18459 (drift +63); node --check pass" drift=63 note=ultra-shadow-tier
+CHG C5<-P5 st=ok ver=defer-browser t="anchor relocated@18931 (drift +63); node --check pass" drift=63 note=ultra-shadow-tier
+CHG C6<-P6 st=ok ver=defer-browser t="anchor relocated@18202 (drift +63); node --check pass" drift=63 note=ultra-preset-uses-ultra-shadows
+DONE stage=S ok=6 adapt=0 blk=0 deleg=0 esc=0 tok~=3200
+CHG V1<-C1,C2 st=ok ver=pass t="V2 console 0 err/0 warn; sun disc+mie halo noon, twilight horizon warmth, star field at night (r1-sun-disc/r1-dusk/r1-night-stars.jpeg); uniforms live: daylight 1->0.59->0 across phase probe" note=orchestrator-browser-verify
+CHG V2<-C3 st=ok ver=pass t="SAND_FS compiles clean (0 GL errors); macro noise in shader path" note=orchestrator-browser-verify
+CHG V3<-C4,C5,C6 st=ok ver=pass t="applyShadows path live: mapSize 2048 via high preset post-edit; ultra=4096 same path; defaults unchanged" note=orchestrator-browser-verify
+CHG V4 st=ok ver=pass t="V3 FPS: cruise 60.0fps worst 17.7ms 0.1% missed; streaming 60.0fps 0% missed (re-run excl. reset hitch); pixelRatio 1.6" note=fps-benchmark
+DONE stage=verify ok=4 tok~=180

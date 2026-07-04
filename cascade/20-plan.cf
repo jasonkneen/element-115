@@ -1,0 +1,113 @@
+HUMAN: Round 1 planned: atmospheric sky shader, terrain macro noise, ultra 4096 shadow tier (F3 premise corrected).
+PLAN P1<-F1 op=replace at=flight-sim3.html:2911-2936#"const skyMat = new THREE.ShaderMaterial" why=atmospheric-sky ref=flight-sim3.html:2911-2936#"const skyMat = new THREE.ShaderMaterial",flight-sim3.html:2518-2521#"const SUN_DIR = new THREE.Vector3",flight-sim3.html:9999-10001#"skyMat.uniforms.topColor.value.copy",flight-sim3.html:15703#"sky.position.copy(camera.position)" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; V2 console only ✓[flight-sim], 0 errors (shader compiles); V4 pause __ap, plane y=1500 at timeOfDay 0.25/dusk/night — sun disc+warm halo by day, star field at night" order=1 fill=-
+<<<P1
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: {
+    topColor: { value: SKY_TOP },
+    bottomColor: { value: SKY_BOT },
+    offset: { value: 100 },
+    exponent: { value: 0.55 },
+    sunDirection: { value: SUN_DIR.clone() },
+    sunColor: { value: new THREE.Color(0xfff1d4) },
+    daylight: { value: 1.0 },
+    twilight: { value: 0.0 },
+    lowPoly: { value: 1.0 },
+  },
+  vertexShader: `
+    varying vec3 vW;
+    void main() {
+      vW = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    precision highp float;
+    uniform vec3 topColor;
+    uniform vec3 bottomColor;
+    uniform vec3 sunDirection;
+    uniform vec3 sunColor;
+    uniform float offset;
+    uniform float exponent;
+    uniform float daylight;
+    uniform float twilight;
+    uniform float lowPoly;
+    varying vec3 vW;
+
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+
+    void main() {
+      // Sky dome follows the camera, so vW - cameraPosition is the view ray.
+      vec3 dir = normalize(vW - cameraPosition);
+      float h = normalize(vW + vec3(0.0, offset, 0.0)).y;
+      vec3 base = mix(bottomColor, topColor, pow(max(h, 0.0), exponent));
+
+      float mu = max(dot(dir, normalize(sunDirection)), 0.0);
+
+      // Mie forward-scatter halo — broad warm glow around the sun, boosted at twilight
+      float halo = pow(mu, 8.0) * 0.45 + pow(mu, 2.0) * 0.10;
+      halo *= (0.35 + twilight * 0.9) * daylight;
+      base += sunColor * halo;
+
+      // Horizon saturation band — warm haze thickening toward the horizon line
+      float band = pow(1.0 - abs(dir.y), 6.0);
+      base = mix(base, sunColor * 0.6 + bottomColor * 0.5, band * (0.12 + twilight * 0.30) * daylight);
+
+      // Soft sun disc: bright feathered core + faint outer glow
+      float disc = smoothstep(0.9985, 0.99975, mu);
+      float glow = smoothstep(0.995, 1.0, mu);
+      base += sunColor * (disc * 1.6 + glow * 0.5) * daylight;
+
+      // Static star field — hash-cell points in the upper hemisphere, faded in at night
+      float night = 1.0 - daylight;
+      if (night > 0.01 && dir.y > 0.02) {
+        vec2 sc = dir.xz / max(dir.y + 0.35, 0.15);
+        vec2 cell = floor(sc * 26.0);
+        float star = hash21(cell);
+        float bright = smoothstep(0.982, 0.999, star);
+        float tw = 0.6 + 0.4 * sin(hash21(cell + 3.1) * 40.0);
+        float upper = smoothstep(0.02, 0.30, dir.y);
+        base += vec3(0.9, 0.93, 1.0) * bright * tw * upper * night * (1.0 - lowPoly * 0.35);
+      }
+
+      gl_FragColor = vec4(base, 1.0);
+    }`,
+  side: THREE.BackSide,
+  depthWrite: false,
+});
+>>>
+PLAN P2<-F1 op=insert at=flight-sim3.html:10001#"skyMat.uniforms.exponent.value" why=drive-sky-uniforms ref=flight-sim3.html:9945#"const daylight = smoothstepRange",flight-sim3.html:9946#"const twilight = Math.max",flight-sim3.html:9960#"sunDir.normalize()",flight-sim3.html:9966#"todSun.setHex",flight-sim3.html:9993#"const lowPoly = styleMode.current" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; V2 console clean (no undefined-uniform warnings); V4 dusk screenshot — halo/horizon warm up as sun lowers, stars appear at night" order=2 fill=-
+<<<P2
+  skyMat.uniforms.sunDirection.value.copy(sunDir);
+  skyMat.uniforms.sunColor.value.copy(todSun);
+  skyMat.uniforms.daylight.value = daylight;
+  skyMat.uniforms.twilight.value = twilight;
+  skyMat.uniforms.lowPoly.value = lowPoly ? 1.0 : 0.0;
+>>>
+PLAN P3<-F2 op=replace at=flight-sim3.html:3047#"vec3 diffuse = vColor" why=terrain-macro-noise ref=flight-sim3.html:2999-3013#"float hash21",flight-sim3.html:3017#"vec2 uv = vWorldPos.xz",flight-sim3.html:3034#"float flatness = smoothstep" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; V2 console clean (SAND_FS compiles); V4 noon screenshot — terrain shows low/mid-freq patchiness at 100-800m, cliff strata unchanged" order=3 fill=-
+<<<P3
+    // ---- Macro albedo patchiness (2-octave value noise) ----
+    // Low-freq basins + mid-freq mottling break the flat single-colour read at
+    // 100-800m; gated by flatness so cliff faces keep their strata colours.
+    float m1 = vnoise(uv * 0.004);
+    float m2 = vnoise(uv * 0.018);
+    float macro = (m1 - 0.5) * 0.10 + (m2 - 0.5) * 0.06;
+    vec3 hue = mix(vec3(1.0), vec3(1.05, 1.0, 0.95), m1);
+    vec3 albedo = vColor * (1.0 + macro * flatness) * mix(vec3(1.0), hue, flatness);
+    vec3 diffuse = albedo * (NdotL * sunColor + hemiCol * 0.45 + ambientColor);
+>>>
+PLAN P4<-F3 op=replace at=flight-sim3.html:18396#"const sizeMap = { low: 512" why=ultra-shadow-tier ref=flight-sim3.html:18394-18406#"function applyShadows",flight-sim3.html:2947#"sun.shadow.mapSize.set(1024, 1024)",flight-sim3.html:18122#"shadowQuality: 'high'" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; console: run gfx.shadowQuality='ultra';window.applyGfx?.(); V2 clean, no GL shadow-map error at 4096" order=4 fill=-
+<<<P4
+    const sizeMap = { low: 512, med: 1024, high: 2048, ultra: 4096 };
+>>>
+PLAN P5<-F3 op=replace at=flight-sim3.html:18868#"makeSegmented('shadowQuality'" why=ultra-shadow-tier ref=flight-sim3.html:18867-18868#"row('Cast shadows'",flight-sim3.html:18747#"gfx.shadowQuality === (PRESETS[key].shadowQuality" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; press P, open Advanced Visuals; V2 console clean; 4-segment Quality control (low/med/high/ultra) renders" order=5 fill=-
+<<<P5
+    advancedVisuals.body.appendChild(row('Quality', makeSegmented('shadowQuality', ['low','med','high','ultra'])));
+>>>
+PLAN P6<-F3 op=replace at=flight-sim3.html:18139#"ultra:  { fxaa: true" why=ultra-preset-uses-ultra-shadows ref=flight-sim3.html:18135-18139#"const PRESETS =",flight-sim3.html:18122#"shadowQuality: 'high', shadowDistance: 320,",flight-sim3.html:10282-10295#"const shadowDistance = Math.max" test="bun web; Playwright open http://localhost:8765/flight-sim3.html; V3: __ap.setSpawnMode('sky');__ap.reset();keys['ShiftLeft']=true; 12s stream + 15s cruise, mean>=58fps, missed-vsync<=2%, log renderer.getPixelRatio(); DEFAULTS keep shadowQuality high/2048 so V3 baseline unaffected" order=6 fill=-
+<<<P6
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
+>>>
+DONE stage=O plan=6 tok~=1520
