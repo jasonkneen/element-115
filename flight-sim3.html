@@ -2588,6 +2588,12 @@ const waterMat = new THREE.ShaderMaterial({
     fresnelBoost: { value: 1.12 },
     sunGlint: { value: 1.18 },
     waterOpacity: { value: 0.92 },
+    flowDir:      { value: new THREE.Vector2(0.94, 0.34) },
+    foamColor:    { value: new THREE.Color(0xeaf7ff) },
+    foamAmount:   { value: 0.55 },
+    specPower:    { value: 90.0 },
+    posterize:    { value: 12.0 },
+    uEnhance:     { value: 1.0 },
   },
   vertexShader: `
     varying vec3 vWorldPos;
@@ -2617,6 +2623,12 @@ const waterMat = new THREE.ShaderMaterial({
     uniform float fresnelBoost;
     uniform float sunGlint;
     uniform float waterOpacity;
+    uniform vec2 flowDir;
+    uniform vec3 foamColor;
+    uniform float foamAmount;
+    uniform float specPower;
+    uniform float posterize;
+    uniform float uEnhance;
     varying vec3 vWorldPos;
     varying float vDist;
 
@@ -2637,39 +2649,68 @@ const waterMat = new THREE.ShaderMaterial({
 
     void main() {
       // Runway punch-out: kill water within the airstrip clearing.
+      // NOTE: ships DOES have a runway hole (F7 prose wrong); keep this.
       float rw = length(vWorldPos.xz);
       if (rw < runwayR) discard;
       float rwFade = smoothstep(runwayR, runwayR + 60.0, rw);
 
-      // Two layers of slow ripple — gives drifting highlights without
-      // moving the geometry.
-      vec2 uv = vWorldPos.xz * 0.012;
-      float r1 = noise(uv + vec2(time * 0.05, time * 0.03));
-      float r2 = noise(uv * 2.3 - vec2(time * 0.07, time * 0.04));
-      float ripple = r1 * 0.65 + r2 * 0.35;
+      // --- Flowing, multi-directional ripple field (6 noise taps) ---
+      vec2 fl = flowDir;
+      vec2 baseUv = vWorldPos.xz * 0.012;
+      vec2 uv1 = baseUv + fl * (time * 0.05);
+      vec2 uv2 = baseUv * 2.3 + vec2(-fl.y, fl.x) * (time * 0.07);
+      float h0 = noise(uv1) * 0.62 + noise(uv2) * 0.38;
+      float e = 0.5;
+      float hX = noise(uv1 + vec2(e, 0.0)) * 0.62 + noise(uv2 + vec2(e, 0.0)) * 0.38;
+      float hZ = noise(uv1 + vec2(0.0, e)) * 0.62 + noise(uv2 + vec2(0.0, e)) * 0.38;
+      vec3 norm = normalize(vec3(-(hX - h0) * 0.85, 1.0, -(hZ - h0) * 0.85));
 
-      // Fake normal from ripple gradient for sun-glint term
-      vec2 eps = vec2(0.5, 0.0);
-      float rN = noise(uv + eps.xy) - noise(uv - eps.xy);
-      float rE = noise(uv + eps.yx) - noise(uv - eps.yx);
-      vec3 norm = normalize(vec3(-rN * 0.6, 1.0, -rE * 0.6));
-      float sun = pow(max(0.0, dot(norm, sunDir)), 32.0);
       vec3 viewDir = normalize(cameraPos - vWorldPos);
+      vec3 L = normalize(sunDir);
+      vec3 Hh = normalize(L + viewDir);
+
+      // --- Blinn-Phong sun glint (tight specular) + broad sheen ---
+      float ndh = max(dot(norm, Hh), 0.0);
+      float glint = pow(ndh, specPower);
+      float sheen = pow(ndh, max(specPower * 0.16, 1.0)) * 0.12;
+
+      // --- Fresnel sky reflection ---
       float fresnel = pow(1.0 - max(0.0, dot(norm, viewDir)), 3.0);
       float skyMix = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
       vec3 reflectedSky = mix(skyBottom, skyTop, pow(skyMix, 0.8));
 
-      // Depth-ish tint: shallower tint near shoreline (where terrain is
-      // close to the surface) deepens toward the centre. We don't have
-      // true depth here, so fake it with a gentle radial falloff from
-      // the player using camera-space distance — good enough for lakes.
-      vec3 col = mix(deep, shallow, ripple * 0.58 + 0.24);
+      // --- Depth-tinted base with a hint of subsurface back-glow ---
+      vec3 col = mix(deep, shallow, h0 * 0.58 + 0.24);
+      float back = max(dot(-norm, L), 0.0);
+      col += shallow * back * 0.05 * uEnhance;
+
+      // --- Refractive bend: air-to-water vector drives caustic tint ---
+      vec3 refr = refract(-viewDir, norm, 0.7502);
+      vec2 refrUv = baseUv * 1.65 + refr.xz * (0.48 + (1.0 - norm.y) * 1.15) + fl * (time * 0.040);
+      float refrN = noise(refrUv * 3.2) * 0.7 +
+        noise(refrUv * 8.5 + vec2(time * 0.07, -time * 0.05)) * 0.3;
+      float refrStrength = clamp(0.24 + length(refr.xz) * 0.32 + (1.0 - fresnel) * 0.24, 0.0, 0.58) * uEnhance;
+      vec3 refrCol = mix(deep, shallow, 0.34 + refrN * 0.66);
+      col = mix(col, refrCol, refrStrength);
+      float refrCaustic = pow(max(1.0 - abs(refrN - 0.5) * 2.0, 0.0), 4.0);
+      float refrRibbon = pow(0.5 + 0.5 * sin(vWorldPos.x * 0.055 + vWorldPos.z * 0.036 + time * 0.85), 8.0);
+      col += shallow * refrCaustic * 0.26 * uEnhance * (1.0 - fresnel * 0.45);
+      col += vec3(0.62, 0.95, 1.0) * refrRibbon * 0.10 * uEnhance;
+
       float reflectionMix = clamp((0.14 + fresnel * 0.44 * fresnelBoost) * reflectivity, 0.0, 0.94);
       col = mix(col, reflectedSky, reflectionMix);
-      col += vec3(1.0, 0.98, 0.92) * sun * (0.28 + 0.42 * sunGlint);
+      col += reflectedSky * sheen * uEnhance;
+      col += vec3(1.0, 0.98, 0.92) * glint * (0.28 + 0.42 * sunGlint);
 
-      // Subtle low-poly banding so it fits the art style at distance
-      col = floor(col * 12.0) / 12.0;
+      // --- Foam: animated wave crests + a shoreline ring at the runway edge ---
+      float crest = smoothstep(0.66, 0.95, h0);
+      float shore = 1.0 - smoothstep(runwayR, runwayR + 24.0, rw);
+      float foamN = noise(baseUv * 7.0 + fl * (time * 0.22));
+      float foam = clamp((crest + shore * 0.85) * foamAmount * (0.45 + foamN * 0.75), 0.0, 1.0);
+      col = mix(col, foamColor, foam * uEnhance);
+
+      // Cel posterization (12 levels reproduces the old low-poly look)
+      if (posterize > 0.5) col = floor(col * posterize) / posterize;
 
       // Linear fog so water fades into the horizon haze like terrain
       float fogF = clamp((vDist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
@@ -2692,6 +2733,8 @@ scene.add(waterMesh);
 
 function updateWater(dt, px, pz) {
   waterMat.uniforms.time.value += dt;
+  sandMat.uniforms.time.value += dt;
+  sandMatLowPoly.uniforms.time.value += dt;
   waterMat.uniforms.cameraPos.value.copy(camera.position);
   // Snap position to a coarse grid so the ripple pattern doesn't
   // stutter as the player moves. Step = 40m.
@@ -3055,6 +3098,8 @@ const SAND_FS = `
   uniform float fogFar;
   uniform float hazeStrength;
   uniform float hazeExponent;
+  uniform float waterLevel;
+  uniform float time;
 
   varying vec3 vColor;
   varying vec3 vWorldPos;
@@ -3143,6 +3188,12 @@ const SAND_FS = `
     vec3 color = diffuse + spec * sunColor + sparkle + backScatter + rimCol;
     color *= mix(vec3(0.72, 0.78, 0.88), vec3(1.03, 1.0, 0.97), sunFacing);
 
+    // ---- Shoreline foam band (masks the water/terrain sawtooth at the coast) ----
+    float foamBand = (1.0 - smoothstep(waterLevel + 0.5, waterLevel + 7.0, vWorldPos.y))
+                   * step(waterLevel - 0.5, vWorldPos.y);
+    foamBand *= 0.55 + 0.55 * vnoise(uv * 3.0 + vec2(time * 0.15));
+    color = mix(color, vec3(0.92, 0.97, 1.0), clamp(foamBand, 0.0, 1.0) * 0.55);
+
     // ---- Distance haze / aerial perspective ----
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
@@ -3167,6 +3218,8 @@ const sandMat = new THREE.ShaderMaterial({
     fogFar:        { value: ATMOS_REALISTIC.fogFar },
     hazeStrength:  { value: ATMOS_REALISTIC.hazeStrength },
     hazeExponent:  { value: ATMOS_REALISTIC.hazeExponent },
+    waterLevel:    { value: WATER_LEVEL },
+    time:          { value: 0 },
   },
   vertexShader: SAND_VS,
   fragmentShader: SAND_FS,
@@ -3187,10 +3240,29 @@ const LOWPOLY_FS = `
   uniform float fogFar;
   uniform float hazeStrength;
   uniform float hazeExponent;
+  uniform float waterLevel;
+  uniform float time;
 
   varying vec3 vColor;
   varying vec3 vWorldPos;
   varying vec3 vNormal;
+
+  // Value noise (copied from SAND_FS — LOWPOLY_FS had none) for foam breakup
+  float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f*f*(3.0-2.0*f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
 
   void main() {
     // True flat shading: derive normal from screen-space position derivatives,
@@ -3240,6 +3312,12 @@ const LOWPOLY_FS = `
     color += rimCol;
     color *= mix(vec3(0.84, 0.88, 0.95), vec3(1.04, 1.00, 0.96), sunFacing);
 
+    // ---- Shoreline foam band (masks the water/terrain sawtooth at the coast) ----
+    float foamBand = (1.0 - smoothstep(waterLevel + 0.5, waterLevel + 7.0, vWorldPos.y))
+                   * step(waterLevel - 0.5, vWorldPos.y);
+    foamBand *= 0.55 + 0.55 * vnoise(vWorldPos.xz * 3.0 + vec2(time * 0.15));
+    color = mix(color, vec3(0.92, 0.97, 1.0), clamp(foamBand, 0.0, 1.0) * 0.55);
+
     // Lighter fog + horizon haze so distant terrain sits deeper in the scene
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
@@ -3264,6 +3342,8 @@ const sandMatLowPoly = new THREE.ShaderMaterial({
     fogFar:       { value: ATMOS_LOWPOLY.fogFar },
     hazeStrength: { value: ATMOS_LOWPOLY.hazeStrength },
     hazeExponent: { value: ATMOS_LOWPOLY.hazeExponent },
+    waterLevel:   { value: WATER_LEVEL },
+    time:         { value: 0 },
   },
   vertexShader: SAND_VS,
   fragmentShader: LOWPOLY_FS,
@@ -9681,6 +9761,35 @@ const CLOUD_TEMPLATES = [
   buildCloudTemplate(4), buildCloudTemplate(5),
 ];
 
+// Fluffy cloud templates (F9): denser two-tone puff clusters ported from
+// tinyworld makeCloud() (23-particles-clouds.js:500). Merged to ONE geometry
+// per template so a fluffy cloud costs the same 1 draw call as a chunky one
+// (F9 budget guard). Bright/shade split is baked into vertex colours; needs
+// vertexColors:true on cloudMat/cloudMatLow (P8). Chunky templates stay white,
+// so enabling vertexColors is a no-op for them.
+function buildFluffyTemplate(seed) {
+  const geos = [];
+  const puffs = 14 + Math.floor(srand(seed, 0, 41) * 6);   // 14–19 puffs
+  const bright = new THREE.Color(0xffffff);
+  const shade  = new THREE.Color(0xbcc6d2);
+  for (let i = 0; i < puffs; i++) {
+    const core = i < 5;
+    const r  = core ? (0.42 + srand(seed, i, 141) * 0.34) : (0.22 + srand(seed, i, 151) * 0.36);
+    const g  = new THREE.DodecahedronGeometry(r, 0);
+    const dx = (srand(seed, i, 241) - 0.5) * (core ? 1.4 : 3.5);
+    const dy = core ? (0.18 + srand(seed, i, 341) * 0.48) : srand(seed, i, 351) * 0.95;
+    const dz = (srand(seed, i, 441) - 0.5) * (core ? 1.0 : 2.3);
+    g.translate(dx, dy, dz);
+    const isBright = core || srand(seed, i, 541) < 0.66;
+    geos.push({ geo: g, col: isBright ? bright : shade });
+  }
+  return mergeColored(geos);
+}
+const FLUFFY_TEMPLATES = [
+  buildFluffyTemplate(11), buildFluffyTemplate(12), buildFluffyTemplate(13),
+  buildFluffyTemplate(14), buildFluffyTemplate(15),
+];
+
 // Shared cloud material — respects biome tint via .color
 // Clouds use emissive so they don't go black at dusk/night when direct
 // lighting drops. Emissive is modulated in updateTimeOfDay() to match
@@ -9688,6 +9797,7 @@ const CLOUD_TEMPLATES = [
 // lets distant clouds fade into haze naturally.
 const cloudMat = new THREE.MeshLambertMaterial({
   color: currentBiome.cloudColor,
+  vertexColors: true,
   emissive: currentBiome.cloudColor,
   emissiveIntensity: 0.35,
   transparent: true,
@@ -9702,6 +9812,7 @@ const cloudMatLow = new THREE.MeshPhongMaterial({
   transparent: true,
   opacity: currentBiome.cloudOpacity,
   flatShading: true,
+  vertexColors: true,
   shininess: 0,
   depthWrite: false,
   fog: true,
@@ -9807,13 +9918,25 @@ function swapCloudMaterials() {
   for (const c of clouds.data) c.mesh.material = m;
 }
 
+let _appliedFluffy = false;
 function syncCloudWisps() {
-  const soft = currentCloudStyle() !== 'chunky';
+  const style = currentCloudStyle();
+  const soft = style === 'soft';
+  const fluffy = style === 'fluffy';
   const daylight = timeOfDay ? timeOfDay.daylight : 1;
   const stormMix = Math.max(0, Math.min(1, weather.storm || 0));
   // All wisps share one material — set it once, then just toggle visibility.
+  // Wisps belong to 'soft' only; 'fluffy' reads its volume from the puff cluster.
   cloudWispSharedMat.color.copy(cloudMat.color);
   cloudWispSharedMat.opacity = soft ? (0.10 + daylight * 0.05 + (1 - stormMix) * 0.08) : 0;
+  // Swap merged geometry between chunky and fluffy templates only on style
+  // change (guarded — this fn runs every frame from updateTimeOfDay). Same ref
+  // reassignment, no GPU re-upload, no per-frame allocation.
+  if (_appliedFluffy !== fluffy) {
+    const tpls = fluffy ? FLUFFY_TEMPLATES : CLOUD_TEMPLATES;
+    clouds.data.forEach((c, i) => { c.mesh.geometry = tpls[i % tpls.length]; });
+    _appliedFluffy = fluffy;
+  }
   for (const c of clouds.data) {
     for (const sprite of c.wisps || []) {
       if (sprite.visible !== soft) sprite.visible = soft;
@@ -18251,7 +18374,7 @@ function updatePracticeRingCourse(dt) {
     // dof defaults OFF: r128 BokehPass re-renders the whole scene for its depth
     // pass (~2x geometry cost per frame) for a barely-visible blur at our apertures.
     dof: false, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
-    waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94,
+    waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 8, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
     controlPreset: 'casual',
@@ -18261,10 +18384,10 @@ function updatePracticeRingCourse(dt) {
     fps: false, renderScale: 1.0, resolutionScale: 1.0, adaptiveRes: true, renderDistance: 1.0, motionBlur: true, motionBlurAmount: 0.40,
   };
   const PRESETS = {
-    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'soft',   terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
+    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.85, resolutionScale: 0.95, motionBlur: true, motionBlurAmount: 0.66, renderDistance: 1.0 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: true, motionBlurAmount: 0.82, renderDistance: 1.3 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'fluffy', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: true, motionBlurAmount: 1.0, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -18672,6 +18795,8 @@ function updatePracticeRingCourse(dt) {
     waterMat.uniforms.fresnelBoost.value = scene.userData.__waterFresnel;
     waterMat.uniforms.sunGlint.value = scene.userData.__waterGlint;
     waterMat.uniforms.waterOpacity.value = scene.userData.__waterOpacity;
+    scene.userData.__enhancedWater = (gfx.enhancedWater !== false);
+    waterMat.uniforms.uEnhance.value = scene.userData.__enhancedWater ? 1.0 : 0.0;
     applyPracticeRingCourseTuning();
     if (typeof syncCloudWisps === 'function') syncCloudWisps();
   }
@@ -18997,7 +19122,8 @@ function updatePracticeRingCourse(dt) {
     advancedVisuals.body.appendChild(makeSliderRow('shadowDistance', 140, 340, 10, 'SHADOW RANGE', (v) => `${Math.round(v)}m`));
     advancedVisuals.body.appendChild(el('div', { style: headerStyle }, 'ENVIRONMENT'));
     advancedVisuals.body.appendChild(row('Fog', makeToggle('fog')));
-    advancedVisuals.body.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft'])));
+    advancedVisuals.body.appendChild(row('Cloud style', makeSegmented('cloudStyle', ['chunky','soft','fluffy'])));
+    advancedVisuals.body.appendChild(row('Enhanced water', makeToggle('enhancedWater')));
     advancedVisuals.body.appendChild(makeSliderRow('cloudDensity', 0, 1, 0.05, 'CLOUDS'));
     advancedVisuals.body.appendChild(makeSliderRow('terrainFade', 0.15, 1.0, 0.05, 'DISTANCE FADE', (v) => `${Math.round(v * 100)}%`));
     advancedVisuals.body.appendChild(makeSliderRow('atmosphereDepth', 0.7, 1.25, 0.05, 'ATMOSPHERE DEPTH', (v) => `${v.toFixed(2)}×`));

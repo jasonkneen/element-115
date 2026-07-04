@@ -1,0 +1,15 @@
+HUMAN: R3 executed — enhanced water, shoreline foam (sand+lowpoly), fluffy clouds. All 10 items applied, boots clean.
+CHG C1<-P1 st=ok ver=pass t="grep waterUniforms=5" drift=0 note=water-uniforms
+CHG C2<-P2 st=ok ver=defer-browser t="node --check clean" drift=0 note=enhanced-water-shader
+CHG C3<-P3 st=ok ver=pass t="grep enhancedWater=8 (expect>=8)" drift=+46 note=enhanced-water-wiring
+CHG C4<-P4 st=ok ver=defer-browser t="node --check clean" drift=+41 note=sand-foam
+CHG C5<-P5 st=ok ver=defer-browser t="node --check clean" drift=+41 note=lowpoly-foam
+CHG C6<-P6 st=ok ver=pass t="grep time+=dt count=2" drift=+41 note=terrain-foam-plumbing
+CHG C7<-P7 st=ok ver=defer-browser t="node --check clean" drift=+79 note=fluffy-templates
+CHG C8<-P8 st=ok ver=pass t="grep vertexColors:true>=2 (got 6)" drift=+87 note=cloud-vertexcolors
+CHG C9<-P9 st=adapt ver=defer-browser t="node --check clean" drift=+111 note=cloud-style-sync
+CHG C10<-P10 st=ok ver=defer-browser t="node --check clean; boot curl 200" drift=+125 note=fluffy-panel-preset
+DONE stage=S ok=10 adapt=1 blk=0 deleg=0 esc=0 tok~=9500
+CHG V1<-C1..C10 st=ok ver=pass t="browser: console 0 err (all shaders compile); enhanced water live (caustic ribbons+shore foam visible, uEnhance uniform found+driven); fluffy clouds render as multi-puff shaded cumulus via gfx.cloudStyle='fluffy' live-swap; FPS combined fluffy+enhanced settled cruise 59.8fps 0.9% missed p95 17.6ms @ pixelRatio 1.6 (A/B: fluffy alone 59.8/1.7%, enhanced water alone 59.2/1.9%)" note=orchestrator-browser-verify
+NOTE watch=foam-striping at="bottom-left grazing angle" what="faint horizontal banding where terrain is near-flat at water level — foam height band repeats; cosmetic, revisit if user notices" 
+DONE stage=verify ok=1 tok~=140
