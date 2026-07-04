@@ -797,6 +797,27 @@
     color: rgba(182, 255, 143, 0.98);
   }
 
+  /* Generated title art (assets/ui) — full-screen backdrop while preflight */
+  #title-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: url('assets/ui/title-backdrop.jpg') center / cover no-repeat;
+    pointer-events: none;
+  }
+  #title-backdrop::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(10, 14, 22, 0.08), rgba(10, 14, 22, 0.44));
+  }
+  body.preflight #title-backdrop { display: block; }
+  #title .title-logo {
+    position: relative;
+    display: block;
+    width: min(440px, 74%);
+    height: auto;
+    margin: 2px 0 4px;
+    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.45));
+  }
   #title.flight-briefing-card {
     position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
@@ -2034,9 +2055,10 @@
     <div id="input-debug-line4">AX —</div>
     <div id="input-debug-line5">BTN —</div>
   </div>
+  <div id="title-backdrop" aria-hidden="true"></div>
   <div id="title" class="game-dialog-chrome flight-briefing-card hide">
     <div class="briefing-kicker">TRAINING SECTOR // CANYON RUN</div>
-    <h1>CANYON AIRSTRIP</h1>
+    <h1 aria-label="Element-115 — Canyon Airstrip"><img class="title-logo" src="assets/ui/element115-logo.png" alt="ELEMENT-115"></h1>
     <p class="briefing-subtitle">FREE FLIGHT · LANDING TRAINING · REGENERATIVE TERRAIN</p>
     <div class="start-steps">
       <div>W/S, PAD LS, or TOUCH STICK — PITCH</div>
@@ -4030,6 +4052,19 @@ function updateChunks(px, pz) {
 // =============================================================
 //  FAR CHUNKS — LOD tier: 3× size, half res, no rocks, cheap
 // =============================================================
+// LOD-tier material clones must keep FOLLOWING the day/night driver: r128
+// clone() deep-copies uniforms, which froze sun/fog colors at build time —
+// horizon tiles built at night stayed pitch black at noon (the "floating
+// black pyramids"). Re-point the driven uniforms at the shared material's
+// live value objects so one TOD update drives every clone.
+const SHARED_TERRAIN_UNIFORM_KEYS = ['sunDir', 'sunColor', 'ambientColor', 'skyTint', 'groundTint', 'fogColor', 'fogNear', 'hazeStrength', 'hazeExponent', 'time', 'waterLevel'];
+function shareTerrainUniforms(cloneMat, sourceMat, opts = {}) {
+  for (const k of SHARED_TERRAIN_UNIFORM_KEYS) {
+    if (sourceMat.uniforms[k]) cloneMat.uniforms[k] = sourceMat.uniforms[k];
+  }
+  if (opts.shareFogFar && sourceMat.uniforms.fogFar) cloneMat.uniforms.fogFar = sourceMat.uniforms.fogFar;
+}
+
 function makeFarChunk(cx, cz, preHeights) {
   const lowPoly = (typeof styleMode !== 'undefined') && styleMode.current === 'lowpoly';
   const sandM = lowPoly ? sandMatLowPoly : sandMat;
@@ -4091,6 +4126,7 @@ function makeFarChunk(cx, cz, preHeights) {
   // any residual coplanar fight at the LOD seam resolves in favour of
   // the high-detail near tile.
   mesh.material = mesh.material.clone();
+  shareTerrainUniforms(mesh.material, sandM, { shareFogFar: true });
   mesh.material.polygonOffset = true;
   mesh.material.polygonOffsetFactor = 1;
   mesh.material.polygonOffsetUnits = 4;
@@ -4198,6 +4234,7 @@ function makeHorizonChunk(cx, cz, preHeights) {
   // through finer LOD; heavy fog hides the offset at this range.
   mesh.position.set(cxW, -16.0, czW);
   mesh.material = mesh.material.clone();
+  shareTerrainUniforms(mesh.material, sandM); // fogFar stays per-clone: pinned to horizon extent below
   mesh.material.polygonOffset = true;
   mesh.material.polygonOffsetFactor = 2;
   mesh.material.polygonOffsetUnits = 8;
@@ -11322,13 +11359,15 @@ function maybeTriggerEngineStart() {
 function getSpawnProfileState(mode = playerProfileState.spawnMode) {
   const key = normalizeSpawnMode(mode);
   if (key === 'sky') {
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.02, 0, 0, 'YXZ'));
+    // Face +Z, toward the airfield: all saucer circuits orbit the airfield at
+    // the origin, so an air start facing -Z put every target BEHIND the player.
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.02, Math.PI, 0, 'YXZ'));
     return {
       mode: key,
       // Spawn well above the ~300-500m terrain peaks — 132m put the hands-off
       // auto-fly straight into a mountainside within seconds.
       pos: new THREE.Vector3(0, 640, -720),
-      vel: new THREE.Vector3(0, -0.2, -62),
+      vel: new THREE.Vector3(0, -0.2, 62),
       quat: q,
       throttle: 0.50,
       onGround: false,
@@ -14776,7 +14815,10 @@ function updateTargetHud(dt = 1 / 60) {
     // is plenty for a textual readout and skips most of the string+DOM churn.
     if (!poolEntry.lastReadoutAt || nowMs - poolEntry.lastReadoutAt >= 100) {
       poolEntry.lastReadoutAt = nowMs;
-      const damageLine = (isActive && d) ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${d.lastDamageText ? ' · ' + d.lastDamageText : ''}` : '';
+      // lastDamageText can itself be "HULL n%" — skip it then, or the readout
+      // doubles up as "HULL 33% · HULL 33%".
+      const extraDamage = (d && d.lastDamageText && !d.lastDamageText.startsWith('HULL')) ? ' · ' + d.lastDamageText : '';
+      const damageLine = (isActive && d) ? ` · SHD ${shieldPct}% · HULL ${hullPct}%${extraDamage}` : '';
       const readoutText = `${Math.round(target.distanceM)}m · ${Math.round(target.speedKts)}kt · ${Math.round(target.altFt)}ft${damageLine}`;
       if (poolEntry.readout.textContent !== readoutText) poolEntry.readout.textContent = readoutText;
     }
