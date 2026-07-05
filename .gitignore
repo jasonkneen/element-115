@@ -1,8 +1,4 @@
-# Large model files
-models/*.glb
 # Required deploy models are small enough for Git and needed by Netlify builds.
-!models/disney_planes_-_dusty_turbo.glb
-!models/stunt_plane.glb
 archive/models-unused/
 archive/backups/
 
@@ -38,3 +34,65 @@ research/_agent_ids.txt
 
 # Local Netlify folder
 .netlify
+models/venator-class_star_destroyer.glb
+models/uss_stargazer_constellation-class_star_trekzeo.glb
+models/uss_stargazer_constellation-class_star_trekzeo (1).glb
+models/uss_enterprise_refit_battle_damage.glb
+models/uss_enterprise_refit_battle_damage (1).glb
+models/the_ultimate_star_wars_fleet.glb
+models/the_mandalorian_razor_crest_full_interior.glb
+models/t-47_airspeeder_snowspeeder.glb
+models/t-47_airspeeder_snowspeeder (1).glb
+models/starfighters.glb
+models/star_wars_galaxies_-_yt1300_outside.glb
+models/star_wars_galaxies_-_yt1300_inside (1).glb
+models/star_wars_galaxies_-_koro-2_exodrive_airspeeder.glb
+models/star_wars_galaxies_-_eta-2_actis_interceptor.glb
+models/star_wars_galaxies_-_belbullab-22.glb
+models/star_trek_online__odessey_class__enterprise_f.glb
+models/star_trek_online__odessey_class__enterprise_f (1).glb
+models/star_trek_-_type_6_shuttle.glb
+models/star_trek_-_type_6_shuttle (1).glb
+models/star_trek_-_constitution_refit (2).glb
+models/star_trek_-_constitution_refit (3).glb
+models/star_trek_-_delta_flyer (1).glb
+models/star_trek_-_delta_flyer.glb
+models/star_trek_-_excelsior_class (1).glb
+models/star_trek_-_excelsior_class.glb
+models/star_trek_-_galaxy_class (1).glb
+models/star_trek_-_galaxy_class.glb
+models/star_trek_-_saber_class (1).glb
+models/star_trek_-_saber_class.glb
+models/spaceship_colaid1_50k.glb
+models/spaceship_colaid1_50k (1).glb
+models/spaceship_-_cb1.glb
+models/spaceship_-_cb1 (1).glb
+models/sci-fi_aircraft__spaceship_fighter.glb
+models/sci-fi_aircraft__spaceship_fighter (1).glb
+models/rebels_x-wing_starfighter.glb
+models/rebels_x-wing_starfighter (1).glb
+models/phoenix_sci-fi_spaceship.glb
+models/phoenix_sci-fi_spaceship (1).glb
+models/nubian_n1_naboo_starfighter_black.glb
+models/no_mans_sky_-_radiant_pillar_bc1 (1).glb
+models/no_mans_sky_-_golden_vector.glb
+models/jedi_star_fighter (1).glb
+models/jedi_star_fighter.glb
+models/last_starfighter_rylan_gunstar.glb
+models/liberator-class_starfighter_astro_interceptor.glb
+models/low_poly_snowspeeder_star_wars.glb
+models/metther-class_star_destroyer (1).glb
+models/metther-class_star_destroyer.glb
+models/naboo_n1_starfighter (1).glb
+models/naboo_n1_starfighter.glb
+models/nms_starship (1).glb
+models/nms_starship.glb
+models/invictus_class_star_cruiser (1).glb
+models/invictus_class_star_cruiser.glb
+models/imperial_nu_class_attack_shuttle.glb
+models/excalibur_-_wing_commander_4_variant. (1).glb
+models/chibi_x-wing (1).glb
+models/chibi_x-wing.glb
+models/dralthi (1).glb
+models/dralthi (2).glb
+models/dralthi.glb
