@@ -2094,6 +2094,10 @@
   }
   body.preflight .nhud-panel, body.review-open .nhud-panel { opacity: 0 !important; pointer-events: none !important; }
   .nhud-cap { font-family: var(--nh-mono); font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--nh-dim); }
+  @keyframes odPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  #shd-od { color: #ffc15a; margin-left: 4px; }
+  #shd-od.on { animation: odPulse 0.9s ease-in-out infinite; }
+  #gun-mode, #gun-tier, #msl-tier { color: var(--nh-mid, var(--nh-dim)); margin-left: 3px; }
   .nhud-num { font-family: var(--nh-mono); font-weight: 700; letter-spacing: -0.02em; color: #eef8fc; font-variant-numeric: tabular-nums; line-height: 1; }
   .nhud-num.big { font-size: 30px; }
   .nhud-num.xl { font-size: 34px; }
@@ -2231,7 +2235,7 @@
   <div id="nhud-topright" class="nhud-panel"><div id="hud-score-chip" class="nhud-mini nhud-chip-sq"><span class="nhud-cap">CREDITS</span><span class="nhud-num" id="score-val">0</span><span class="nhud-cap" id="score-streak">0×</span></div><div class="nhud-reward-toast" id="nhud-reward"></div><div class="nhud-subrow"><div class="nhud-mini"><span class="nhud-cap">FPS</span><span class="nhud-num" id="fps-val" style="font-size:12px">60</span></div><div class="nhud-mini" id="nhud-ping" style="display:none"><span class="nhud-signal"><b></b><b></b><b></b><b></b></span><span class="nhud-cap">PING</span><span class="nhud-num" id="ping-val" style="font-size:12px">--</span></div></div></div>
   <div class="nhud-panel nhud-cluster" id="instruments"><div class="nhud-stat"><span class="nhud-cap">SPD</span><span class="nhud-num big" id="speed">0</span><span class="nhud-unit">KTS</span></div><div class="nhud-stat"><span class="nhud-cap">ALT</span><span class="nhud-num big" id="altitude">0</span><span class="nhud-unit">FT</span></div><div class="nhud-stat"><span class="nhud-cap">HDG</span><span class="nhud-num" style="font-size:20px"><span id="hdg-mirror">000</span>°</span></div></div>
   <div id="nhud-wind" class="nhud-mini"><span class="nhud-cap">WIND</span><span class="nhud-num" id="nhud-wind-val" style="font-size:12px">NE 8KT</span></div>
-  <div id="nhud-right-cluster" class="nhud-panel"><div class="nhud-gauge"><span class="nhud-cap">HULL</span><span class="nhud-num" id="hull-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="hull-bar" style="width:100%;background:#63d27a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">SHD</span><span class="nhud-num" id="shield-pct">0</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="shd-bar" style="width:0%"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">ENG</span><span class="nhud-num" id="eng-pct">60</span><span class="nhud-unit">°C</span><div class="nhud-bar"><i id="eng-bar" style="width:20%;background:#ffc15a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">FUEL</span><span class="nhud-num" id="fuel-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="fuel-bar" style="width:100%"></i></div></div></div>
+  <div id="nhud-right-cluster" class="nhud-panel"><div class="nhud-gauge"><span class="nhud-cap">HULL</span><span class="nhud-num" id="hull-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="hull-bar" style="width:100%;background:#63d27a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">SHD</span><span class="nhud-num" id="shield-pct">0</span><span class="nhud-unit">%</span><span class="nhud-cap" id="shd-od" style="display:none"></span><div class="nhud-bar"><i id="shd-bar" style="width:0%"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">ENG</span><span class="nhud-num" id="eng-pct">60</span><span class="nhud-unit">°C</span><div class="nhud-bar"><i id="eng-bar" style="width:20%;background:#ffc15a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">FUEL</span><span class="nhud-num" id="fuel-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="fuel-bar" style="width:100%"></i></div></div></div>
   <div id="nhud-legacy"><span id="vspeed">0</span><span id="aoa">0</span><span id="gforce">1.0</span><span id="gear" class="ok">DOWN</span><span id="hud-heading-chip"></span><span id="hud-aero-chip"></span><span id="hud-gear-chip"></span><span id="hud-ammo-chip"></span></div>
   <div class="panel game-dialog-chrome telemetry-deck-shell thin-surface-hud-shell bottom-surface-strip nhud-bottombar" id="throttle-wrap">
     <div class="hud-bottom-surface">
@@ -2244,8 +2248,8 @@
       </div>
       <div class="nhud-row nhud-status-chips">
         <div class="nhud-mini nhud-chip-sq" id="nhud-boost"><span class="nhud-cap">BOOST</span><span class="nhud-num" id="nhud-boost-val" style="font-size:11px">RDY</span></div>
-        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">GUNS</span><span class="nhud-num" style="font-size:11px"><span id="ammo-val">120</span>/<span id="ammo-max">300</span></span><span class="nhud-cap" id="weapon-mode" style="display:none">BULLET</span><div class="nhud-bar"><i id="ammo-bar" style="width:100%"></i></div></div>
-        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">MSL</span><span class="nhud-num" id="missile-val" style="font-size:11px">1</span><span class="nhud-cap" id="supply-val" style="display:none">IDLE</span></div>
+        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">GUNS</span><span class="nhud-num" style="font-size:11px"><span id="ammo-val">120</span>/<span id="ammo-max">300</span></span><span class="nhud-cap" id="gun-mode" style="display:none">STD</span><span class="nhud-cap" id="gun-tier" style="display:none"></span><span class="nhud-cap" id="weapon-mode" style="display:none">BULLET</span><div class="nhud-bar"><i id="ammo-bar" style="width:100%"></i></div></div>
+        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">MSL</span><span class="nhud-num" id="missile-val" style="font-size:11px">1</span><span class="nhud-cap" id="msl-tier" style="display:none"></span><span class="nhud-cap" id="supply-val" style="display:none">IDLE</span></div>
       </div>
       <div class="hud-meta-strip" style="display:none">
         <div class="deck-meta-row">TIME <span id="tod-ind" class="ok hud-chip">MORNING</span></div>
@@ -2269,7 +2273,7 @@
   </div>
   <div class="panel game-dialog-chrome help-strip-shell" id="controls-help">
     <div id="ch-line1">W/S PITCH · A/D BANK · Q/E RUDDER</div>
-    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE GUNS · X/DOUBLE-SPACE MSL · V FLARES · Z SMOKE · C TARGET · R RESPAWN</div>
+    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE GUNS · X/DOUBLE-SPACE MSL · U GUN MODE · O OVERDRIVE · V FLARES · Z SMOKE · C TARGET · R RESPAWN</div>
   </div>
   <div id="nhud-checkpoint" class="nhud-panel">
     <button type="button" class="nhud-icon-btn" id="nhud-icon-waypoint" title="Waypoint toggle">⚑</button>
@@ -9167,9 +9171,9 @@ const combatState = {
   ammoEarnRate: 7.5,
   ammoEarnBank: 0,
   ammoEarnedTotal: 0,
-  missilesStart: 3,
-  missilesAmmo: 3,
-  missilesMax: 6,
+  missilesStart: 5,
+  missilesAmmo: 5,
+  missilesMax: 12,
   missileEarnInterval: 8,
   missileEarnBank: 0,
   missilesEarnedTotal: 0,
@@ -9205,7 +9209,152 @@ const combatState = {
   lastSpaceTapAt: 0,
   spaceMissileQueued: false,
   suppressSpaceGunsUntil: 0,
+  gunMode: 0,
+  gunModePressed: false,
+  overdrivePressed: false,
+  overdriveActive: false,
+  overdriveUntil: 0,
 };
+// ── Weapon progression (persistent tiers, gun modes, shield overdrive) ──────
+// Persisted per-browser (no accounts). The blob holds ONLY tiers/xp/mode/
+// charges — tier EFFECTS are applied at read-sites via getters (multipliers)
+// or written into transient combatState caps by applyWeaponTierStats(); they
+// are never stored, so the save stays forward-compatible. Tiers only ever
+// climb and survive death/reset (resetCombatState/healPlane never touch them).
+const WEAPON_TIER_KEY = 'e115-weapon-tiers-v1';
+const weaponProgress = { gun: 0, msl: 0, gunMode: 0, overdriveCharges: 1, xpKills: 0, xpMslKills: 0, xpScore: 0 };
+const ROMAN = ['', 'I', 'II', 'III'];
+const GUN_MODE_NAMES = ['STANDARD', 'RAPID', 'HEAVY', 'SCATTER'];
+const GUN_MODE_SHORT = ['STD', 'RAPID', 'HEAVY', 'SCAT'];
+// gun-tier tables (index = gun tier 0..3)
+const GUN_COOLDOWN_MUL = [1, 0.85, 0.72, 0.6];
+const GUN_SPREAD_TIER = [1, 0.9, 0.82, 0.72];
+const GUN_AMMOMAX_BONUS = [0, 60, 120, 200];
+const GUN_EARN_BONUS = [0, 2, 4, 6];
+// gun-mode tables (index = mode 0..3)
+const GMODE_COOLDOWN_MUL = [1, 0.6, 1.8, 1];
+const GMODE_SPREAD_MUL = [1, 1.4, 0.6, 1];
+const GMODE_DAMAGE_MUL = [1, 1, 2.2, 1];
+const GMODE_AMMO = [2, 4, 2, 6];
+// msl-tier tables (index = msl tier 0..3)
+const MSL_MAX_BONUS = [0, 2, 4, 6];
+const MSL_LOCK_MUL = [1, 1.15, 1.3, 1.5];
+const MSL_COOLDOWN_MUL = [1, 0.9, 0.8, 0.7];
+const _wpnUp = new THREE.Vector3();
+const _wpnRight = new THREE.Vector3();
+function _wclampInt(v, lo, hi) { v = Math.round(Number(v) || 0); return v < lo ? lo : v > hi ? hi : v; }
+// Read-site getters — the ONLY way tier/mode effects reach the sim.
+function gunCooldownMul() { return GUN_COOLDOWN_MUL[weaponProgress.gun] * GMODE_COOLDOWN_MUL[weaponProgress.gunMode]; }
+function gunSpreadMul() { return GUN_SPREAD_TIER[weaponProgress.gun] * GMODE_SPREAD_MUL[weaponProgress.gunMode]; }
+function gunDamageMul() { return GMODE_DAMAGE_MUL[weaponProgress.gunMode]; }
+function gunAmmoPerBurst() { return GMODE_AMMO[weaponProgress.gunMode]; }
+function gunIsScatter() { return weaponProgress.gunMode === 3; }
+function mslLockMul() { return MSL_LOCK_MUL[weaponProgress.msl]; }
+function mslCooldownMul() { return MSL_COOLDOWN_MUL[weaponProgress.msl]; }
+// Fold additive tier caps into transient combatState (NOT persisted).
+function applyWeaponTierStats() {
+  if (typeof combatState === 'undefined') return;
+  combatState.ammoMax = 300 + GUN_AMMOMAX_BONUS[weaponProgress.gun];
+  combatState.ammoEarnRate = 7.5 + GUN_EARN_BONUS[weaponProgress.gun];
+  combatState.missilesMax = 12 + MSL_MAX_BONUS[weaponProgress.msl];
+  if (combatState.ammo > combatState.ammoMax) combatState.ammo = combatState.ammoMax;
+  if (combatState.missilesAmmo > combatState.missilesMax) combatState.missilesAmmo = combatState.missilesMax;
+  if (weaponProgress.gunMode > weaponProgress.gun) weaponProgress.gunMode = weaponProgress.gun;
+  combatState.gunMode = weaponProgress.gunMode;
+}
+function loadWeaponProgress() {
+  try {
+    const raw = localStorage.getItem(WEAPON_TIER_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object') {
+        weaponProgress.gun = _wclampInt(d.gun, 0, 3);
+        weaponProgress.msl = _wclampInt(d.msl, 0, 3);
+        weaponProgress.gunMode = _wclampInt(d.gunMode, 0, 3);
+        weaponProgress.overdriveCharges = d.overdriveCharges != null ? _wclampInt(d.overdriveCharges, 0, 2) : weaponProgress.overdriveCharges;
+        weaponProgress.xpKills = Math.max(0, Number(d.xpKills) || 0);
+        weaponProgress.xpMslKills = Math.max(0, Number(d.xpMslKills) || 0);
+        weaponProgress.xpScore = Math.max(0, Number(d.xpScore) || 0);
+      }
+    }
+  } catch (e) {}
+  if (weaponProgress.gunMode > weaponProgress.gun) weaponProgress.gunMode = weaponProgress.gun;
+  applyWeaponTierStats();
+}
+function saveWeaponProgress() { try { localStorage.setItem(WEAPON_TIER_KEY, JSON.stringify(weaponProgress)); } catch (e) {} }
+function checkWeaponMilestones() {
+  let changed = false;
+  const gk = weaponProgress.xpKills || 0;
+  const gt = gk >= 75 ? 3 : gk >= 30 ? 2 : gk >= 10 ? 1 : 0;
+  if (gt > weaponProgress.gun) {
+    weaponProgress.gun = gt; changed = true;
+    if (typeof flashStatus === 'function') flashStatus('GUNS UPGRADED · TIER ' + ROMAN[gt], 'panel ok', 1.6);
+  }
+  const ms = weaponProgress.xpScore || 0, mk = weaponProgress.xpMslKills || 0;
+  const mt = (ms >= 12000 || mk >= 35) ? 3 : (ms >= 5000 || mk >= 15) ? 2 : (ms >= 1500 || mk >= 5) ? 1 : 0;
+  if (mt > weaponProgress.msl) {
+    weaponProgress.msl = mt; changed = true;
+    if (typeof flashStatus === 'function') flashStatus('MISSILES UPGRADED · TIER ' + ROMAN[mt], 'panel ok', 1.6);
+  }
+  if (changed) applyWeaponTierStats();
+  return changed;
+}
+function recordCombatKill(source) {
+  weaponProgress.xpKills = (weaponProgress.xpKills || 0) + 1;
+  if (source === 'missile') weaponProgress.xpMslKills = (weaponProgress.xpMslKills || 0) + 1;
+  checkWeaponMilestones();
+  saveWeaponProgress();
+}
+function recordCombatScore(pts) {
+  if (!(pts > 0)) return;
+  weaponProgress.xpScore = (weaponProgress.xpScore || 0) + pts;
+  if (checkWeaponMilestones()) saveWeaponProgress();
+}
+function cycleGunMode() {
+  const maxMode = weaponProgress.gun;
+  if (maxMode <= 0) { if (typeof flashStatus === 'function') flashStatus('GUN MODES LOCKED · REACH GUN TIER I', 'panel warn', 1.0); return; }
+  weaponProgress.gunMode = ((weaponProgress.gunMode | 0) + 1) % (maxMode + 1);
+  applyWeaponTierStats();
+  saveWeaponProgress();
+  if (typeof flashStatus === 'function') flashStatus('GUN MODE · ' + GUN_MODE_NAMES[weaponProgress.gunMode], 'panel ok', 1.1);
+}
+function overdriveActive() { return !!combatState.overdriveActive && performance.now() < combatState.overdriveUntil; }
+function activateShieldOverdrive() {
+  if (typeof plane === 'undefined' || !plane || plane.crashed) return false;
+  if (overdriveActive()) { if (typeof flashStatus === 'function') flashStatus('SHIELD OVERDRIVE ALREADY ACTIVE', 'panel warn', 0.8); return false; }
+  if ((weaponProgress.overdriveCharges || 0) <= 0) { if (typeof flashStatus === 'function') flashStatus('NO OVERDRIVE CHARGE', 'panel warn', 0.9); return false; }
+  weaponProgress.overdriveCharges -= 1;
+  saveWeaponProgress();
+  combatState.overdriveActive = true;
+  combatState.overdriveUntil = performance.now() + 14000;
+  plane.shieldMax = 300;
+  plane.shield = 300;
+  plane.shieldPulse = Math.min(1.8, (plane.shieldPulse || 0) + 1.4);
+  if (typeof flashStatus === 'function') flashStatus('SHIELD OVERDRIVE · 14S', 'panel ok', 1.4);
+  return true;
+}
+function updateShieldOverdrive() {
+  if (!combatState.overdriveActive) return;
+  if (performance.now() >= combatState.overdriveUntil) deactivateShieldOverdrive(false);
+}
+function deactivateShieldOverdrive(silent) {
+  const wasActive = !!combatState.overdriveActive;
+  combatState.overdriveActive = false;
+  combatState.overdriveUntil = 0;
+  if (typeof plane !== 'undefined' && plane) {
+    plane.shieldMax = 150;
+    if (plane.shield > 150) plane.shield = 150;
+  }
+  if (wasActive && !silent && typeof flashStatus === 'function') flashStatus('OVERDRIVE EXPIRED · SHIELD 150', 'panel warn', 1.1);
+}
+function addOverdriveCharge(n) {
+  weaponProgress.overdriveCharges = Math.min(2, (weaponProgress.overdriveCharges || 0) + (n || 1));
+  saveWeaponProgress();
+}
+loadWeaponProgress();
+window.addEventListener('beforeunload', saveWeaponProgress);
+window.__weaponProgress = weaponProgress;
+
 const projectileGroup = new THREE.Group();
 scene.add(projectileGroup);
 const projectileCoreGeo = new THREE.BoxGeometry(0.12, 0.12, 3.2);
@@ -9777,7 +9926,7 @@ function fireMissile() {
   combatState.missilesFired += 1;
   combatState.heat = Math.min(1.25, (combatState.heat || 0) + (combatState.missileHeatPerShot || 0.22));
   if (combatState.heat >= 1) combatState.overheatedUntil = Math.max(combatState.overheatedUntil || 0, performance.now() + 2300);
-  combatState.missileCooldown = 0.72;
+  combatState.missileCooldown = 0.72 * mslCooldownMul();
   combatState.lastFiredAt = performance.now();
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const anchor = side < 0 ? (jet.userData.missileL || jet.userData.gunL) : (jet.userData.missileR || jet.userData.gunR);
@@ -10095,6 +10244,10 @@ function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
     if (gainedMissiles > 0) msg += ` +${gainedMissiles} MSL`;
   }
   if (target.kind === 'traffic' && (source === 'shot' || source === 'missile' || source === 'alien-pulse')) maybeAwardAlienWeapon();
+  if (source === 'shot' || source === 'missile' || source === 'alien-pulse') {
+    if (typeof recordCombatKill === 'function') recordCombatKill(source);
+    if (saucerKill && typeof addOverdriveCharge === 'function') addOverdriveCharge(1);
+  }
   if (typeof flashStatus === 'function') flashStatus(msg, 'panel ok', 1.4);
 }
 
@@ -10141,6 +10294,9 @@ function resetCombatState() {
   combatState.lastSpaceTapAt = 0;
   combatState.spaceMissileQueued = false;
   combatState.suppressSpaceGunsUntil = 0;
+  combatState.gunModePressed = false;
+  combatState.overdrivePressed = false;
+  if (typeof deactivateShieldOverdrive === 'function') deactivateShieldOverdrive(true);
   crashBlast.visible = false;
   crashBlast.material.opacity = 0;
   if (groundScorchFX) groundScorchFX.clear();
@@ -10208,7 +10364,7 @@ function fireProjectileBurst() {
     return;
   }
   const alien = alienWeaponActive(now);
-  combatState.ammo = Math.max(0, combatState.ammo - (alien ? 1 : 2));
+  combatState.ammo = Math.max(0, combatState.ammo - (alien ? 1 : gunAmmoPerBurst()));
   combatState.heat = Math.min(1.25, (combatState.heat || 0) + (alien ? 0.085 : (combatState.gunHeatPerBurst || 0.065)));
   if (combatState.heat >= 1) combatState.overheatedUntil = Math.max(combatState.overheatedUntil || 0, now + 1900);
   combatState.lastFiredAt = now;
@@ -10219,12 +10375,19 @@ function fireProjectileBurst() {
   playSfx('mg-burst', { throttleMs: alien ? 72 : 140, maxMs: alien ? 120 : 72, volume: alien ? 0.64 : 0.42 + Math.random() * 0.12, rate: alien ? 1.25 + Math.random() * 0.08 : 1.05 + Math.random() * 0.16 });
   const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
   const muzzles = [jet.userData.gunL, jet.userData.gunR];
-  for (const muzzle of muzzles) {
+  const dmgMul = alien ? 1 : gunDamageMul();
+  const scatter = !alien && gunIsScatter();
+  const spread = alien ? 0 : 0.016 * gunSpreadMul();
+  const shots = scatter ? 5 : muzzles.length;
+  _wpnUp.set(0, 1, 0).applyQuaternion(plane.quat);
+  _wpnRight.set(1, 0, 0).applyQuaternion(plane.quat);
+  for (let i = 0; i < shots; i++) {
+    const muzzle = muzzles[i % muzzles.length];
     const projectile = combatState.projectiles.find(p => !p.active);
     if (!projectile) break;
     projectile.active = true;
     projectile.life = alien ? 1.45 : 1.25;
-    projectile.damage = alien ? 1.05 : 0.34;
+    projectile.damage = alien ? 1.05 : 0.34 * dmgMul;
     projectile.intensity = alien ? 0.78 : 0.30;
     projectile.source = alien ? 'alien-pulse' : 'shot';
     projectile.target = alien && targetHudState.activeTarget && targetHudState.lockId === targetHudState.activeId && (targetHudState.lockAmount || 0) > 0.24
@@ -10235,6 +10398,11 @@ function fireProjectileBurst() {
     projectile.pos.copy(muzzle).applyQuaternion(plane.quat).add(plane.pos);
     const sightDir = (typeof getReticleAimDirection === 'function' && getReticleAimDirection(projectile.pos, _combatTmpC)) || forward;
     const shotDir = getAimAssistDirection(projectile.pos, sightDir, _combatTmpD) || sightDir;
+    if (scatter) {
+      shotDir.applyAxisAngle(_wpnUp, (i - 2) * 0.032).applyAxisAngle(_wpnRight, (Math.random() - 0.5) * 0.014).normalize();
+    } else if (spread > 0) {
+      shotDir.applyAxisAngle(_wpnUp, (Math.random() - 0.5) * spread).applyAxisAngle(_wpnRight, (Math.random() - 0.5) * spread).normalize();
+    }
     projectile.vel.copy(shotDir).multiplyScalar(alien ? 620 : 520).add(plane.vel);
     projectile.mesh.visible = true;
     projectile.mesh.position.copy(projectile.pos);
@@ -10371,6 +10539,14 @@ function updateCombat(dt) {
   const smokeDown = !!keys['KeyZ'];
   if (smokeDown && !combatState.smokePressed) deploySmokeScreen();
   combatState.smokePressed = smokeDown;
+  // Gun fire-mode cycle (U) and shield overdrive (O) — edge-detected like flares.
+  const modeDown = !!keys['KeyU'];
+  if (modeDown && !combatState.gunModePressed) cycleGunMode();
+  combatState.gunModePressed = modeDown;
+  const odDown = !!keys['KeyO'];
+  if (odDown && !combatState.overdrivePressed) activateShieldOverdrive();
+  combatState.overdrivePressed = odDown;
+  updateShieldOverdrive();
   const heatCool = combatState.heatCoolRate || 0.34;
   combatState.heat = Math.max(0, (combatState.heat || 0) - dt * heatCool * (combatState.overheatedUntil > performance.now() ? 1.65 : 1));
   if (combatState.heat <= 0.08 && combatState.overheatedUntil > 0 && performance.now() > combatState.overheatedUntil) combatState.overheatedUntil = 0;
@@ -10398,7 +10574,7 @@ function updateCombat(dt) {
   const firing = !plane.crashed && (spaceGunHeld || combatState.mouseFireHeld || gamepadState.fire);
   if (firing && combatState.fireCooldown <= 0) {
     fireProjectileBurst();
-    combatState.fireCooldown = alienWeaponActive() ? 0.055 : 0.115;
+    combatState.fireCooldown = (alienWeaponActive() ? 0.055 : 0.115) * gunCooldownMul();
   }
 
   // Player-vs-object collision (D11): flying into any registered
@@ -12687,6 +12863,7 @@ function repairPlaneSystems(amount = 10, reason = 'REPAIR') {
 
 function healPlane(resetAll = true) {
   plane.health = 100;
+  if (typeof deactivateShieldOverdrive === 'function') deactivateShieldOverdrive(true);
   plane.shieldMax = Math.max(150, plane.shieldMax || 150);
   plane.shield = plane.shieldMax;
   plane.shieldPulse = 0;
@@ -12763,7 +12940,7 @@ window.addEventListener('keydown', e => {
     combatState.spaceDown = true;
   }
   keys[e.code] = true;
-  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'KeyX', 'KeyV', 'KeyZ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'KeyX', 'KeyV', 'KeyZ', 'KeyU', 'KeyO', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', e => {
   keys[e.code] = false;
@@ -15255,6 +15432,24 @@ const $ammoBar = document.getElementById('ammo-bar');
 const $missileVal = document.getElementById('missile-val');
 const $supplyVal = document.getElementById('supply-val');
 const $weaponMode = document.getElementById('weapon-mode');
+const $gunMode = document.getElementById('gun-mode');
+const $gunTier = document.getElementById('gun-tier');
+const $mslTier = document.getElementById('msl-tier');
+const $shdOd = document.getElementById('shd-od');
+function updateWeaponProgressHud() {
+  if (typeof weaponProgress === 'undefined') return;
+  const gt = weaponProgress.gun, mt = weaponProgress.msl;
+  if ($gunTier) { const s = gt > 0 ? ROMAN[gt] : ''; if (hudCache.gunTier !== s) { hudCache.gunTier = s; $gunTier.textContent = s; $gunTier.style.display = gt > 0 ? '' : 'none'; } }
+  if ($gunMode) { const nm = GUN_MODE_SHORT[weaponProgress.gunMode] || 'STD'; const key = (gt > 0 ? '1' : '0') + nm; if (hudCache.gunMode !== key) { hudCache.gunMode = key; $gunMode.textContent = nm; $gunMode.style.display = gt > 0 ? '' : 'none'; } }
+  if ($mslTier) { const s = mt > 0 ? ROMAN[mt] : ''; if (hudCache.mslTier !== s) { hudCache.mslTier = s; $mslTier.textContent = s; $mslTier.style.display = mt > 0 ? '' : 'none'; } }
+  if ($shdOd) {
+    const od = typeof overdriveActive === 'function' && overdriveActive();
+    const txt = od ? ('OD ' + Math.ceil((combatState.overdriveUntil - performance.now()) / 1000) + 'S') : ((weaponProgress.overdriveCharges > 0) ? ('OD x' + weaponProgress.overdriveCharges) : '');
+    if (hudCache.shdOd !== txt) { hudCache.shdOd = txt; $shdOd.textContent = txt; $shdOd.style.display = txt ? '' : 'none'; }
+    const cls = od ? 'nhud-cap on' : 'nhud-cap';
+    if (hudCache.shdOdCls !== cls) { hudCache.shdOdCls = cls; $shdOd.className = cls; }
+  }
+}
 const $scoreVal = document.getElementById('score-val');
 const $scoreStreak = document.getElementById('score-streak');
 const $courseDirector = document.getElementById('course-director');
@@ -15923,7 +16118,7 @@ function updateTargetHud(dt = 1 / 60) {
         desiredLock = Math.max(desiredLock, 0.86);
       }
       const snapEase = smoothstep(clamp01((targetHudState.lockAmount - 0.42) / 0.36));
-      const acquireRate = 2.7 + lockProximity * 3.9 + snapEase * 4.2;
+      const acquireRate = (2.7 + lockProximity * 3.9 + snapEase * 4.2) * mslLockMul();
       const releaseRate = (wasSolid || targetHudState.lockHoldUntil > nowMs) ? 0.18 : 0.78;
       const lockRate = desiredLock > targetHudState.lockAmount ? acquireRate : releaseRate;
       targetHudState.lockAmount += (desiredLock - targetHudState.lockAmount) * Math.min(1, dt * lockRate);
@@ -17220,6 +17415,7 @@ function updateHUD(dt = 1 / 60) {
         $weaponMode.className = modeClass;
       }
     }
+    updateWeaponProgressHud();
     if ($ammoBar) {
       const barWidth = (a / combatState.ammoMax * 100).toFixed(0) + '%';
       const barBg = alienLeft > 0 ? '#74efff' : a > combatState.ammoMax * 0.3 ? '#ffcc66' : '#ff8866';
@@ -18062,6 +18258,7 @@ function awardUnbankedPoints(amount = 0, label = 'POINTS', accent = '#ffe0a0') {
   if (!score || pts <= 0) return 0;
   score.unbanked = (score.unbanked || 0) + pts;
   syncScoreTotals(score);
+  if (typeof recordCombatScore === 'function') recordCombatScore(pts);
   if (typeof window.showScoreBurst === 'function') window.showScoreBurst(`+${pts}`, `${label} · UNBANKED ${score.unbanked}`, accent);
   return pts;
 }
@@ -18220,6 +18417,13 @@ function updateGateScoring(dt) {
       const upgradeMsg = practiceCourse
         ? grantPracticeReward(ring.userData.upgradeReward || { type: 'ammo', amount: 30 }, gateLabel)
         : '';
+      if (practiceCourse) {
+        window.__courseGateRewardCount = (window.__courseGateRewardCount || 0) + 1;
+        if (window.__courseGateRewardCount % 3 === 0 && typeof addOverdriveCharge === 'function') {
+          addOverdriveCharge(1);
+          if (typeof flashStatus === 'function') flashStatus('OVERDRIVE CHARGE EARNED', 'panel ok', 1.1);
+        }
+      }
       if (!practiceCourse) {
         if (combatState) combatState.ammo = Math.min(combatState.ammoMax, combatState.ammo + 20);
         if (plane.health < 100 || plane.damage.airframe > 0 || plane.damage.engine > 0) repairPlaneSystems(2, 'STUNT REPAIR');
@@ -18914,7 +19118,7 @@ function spawnTraffic(file, pathFn, opts) {
     rec.destructible.rewardPoints = opts.rewardPoints || 180;
     rec.destructible.rewardAmmo = opts.rewardAmmo || 18;
     rec.destructible.rewardHealth = opts.rewardHealth || 4;
-    rec.destructible.rewardMissiles = opts.rewardMissiles || (isProceduralUfo ? 1 : 0);
+    rec.destructible.rewardMissiles = opts.rewardMissiles || (isProceduralUfo ? 2 : 0);
     rec.destructible.trafficRef = rec;
     rec.child = model;
     rec.loaded = true;
@@ -19424,7 +19628,7 @@ spawnTraffic(
 spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
   pathUfoVerticalVisit('AIRFIELD', { hoverY: 36, cruiseY: 245, radius: 150 }),
-  { speed: 38, targetSize: 13.8, radiusMul: 0.78, phaseOffset: 80, health: 5, shield: 5, rewardPoints: 420, rewardAmmo: 28, rewardMissiles: 1, callsign: 'UFO LZ', typeLabel: 'VERTICAL LANDER' }
+  { speed: 38, targetSize: 13.8, radiusMul: 0.78, phaseOffset: 80, health: 5, shield: 5, rewardPoints: 420, rewardAmmo: 28, rewardMissiles: 2, callsign: 'UFO LZ', typeLabel: 'VERTICAL LANDER' }
 );
 spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
@@ -19449,7 +19653,7 @@ spawnTraffic(
 spawnTraffic(
   TRAFFIC_UFO_TARGET_FILE,
   pathUfoWideRoam({ y: 340, rx: 1120, rz: 880, period: 520, phase: 1.6 }),
-  { speed: 70, targetSize: 14.2, radiusMul: 0.78, phaseOffset: 0, health: 5, shield: 5, rewardPoints: 460, rewardAmmo: 30, rewardMissiles: 2, callsign: 'UFO ACE', typeLabel: 'DOGFIGHT ACE' }
+  { speed: 70, targetSize: 14.2, radiusMul: 0.78, phaseOffset: 0, health: 5, shield: 5, rewardPoints: 460, rewardAmmo: 30, rewardMissiles: 3, callsign: 'UFO ACE', typeLabel: 'DOGFIGHT ACE' }
 );
 
 // __world_feature_descend_rings__ — Descending yellow ring corridor for descend curriculum

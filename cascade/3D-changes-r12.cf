@@ -1,0 +1,18 @@
+HUMAN: Weapons progression applied — persistent tiers, gun-mode cycle, missile economy, shield overdrive.
+CHG C1<-P1 st=ok ver=pass t="node --check" drift=0 note=combat-base-fields
+CHG C2<-P2 st=ok ver=pass t="node --check" drift=0 note=missile-rewards-plus1
+CHG C3<-P3 st=ok ver=pass t="node --check" drift=0 note=progression-module
+CHG C4<-P4 st=ok ver=pass t="node --check" drift=0 note=gun-burst-mode-aware
+CHG C5<-P5 st=ok ver=pass t="node --check" drift=0 note=cooldown-lock-multipliers
+CHG C6<-P6 st=ok ver=pass t="node --check" drift=0 note=updatecombat-key-wiring
+CHG C7<-P7 st=ok ver=pass t="node --check" drift=0 note=overdrive-reset-on-death
+CHG C8<-P8 st=ok ver=pass t="node --check" drift=0 note=free-keys-preventdefault
+CHG C9<-P9 st=ok ver=pass t="node --check" drift=0 note=controls-help-keys
+CHG C10<-P10 st=ok ver=pass t="node --check" drift=0 note=xp-and-charge-hooks
+CHG C11<-P11 st=ok ver=pass t="node --check" drift=0 note=course-gate-charge
+CHG C12<-P12 st=ok ver=pass t="node --check; grep -c each hud id==1" drift=0 note=hud-chip-markup
+CHG C13<-P13 st=ok ver=pass t="node --check" drift=0 note=hud-progression-js
+CHG C14<-P14 st=ok ver=pass t="node --check" drift=0 note=hud-progression-css
+CHG C15<-Pv st=ok ver=pass t="test -f cascade/20-verify-r12.txt" drift=0 note=orchestrator-gameplay-asserts
+CHG C16<-boot st=ok ver=pass t="PORT=8798 bun web; curl 200; killed own PID; grep ammo-val/ammo-max/missile-val/weapon-mode/shield-pct/hull-pct/eng-pct/fuel-pct/shd-bar/gun-tier/gun-mode/msl-tier/shd-od ==1 each" drift=0 note=boot-hud-verify
+DONE stage=S ok=16 adapt=0 blk=0 deleg=0 esc=0 tok~=3400

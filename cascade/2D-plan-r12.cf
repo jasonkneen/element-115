@@ -1,0 +1,392 @@
+HUMAN: Weapons progression: persistent tiers, gun-mode cycle, richer missiles, timed shield overdrive.
+PLAN P1<-F31,F32 op=diff at=flight-sim3.html:9170-9207#"missilesStart: 3" why=combat-base-fields ref=flight-sim3.html:10111#"combatState.ammo = combatState.ammoStart",flight-sim3.html:10112#"combatState.missilesAmmo = combatState.missilesStart" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=1 fill=-
+<<<P1
+@@ combatState missile base + new progression runtime fields @@
+   missilesStart: 3,
+-  missilesAmmo: 3,
+-  missilesMax: 6,
++  missilesAmmo: 5,
++  missilesMax: 12,
+   missileEarnInterval: 8,
+@@ NOTE: missilesStart 3->5. missilesMax base 12 (F31; msl-tier adds +0/2/4/6 via applyWeaponTierStats). missileEarnInterval STAYS 8 — F31's "24->14" premise is stale (real default already 8, faster than 14; lowering to 14 would slow re-earn, contradicting the finding's intent). @@
+@@ before the closing brace of combatState (line "  suppressSpaceGunsUntil: 0,") @@
+   suppressSpaceGunsUntil: 0,
++  gunMode: 0,
++  gunModePressed: false,
++  overdrivePressed: false,
++  overdriveActive: false,
++  overdriveUntil: 0,
+ };
+>>>
+PLAN P2<-F31 op=diff at=flight-sim3.html:18917-19452#"rewardMissiles" why=missile-rewards-plus1 ref=flight-sim3.html:10093#"target.rewardMissiles" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=1 fill=-
+<<<P2
+@@ procedural ufo default reward @@
+-    rec.destructible.rewardMissiles = opts.rewardMissiles || (isProceduralUfo ? 1 : 0);
++    rec.destructible.rewardMissiles = opts.rewardMissiles || (isProceduralUfo ? 2 : 0);
+@@ UFO LZ preset @@
+-  { speed: 38, targetSize: 13.8, radiusMul: 0.78, phaseOffset: 80, health: 5, shield: 5, rewardPoints: 420, rewardAmmo: 28, rewardMissiles: 1, callsign: 'UFO LZ', typeLabel: 'VERTICAL LANDER' }
++  { speed: 38, targetSize: 13.8, radiusMul: 0.78, phaseOffset: 80, health: 5, shield: 5, rewardPoints: 420, rewardAmmo: 28, rewardMissiles: 2, callsign: 'UFO LZ', typeLabel: 'VERTICAL LANDER' }
+@@ UFO ACE preset @@
+-  { speed: 70, targetSize: 14.2, radiusMul: 0.78, phaseOffset: 0, health: 5, shield: 5, rewardPoints: 460, rewardAmmo: 30, rewardMissiles: 2, callsign: 'UFO ACE', typeLabel: 'DOGFIGHT ACE' }
++  { speed: 70, targetSize: 14.2, radiusMul: 0.78, phaseOffset: 0, health: 5, shield: 5, rewardPoints: 460, rewardAmmo: 30, rewardMissiles: 3, callsign: 'UFO ACE', typeLabel: 'DOGFIGHT ACE' }
+>>>
+PLAN P3<-F32,F33,F34 op=insert at=flight-sim3.html:9209#"const projectileGroup = new THREE.Group();" why=progression-module ref=flight-sim3.html:9144#"const combatState",flight-sim3.html:9962#"awardPlayerShield",flight-sim3.html:16365#"function flashStatus" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=1 fill=-
+<<<P3
+// ── Weapon progression (persistent tiers, gun modes, shield overdrive) ──────
+// Persisted per-browser (no accounts). The blob holds ONLY tiers/xp/mode/
+// charges — tier EFFECTS are applied at read-sites via getters (multipliers)
+// or written into transient combatState caps by applyWeaponTierStats(); they
+// are never stored, so the save stays forward-compatible. Tiers only ever
+// climb and survive death/reset (resetCombatState/healPlane never touch them).
+const WEAPON_TIER_KEY = 'e115-weapon-tiers-v1';
+const weaponProgress = { gun: 0, msl: 0, gunMode: 0, overdriveCharges: 1, xpKills: 0, xpMslKills: 0, xpScore: 0 };
+const ROMAN = ['', 'I', 'II', 'III'];
+const GUN_MODE_NAMES = ['STANDARD', 'RAPID', 'HEAVY', 'SCATTER'];
+const GUN_MODE_SHORT = ['STD', 'RAPID', 'HEAVY', 'SCAT'];
+// gun-tier tables (index = gun tier 0..3)
+const GUN_COOLDOWN_MUL = [1, 0.85, 0.72, 0.6];
+const GUN_SPREAD_TIER = [1, 0.9, 0.82, 0.72];
+const GUN_AMMOMAX_BONUS = [0, 60, 120, 200];
+const GUN_EARN_BONUS = [0, 2, 4, 6];
+// gun-mode tables (index = mode 0..3)
+const GMODE_COOLDOWN_MUL = [1, 0.6, 1.8, 1];
+const GMODE_SPREAD_MUL = [1, 1.4, 0.6, 1];
+const GMODE_DAMAGE_MUL = [1, 1, 2.2, 1];
+const GMODE_AMMO = [2, 4, 2, 6];
+// msl-tier tables (index = msl tier 0..3)
+const MSL_MAX_BONUS = [0, 2, 4, 6];
+const MSL_LOCK_MUL = [1, 1.15, 1.3, 1.5];
+const MSL_COOLDOWN_MUL = [1, 0.9, 0.8, 0.7];
+const _wpnUp = new THREE.Vector3();
+const _wpnRight = new THREE.Vector3();
+function _wclampInt(v, lo, hi) { v = Math.round(Number(v) || 0); return v < lo ? lo : v > hi ? hi : v; }
+// Read-site getters — the ONLY way tier/mode effects reach the sim.
+function gunCooldownMul() { return GUN_COOLDOWN_MUL[weaponProgress.gun] * GMODE_COOLDOWN_MUL[weaponProgress.gunMode]; }
+function gunSpreadMul() { return GUN_SPREAD_TIER[weaponProgress.gun] * GMODE_SPREAD_MUL[weaponProgress.gunMode]; }
+function gunDamageMul() { return GMODE_DAMAGE_MUL[weaponProgress.gunMode]; }
+function gunAmmoPerBurst() { return GMODE_AMMO[weaponProgress.gunMode]; }
+function gunIsScatter() { return weaponProgress.gunMode === 3; }
+function mslLockMul() { return MSL_LOCK_MUL[weaponProgress.msl]; }
+function mslCooldownMul() { return MSL_COOLDOWN_MUL[weaponProgress.msl]; }
+// Fold additive tier caps into transient combatState (NOT persisted).
+function applyWeaponTierStats() {
+  if (typeof combatState === 'undefined') return;
+  combatState.ammoMax = 300 + GUN_AMMOMAX_BONUS[weaponProgress.gun];
+  combatState.ammoEarnRate = 7.5 + GUN_EARN_BONUS[weaponProgress.gun];
+  combatState.missilesMax = 12 + MSL_MAX_BONUS[weaponProgress.msl];
+  if (combatState.ammo > combatState.ammoMax) combatState.ammo = combatState.ammoMax;
+  if (combatState.missilesAmmo > combatState.missilesMax) combatState.missilesAmmo = combatState.missilesMax;
+  if (weaponProgress.gunMode > weaponProgress.gun) weaponProgress.gunMode = weaponProgress.gun;
+  combatState.gunMode = weaponProgress.gunMode;
+}
+function loadWeaponProgress() {
+  try {
+    const raw = localStorage.getItem(WEAPON_TIER_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object') {
+        weaponProgress.gun = _wclampInt(d.gun, 0, 3);
+        weaponProgress.msl = _wclampInt(d.msl, 0, 3);
+        weaponProgress.gunMode = _wclampInt(d.gunMode, 0, 3);
+        weaponProgress.overdriveCharges = d.overdriveCharges != null ? _wclampInt(d.overdriveCharges, 0, 2) : weaponProgress.overdriveCharges;
+        weaponProgress.xpKills = Math.max(0, Number(d.xpKills) || 0);
+        weaponProgress.xpMslKills = Math.max(0, Number(d.xpMslKills) || 0);
+        weaponProgress.xpScore = Math.max(0, Number(d.xpScore) || 0);
+      }
+    }
+  } catch (e) {}
+  if (weaponProgress.gunMode > weaponProgress.gun) weaponProgress.gunMode = weaponProgress.gun;
+  applyWeaponTierStats();
+}
+function saveWeaponProgress() { try { localStorage.setItem(WEAPON_TIER_KEY, JSON.stringify(weaponProgress)); } catch (e) {} }
+function checkWeaponMilestones() {
+  let changed = false;
+  const gk = weaponProgress.xpKills || 0;
+  const gt = gk >= 75 ? 3 : gk >= 30 ? 2 : gk >= 10 ? 1 : 0;
+  if (gt > weaponProgress.gun) {
+    weaponProgress.gun = gt; changed = true;
+    if (typeof flashStatus === 'function') flashStatus('GUNS UPGRADED · TIER ' + ROMAN[gt], 'panel ok', 1.6);
+  }
+  const ms = weaponProgress.xpScore || 0, mk = weaponProgress.xpMslKills || 0;
+  const mt = (ms >= 12000 || mk >= 35) ? 3 : (ms >= 5000 || mk >= 15) ? 2 : (ms >= 1500 || mk >= 5) ? 1 : 0;
+  if (mt > weaponProgress.msl) {
+    weaponProgress.msl = mt; changed = true;
+    if (typeof flashStatus === 'function') flashStatus('MISSILES UPGRADED · TIER ' + ROMAN[mt], 'panel ok', 1.6);
+  }
+  if (changed) applyWeaponTierStats();
+  return changed;
+}
+function recordCombatKill(source) {
+  weaponProgress.xpKills = (weaponProgress.xpKills || 0) + 1;
+  if (source === 'missile') weaponProgress.xpMslKills = (weaponProgress.xpMslKills || 0) + 1;
+  checkWeaponMilestones();
+  saveWeaponProgress();
+}
+function recordCombatScore(pts) {
+  if (!(pts > 0)) return;
+  weaponProgress.xpScore = (weaponProgress.xpScore || 0) + pts;
+  if (checkWeaponMilestones()) saveWeaponProgress();
+}
+function cycleGunMode() {
+  const maxMode = weaponProgress.gun;
+  if (maxMode <= 0) { if (typeof flashStatus === 'function') flashStatus('GUN MODES LOCKED · REACH GUN TIER I', 'panel warn', 1.0); return; }
+  weaponProgress.gunMode = ((weaponProgress.gunMode | 0) + 1) % (maxMode + 1);
+  applyWeaponTierStats();
+  saveWeaponProgress();
+  if (typeof flashStatus === 'function') flashStatus('GUN MODE · ' + GUN_MODE_NAMES[weaponProgress.gunMode], 'panel ok', 1.1);
+}
+function overdriveActive() { return !!combatState.overdriveActive && performance.now() < combatState.overdriveUntil; }
+function activateShieldOverdrive() {
+  if (typeof plane === 'undefined' || !plane || plane.crashed) return false;
+  if (overdriveActive()) { if (typeof flashStatus === 'function') flashStatus('SHIELD OVERDRIVE ALREADY ACTIVE', 'panel warn', 0.8); return false; }
+  if ((weaponProgress.overdriveCharges || 0) <= 0) { if (typeof flashStatus === 'function') flashStatus('NO OVERDRIVE CHARGE', 'panel warn', 0.9); return false; }
+  weaponProgress.overdriveCharges -= 1;
+  saveWeaponProgress();
+  combatState.overdriveActive = true;
+  combatState.overdriveUntil = performance.now() + 14000;
+  plane.shieldMax = 300;
+  plane.shield = 300;
+  plane.shieldPulse = Math.min(1.8, (plane.shieldPulse || 0) + 1.4);
+  if (typeof flashStatus === 'function') flashStatus('SHIELD OVERDRIVE · 14S', 'panel ok', 1.4);
+  return true;
+}
+function updateShieldOverdrive() {
+  if (!combatState.overdriveActive) return;
+  if (performance.now() >= combatState.overdriveUntil) deactivateShieldOverdrive(false);
+}
+function deactivateShieldOverdrive(silent) {
+  const wasActive = !!combatState.overdriveActive;
+  combatState.overdriveActive = false;
+  combatState.overdriveUntil = 0;
+  if (typeof plane !== 'undefined' && plane) {
+    plane.shieldMax = 150;
+    if (plane.shield > 150) plane.shield = 150;
+  }
+  if (wasActive && !silent && typeof flashStatus === 'function') flashStatus('OVERDRIVE EXPIRED · SHIELD 150', 'panel warn', 1.1);
+}
+function addOverdriveCharge(n) {
+  weaponProgress.overdriveCharges = Math.min(2, (weaponProgress.overdriveCharges || 0) + (n || 1));
+  saveWeaponProgress();
+}
+loadWeaponProgress();
+window.addEventListener('beforeunload', saveWeaponProgress);
+window.__weaponProgress = weaponProgress;
+
+>>>
+PLAN P4<-F32,F33 op=replace at=flight-sim3.html:10210-10245#"const alien = alienWeaponActive(now);" why=gun-burst-mode-aware ref=flight-sim3.html:10191#"function fireProjectileBurst",flight-sim3.html:10227#"projectile.damage = alien" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P4
+  const alien = alienWeaponActive(now);
+  combatState.ammo = Math.max(0, combatState.ammo - (alien ? 1 : gunAmmoPerBurst()));
+  combatState.heat = Math.min(1.25, (combatState.heat || 0) + (alien ? 0.085 : (combatState.gunHeatPerBurst || 0.065)));
+  if (combatState.heat >= 1) combatState.overheatedUntil = Math.max(combatState.overheatedUntil || 0, now + 1900);
+  combatState.lastFiredAt = now;
+  // Machine-gun burst sample — capped to a very short burst so the gun
+  // doesn't keep sounding like it's firing after the trigger is released.
+  // The source clips are ~1.5s long, so without this they keep ringing on
+  // long after the actual firing state has ended.
+  playSfx('mg-burst', { throttleMs: alien ? 72 : 140, maxMs: alien ? 120 : 72, volume: alien ? 0.64 : 0.42 + Math.random() * 0.12, rate: alien ? 1.25 + Math.random() * 0.08 : 1.05 + Math.random() * 0.16 });
+  const forward = _combatTmpA.set(0, 0, -1).applyQuaternion(plane.quat).normalize();
+  const muzzles = [jet.userData.gunL, jet.userData.gunR];
+  const dmgMul = alien ? 1 : gunDamageMul();
+  const scatter = !alien && gunIsScatter();
+  const spread = alien ? 0 : 0.016 * gunSpreadMul();
+  const shots = scatter ? 5 : muzzles.length;
+  _wpnUp.set(0, 1, 0).applyQuaternion(plane.quat);
+  _wpnRight.set(1, 0, 0).applyQuaternion(plane.quat);
+  for (let i = 0; i < shots; i++) {
+    const muzzle = muzzles[i % muzzles.length];
+    const projectile = combatState.projectiles.find(p => !p.active);
+    if (!projectile) break;
+    projectile.active = true;
+    projectile.life = alien ? 1.45 : 1.25;
+    projectile.damage = alien ? 1.05 : 0.34 * dmgMul;
+    projectile.intensity = alien ? 0.78 : 0.30;
+    projectile.source = alien ? 'alien-pulse' : 'shot';
+    projectile.target = alien && targetHudState.activeTarget && targetHudState.lockId === targetHudState.activeId && (targetHudState.lockAmount || 0) > 0.24
+      ? targetHudState.activeTarget
+      : null;
+    projectile.targetId = projectile.target ? projectile.target.id : '';
+    setProjectileVisual(projectile, alien ? 'alien' : 'bullet');
+    projectile.pos.copy(muzzle).applyQuaternion(plane.quat).add(plane.pos);
+    const sightDir = (typeof getReticleAimDirection === 'function' && getReticleAimDirection(projectile.pos, _combatTmpC)) || forward;
+    const shotDir = getAimAssistDirection(projectile.pos, sightDir, _combatTmpD) || sightDir;
+    if (scatter) {
+      shotDir.applyAxisAngle(_wpnUp, (i - 2) * 0.032).applyAxisAngle(_wpnRight, (Math.random() - 0.5) * 0.014).normalize();
+    } else if (spread > 0) {
+      shotDir.applyAxisAngle(_wpnUp, (Math.random() - 0.5) * spread).applyAxisAngle(_wpnRight, (Math.random() - 0.5) * spread).normalize();
+    }
+    projectile.vel.copy(shotDir).multiplyScalar(alien ? 620 : 520).add(plane.vel);
+    projectile.mesh.visible = true;
+    projectile.mesh.position.copy(projectile.pos);
+    projectile.mesh.quaternion.setFromUnitVectors(_projectileForward, projectile.vel.clone().normalize());
+    muzzleFlashPool.emitCluster(projectile.pos, alien ? 6 : 3, alien ? 0.34 : 0.11, 0.08, alien ? 0.45 : 0.24, alien ? 0.95 : 0.42);
+    attemptInstantHit(projectile.pos, shotDir, projectile.damage, projectile.intensity, projectile.source);
+  }
+  combatState.shotsFired += 1;
+>>>
+PLAN P5<-F32,F33 op=diff at=flight-sim3.html:9780,10401,15926#"stat multipliers" why=cooldown-lock-multipliers ref=flight-sim3.html:9764#"combatState.missileCooldown > 0",flight-sim3.html:10399#"firing && combatState.fireCooldown",flight-sim3.html:15925#"snapEase = smoothstep" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P5
+@@ fireMissile: base 0.72s cooldown x msl-tier @@
+-  combatState.missileCooldown = 0.72;
++  combatState.missileCooldown = 0.72 * mslCooldownMul();
+@@ updateCombat: gun cooldown x gun-tier x gun-mode @@
+-    combatState.fireCooldown = alienWeaponActive() ? 0.055 : 0.115;
++    combatState.fireCooldown = (alienWeaponActive() ? 0.055 : 0.115) * gunCooldownMul();
+@@ lock acquire rate x msl-tier lock speed @@
+-      const acquireRate = 2.7 + lockProximity * 3.9 + snapEase * 4.2;
++      const acquireRate = (2.7 + lockProximity * 3.9 + snapEase * 4.2) * mslLockMul();
+>>>
+PLAN P6<-F33,F34 op=insert at=flight-sim3.html:10373#"combatState.smokePressed = smokeDown;" why=updatecombat-key-wiring ref=flight-sim3.html:10368#"const flareDown",flight-sim3.html:10366#"combatState.smokeCooldown" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P6
+  // Gun fire-mode cycle (U) and shield overdrive (O) — edge-detected like flares.
+  const modeDown = !!keys['KeyU'];
+  if (modeDown && !combatState.gunModePressed) cycleGunMode();
+  combatState.gunModePressed = modeDown;
+  const odDown = !!keys['KeyO'];
+  if (odDown && !combatState.overdrivePressed) activateShieldOverdrive();
+  combatState.overdrivePressed = odDown;
+  updateShieldOverdrive();
+>>>
+PLAN P7<-F34 op=diff at=flight-sim3.html:10143,12689#"reset overdrive" why=overdrive-reset-on-death ref=flight-sim3.html:10101#"function resetCombatState",flight-sim3.html:12688#"function healPlane" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P7
+@@ resetCombatState tail: clear overdrive runtime (charges/tiers persist in blob) @@
+   combatState.suppressSpaceGunsUntil = 0;
++  combatState.gunModePressed = false;
++  combatState.overdrivePressed = false;
++  if (typeof deactivateShieldOverdrive === 'function') deactivateShieldOverdrive(true);
+   crashBlast.visible = false;
+@@ healPlane: drop overdrive before restoring shieldMax so respawn shield = 150 @@
+ function healPlane(resetAll = true) {
+   plane.health = 100;
++  if (typeof deactivateShieldOverdrive === 'function') deactivateShieldOverdrive(true);
+   plane.shieldMax = Math.max(150, plane.shieldMax || 150);
+>>>
+PLAN P8<-F33,F34 op=diff at=flight-sim3.html:12766#"e.preventDefault" why=free-keys-preventdefault ref=flight-sim3.html:13002#"keys['KeyB']" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P8
+@@ KeyU (gun mode) + KeyO (overdrive) are free (KeyB=brake, so F33 fallback KeyU used); add to preventDefault set @@
+-  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'KeyX', 'KeyV', 'KeyZ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
++  if (['Space', 'KeyF', 'KeyG', 'KeyH', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'KeyB', 'KeyT', 'KeyY', 'KeyP', 'KeyX', 'KeyV', 'KeyZ', 'KeyU', 'KeyO', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+>>>
+PLAN P9<-F33,F34 op=diff at=flight-sim3.html:2272#"ch-line2" why=controls-help-keys ref=flight-sim3.html:12766#"e.preventDefault" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=3 fill=-
+<<<P9
+@@ document the two new binds in the controls strip @@
+-    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE GUNS · X/DOUBLE-SPACE MSL · V FLARES · Z SMOKE · C TARGET · R RESPAWN</div>
++    <div id="ch-line2">SHIFT/CTRL THROTTLE · SPACE GUNS · X/DOUBLE-SPACE MSL · U GUN MODE · O OVERDRIVE · V FLARES · Z SMOKE · C TARGET · R RESPAWN</div>
+>>>
+PLAN P10<-F32,F34 op=diff at=flight-sim3.html:18059-18095#"xp+charge hooks" why=xp-and-charge-hooks ref=flight-sim3.html:10067#"combatState.kills += 1",flight-sim3.html:10068#"const saucerKill",flight-sim3.html:18063#"score.unbanked" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P10
+@@ destroyTarget: record combat XP + saucer overdrive charge (only real weapon kills) @@
+   if (target.kind === 'traffic' && (source === 'shot' || source === 'missile' || source === 'alien-pulse')) maybeAwardAlienWeapon();
++  if (source === 'shot' || source === 'missile' || source === 'alien-pulse') {
++    if (typeof recordCombatKill === 'function') recordCombatKill(source);
++    if (saucerKill && typeof addOverdriveCharge === 'function') addOverdriveCharge(1);
++  }
+   if (typeof flashStatus === 'function') flashStatus(msg, 'panel ok', 1.4);
+@@ awardUnbankedPoints: feed lifetime score XP toward msl tiers @@
+   score.unbanked = (score.unbanked || 0) + pts;
+   syncScoreTotals(score);
++  if (typeof recordCombatScore === 'function') recordCombatScore(pts);
+>>>
+PLAN P11<-F34 op=diff at=flight-sim3.html:18219-18222#"course gate charge" why=course-gate-charge ref=flight-sim3.html:18221#"grantPracticeReward(ring.userData.upgradeReward",flight-sim3.html:18196#"completedRuns" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=2 fill=-
+<<<P11
+@@ every 3rd course-gate reward grants an overdrive charge @@
+       const upgradeMsg = practiceCourse
+         ? grantPracticeReward(ring.userData.upgradeReward || { type: 'ammo', amount: 30 }, gateLabel)
+         : '';
++      if (practiceCourse) {
++        window.__courseGateRewardCount = (window.__courseGateRewardCount || 0) + 1;
++        if (window.__courseGateRewardCount % 3 === 0 && typeof addOverdriveCharge === 'function') {
++          addOverdriveCharge(1);
++          if (typeof flashStatus === 'function') flashStatus('OVERDRIVE CHARGE EARNED', 'panel ok', 1.1);
++        }
++      }
+>>>
+PLAN P12<-F32,F33,F34 op=diff at=flight-sim3.html:2234,2247,2248#"hud chips" why=hud-chip-markup ref=flight-sim3.html:15250#"$shieldPct",flight-sim3.html:2247#"weapon-mode" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=3 fill=-
+<<<P12
+@@ SHD gauge: overdrive countdown/charge readout @@
+-  <div id="nhud-right-cluster" class="nhud-panel"><div class="nhud-gauge"><span class="nhud-cap">HULL</span><span class="nhud-num" id="hull-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="hull-bar" style="width:100%;background:#63d27a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">SHD</span><span class="nhud-num" id="shield-pct">0</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="shd-bar" style="width:0%"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">ENG</span><span class="nhud-num" id="eng-pct">60</span><span class="nhud-unit">°C</span><div class="nhud-bar"><i id="eng-bar" style="width:20%;background:#ffc15a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">FUEL</span><span class="nhud-num" id="fuel-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="fuel-bar" style="width:100%"></i></div></div></div>
++  <div id="nhud-right-cluster" class="nhud-panel"><div class="nhud-gauge"><span class="nhud-cap">HULL</span><span class="nhud-num" id="hull-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="hull-bar" style="width:100%;background:#63d27a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">SHD</span><span class="nhud-num" id="shield-pct">0</span><span class="nhud-unit">%</span><span class="nhud-cap" id="shd-od" style="display:none"></span><div class="nhud-bar"><i id="shd-bar" style="width:0%"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">ENG</span><span class="nhud-num" id="eng-pct">60</span><span class="nhud-unit">°C</span><div class="nhud-bar"><i id="eng-bar" style="width:20%;background:#ffc15a"></i></div></div><div class="nhud-gauge"><span class="nhud-cap">FUEL</span><span class="nhud-num" id="fuel-pct">100</span><span class="nhud-unit">%</span><div class="nhud-bar"><i id="fuel-bar" style="width:100%"></i></div></div></div>
+@@ GUNS chip: gun-mode label + gun-tier pips @@
+-        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">GUNS</span><span class="nhud-num" style="font-size:11px"><span id="ammo-val">120</span>/<span id="ammo-max">300</span></span><span class="nhud-cap" id="weapon-mode" style="display:none">BULLET</span><div class="nhud-bar"><i id="ammo-bar" style="width:100%"></i></div></div>
++        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">GUNS</span><span class="nhud-num" style="font-size:11px"><span id="ammo-val">120</span>/<span id="ammo-max">300</span></span><span class="nhud-cap" id="gun-mode" style="display:none">STD</span><span class="nhud-cap" id="gun-tier" style="display:none"></span><span class="nhud-cap" id="weapon-mode" style="display:none">BULLET</span><div class="nhud-bar"><i id="ammo-bar" style="width:100%"></i></div></div>
+@@ MSL chip: msl-tier pips @@
+-        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">MSL</span><span class="nhud-num" id="missile-val" style="font-size:11px">1</span><span class="nhud-cap" id="supply-val" style="display:none">IDLE</span></div>
++        <div class="nhud-mini nhud-chip-sq"><span class="nhud-cap">MSL</span><span class="nhud-num" id="missile-val" style="font-size:11px">1</span><span class="nhud-cap" id="msl-tier" style="display:none"></span><span class="nhud-cap" id="supply-val" style="display:none">IDLE</span></div>
+>>>
+PLAN P13<-F32,F33,F34 op=diff at=flight-sim3.html:15257,17222#"hud refs+update" why=hud-progression-js ref=flight-sim3.html:16744#"const hudCache",flight-sim3.html:17196#"$weaponMode" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=3 fill=-
+<<<P13
+@@ new HUD element refs + updater (defined next to existing $weaponMode ref) @@
+ const $weaponMode = document.getElementById('weapon-mode');
++const $gunMode = document.getElementById('gun-mode');
++const $gunTier = document.getElementById('gun-tier');
++const $mslTier = document.getElementById('msl-tier');
++const $shdOd = document.getElementById('shd-od');
++function updateWeaponProgressHud() {
++  if (typeof weaponProgress === 'undefined') return;
++  const gt = weaponProgress.gun, mt = weaponProgress.msl;
++  if ($gunTier) { const s = gt > 0 ? ROMAN[gt] : ''; if (hudCache.gunTier !== s) { hudCache.gunTier = s; $gunTier.textContent = s; $gunTier.style.display = gt > 0 ? '' : 'none'; } }
++  if ($gunMode) { const nm = GUN_MODE_SHORT[weaponProgress.gunMode] || 'STD'; const key = (gt > 0 ? '1' : '0') + nm; if (hudCache.gunMode !== key) { hudCache.gunMode = key; $gunMode.textContent = nm; $gunMode.style.display = gt > 0 ? '' : 'none'; } }
++  if ($mslTier) { const s = mt > 0 ? ROMAN[mt] : ''; if (hudCache.mslTier !== s) { hudCache.mslTier = s; $mslTier.textContent = s; $mslTier.style.display = mt > 0 ? '' : 'none'; } }
++  if ($shdOd) {
++    const od = typeof overdriveActive === 'function' && overdriveActive();
++    const txt = od ? ('OD ' + Math.ceil((combatState.overdriveUntil - performance.now()) / 1000) + 'S') : ((weaponProgress.overdriveCharges > 0) ? ('OD x' + weaponProgress.overdriveCharges) : '');
++    if (hudCache.shdOd !== txt) { hudCache.shdOd = txt; $shdOd.textContent = txt; $shdOd.style.display = txt ? '' : 'none'; }
++    const cls = od ? 'nhud-cap on' : 'nhud-cap';
++    if (hudCache.shdOdCls !== cls) { hudCache.shdOdCls = cls; $shdOd.className = cls; }
++  }
++}
+@@ call the updater once per HUD tick, right after the $weaponMode block @@
+       if (hudCache.weaponModeClass !== modeClass) {
+         hudCache.weaponModeClass = modeClass;
+         $weaponMode.className = modeClass;
+       }
+     }
++    updateWeaponProgressHud();
+     if ($ammoBar) {
+>>>
+PLAN P14<-F34,F33 op=insert at=flight-sim3.html:2096#"  .nhud-cap {" why=hud-progression-css ref=flight-sim3.html:2096#"nhud-cap" test="awk '/<script>/{f=1;next}/<\/script>/{f=0}f' /Users/jkneen/Downloads/ships/flight-sim3.html | node --check -" order=3 fill=-
+<<<P14
+  @keyframes odPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  #shd-od { color: #ffc15a; margin-left: 4px; }
+  #shd-od.on { animation: odPulse 0.9s ease-in-out infinite; }
+  #gun-mode, #gun-tier, #msl-tier { color: var(--nh-mid, var(--nh-dim)); margin-left: 3px; }
+>>>
+PLAN Pv op=create at=cascade/20-verify-r12.txt why=orchestrator-gameplay-asserts ref=flight-sim3.html:20982#"window.__ap",flight-sim3.html:12707#"window.__sim" test="test -f /Users/jkneen/Downloads/ships/cascade/20-verify-r12.txt" order=4 fill=-
+<<<Pv
+ROUND 12 — WEAPONS PROGRESSION · gameplay verification (run after P1-P14 applied; boot flight-sim3.html via bun web + Playwright, V2 boot-log clean first).
+
+SETUP (devtools console, before boot or before __ap.reset):
+  localStorage.setItem('e115-weapon-tiers-v1', JSON.stringify({gun:3,msl:3,gunMode:0,overdriveCharges:2,xpKills:80,xpMslKills:40,xpScore:15000})); location.reload();
+
+A. PERSISTENCE / LOAD
+  A1 window.__weaponProgress -> {gun:3, msl:3, ...} after reload (tiers survived reload).
+  A2 combatState.ammoMax === 500 (300+200), combatState.ammoEarnRate === 13.5 (7.5+6), combatState.missilesMax === 18 (12+6).
+  A3 __ap.reset() then check combatState.missilesAmmo===5 (missilesStart), and __weaponProgress.gun still 3 (reset never wipes tiers).
+
+B. GUN TIER + MODE MULTIPLIERS (read-site getters)
+  B1 gunCooldownMul() === 0.6 at gun3/mode0 (STANDARD). Fire: fireCooldown set ≈ 0.115*0.6 = 0.069.
+  B2 cycleGunMode() (or press U) cycles STD->RAPID->HEAVY->SCATTER->STD; __weaponProgress.gunMode advances and persists (re-read localStorage).
+  B3 mode RAPID: gunAmmoPerBurst()===4, gunCooldownMul()===0.6*0.6=0.36. mode HEAVY: gunDamageMul()===2.2, gunCooldownMul()===0.6*1.8. mode SCATTER: gunAmmoPerBurst()===6, gunIsScatter()===true.
+  B4 Fire in SCATTER: 5 projectiles activate per burst (count combatState.projectiles.filter(p=>p.active) spike) vs 2 in STD.
+  B5 At gun0 (set localStorage gun:0), pressing U flashes "GUN MODES LOCKED"; gunMode stays 0.
+
+C. MISSILE TIER
+  C1 mslCooldownMul() at msl3 === 0.7 -> after fireMissile, missileCooldown ≈ 0.72*0.7 = 0.504.
+  C2 mslLockMul() at msl3 === 1.5 (lock acquires ~1.5x faster; observe targetHudState.lockAmount ramp with a target reticled).
+
+D. SHIELD OVERDRIVE
+  D1 activateShieldOverdrive() (or press O) with charges>0: plane.shieldMax===300, plane.shield===300, __weaponProgress.overdriveCharges decremented, overdriveActive()===true.
+  D2 Advance ~14s (or set combatState.overdriveUntil = performance.now()-1 then let a frame run): overdriveActive()===false, plane.shieldMax===150, plane.shield clamped <=150.
+  D3 With 0 charges, activateShieldOverdrive() returns false, flashes "NO OVERDRIVE CHARGE", shieldMax stays current.
+  D4 During overdrive, take a hit (damagePlane(0.3)) -> larger shield absorbs more before hull; HUD #shd-od shows "OD nS" with .on pulse class.
+  D5 Kill a ufo-saucer target (source 'shot'/'missile') -> overdriveCharges +1 (cap 2). Pass 3 course gates -> +1 charge (window.__courseGateRewardCount%3===0).
+
+E. HUD
+  E1 #gun-tier shows III, #gun-mode shows STD/RAPID/HEAVY/SCAT, #msl-tier shows III (display unhidden at tier>0).
+  E2 #shd-od hidden when no charges and not active; shows "OD x2" idle with charges.
+
+F. FPS INVARIANT (task V3): mean >=58fps, missed-vsync <=2% in SCATTER continuous fire from sky spawn (5 projectiles/burst is the heaviest path).
+
+NOTE: F31 missileEarnInterval kept at 8s (finding's "24->14" premise was stale vs real code; 8s already re-earns faster than the finding's target).
+>>>
+DONE stage=O plan=15 tok~=4200

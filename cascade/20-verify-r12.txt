@@ -1,0 +1,35 @@
+ROUND 12 — WEAPONS PROGRESSION · gameplay verification (run after P1-P14 applied; boot flight-sim3.html via bun web + Playwright, V2 boot-log clean first).
+
+SETUP (devtools console, before boot or before __ap.reset):
+  localStorage.setItem('e115-weapon-tiers-v1', JSON.stringify({gun:3,msl:3,gunMode:0,overdriveCharges:2,xpKills:80,xpMslKills:40,xpScore:15000})); location.reload();
+
+A. PERSISTENCE / LOAD
+  A1 window.__weaponProgress -> {gun:3, msl:3, ...} after reload (tiers survived reload).
+  A2 combatState.ammoMax === 500 (300+200), combatState.ammoEarnRate === 13.5 (7.5+6), combatState.missilesMax === 18 (12+6).
+  A3 __ap.reset() then check combatState.missilesAmmo===5 (missilesStart), and __weaponProgress.gun still 3 (reset never wipes tiers).
+
+B. GUN TIER + MODE MULTIPLIERS (read-site getters)
+  B1 gunCooldownMul() === 0.6 at gun3/mode0 (STANDARD). Fire: fireCooldown set ≈ 0.115*0.6 = 0.069.
+  B2 cycleGunMode() (or press U) cycles STD->RAPID->HEAVY->SCATTER->STD; __weaponProgress.gunMode advances and persists (re-read localStorage).
+  B3 mode RAPID: gunAmmoPerBurst()===4, gunCooldownMul()===0.6*0.6=0.36. mode HEAVY: gunDamageMul()===2.2, gunCooldownMul()===0.6*1.8. mode SCATTER: gunAmmoPerBurst()===6, gunIsScatter()===true.
+  B4 Fire in SCATTER: 5 projectiles activate per burst (count combatState.projectiles.filter(p=>p.active) spike) vs 2 in STD.
+  B5 At gun0 (set localStorage gun:0), pressing U flashes "GUN MODES LOCKED"; gunMode stays 0.
+
+C. MISSILE TIER
+  C1 mslCooldownMul() at msl3 === 0.7 -> after fireMissile, missileCooldown ≈ 0.72*0.7 = 0.504.
+  C2 mslLockMul() at msl3 === 1.5 (lock acquires ~1.5x faster; observe targetHudState.lockAmount ramp with a target reticled).
+
+D. SHIELD OVERDRIVE
+  D1 activateShieldOverdrive() (or press O) with charges>0: plane.shieldMax===300, plane.shield===300, __weaponProgress.overdriveCharges decremented, overdriveActive()===true.
+  D2 Advance ~14s (or set combatState.overdriveUntil = performance.now()-1 then let a frame run): overdriveActive()===false, plane.shieldMax===150, plane.shield clamped <=150.
+  D3 With 0 charges, activateShieldOverdrive() returns false, flashes "NO OVERDRIVE CHARGE", shieldMax stays current.
+  D4 During overdrive, take a hit (damagePlane(0.3)) -> larger shield absorbs more before hull; HUD #shd-od shows "OD nS" with .on pulse class.
+  D5 Kill a ufo-saucer target (source 'shot'/'missile') -> overdriveCharges +1 (cap 2). Pass 3 course gates -> +1 charge (window.__courseGateRewardCount%3===0).
+
+E. HUD
+  E1 #gun-tier shows III, #gun-mode shows STD/RAPID/HEAVY/SCAT, #msl-tier shows III (display unhidden at tier>0).
+  E2 #shd-od hidden when no charges and not active; shows "OD x2" idle with charges.
+
+F. FPS INVARIANT (task V3): mean >=58fps, missed-vsync <=2% in SCATTER continuous fire from sky spawn (5 projectiles/burst is the heaviest path).
+
+NOTE: F31 missileEarnInterval kept at 8s (finding's "24->14" premise was stale vs real code; 8s already re-earns faster than the finding's target).
