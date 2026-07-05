@@ -87,6 +87,15 @@
     "rz": 0,
     "px": 0,
     "py": -2.65,
-    "pz": 0
+    "pz": -12.6
+  },
+  "models/a-10_thunderbolt_ii_warthog_plane__avion.glb": {
+    "s": 0.4272,
+    "rx": 0,
+    "ry": 180,
+    "rz": 0,
+    "px": 0,
+    "py": -4.21,
+    "pz": -24.0
   }
 }

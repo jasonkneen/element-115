@@ -898,7 +898,10 @@
   #title .menu-banner img {
     display: block;
     width: 100%;
-    height: auto;
+    /* uniform banner height regardless of source aspect (the PLANES art is
+       squarer than the others and blew the nav apart at natural size) */
+    height: clamp(46px, 6.2vh, 58px);
+    object-fit: contain;
     filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.4));
   }
   #title .menu-banner .menu-banner-selected {
@@ -931,6 +934,70 @@
   .menu-panel[hidden] { display: none; }
   .menu-panel .multiplayer-setup-card,
   .menu-panel .start-steps { margin-top: 0; }
+  #menu-panel-planes { padding: 12px; }
+  .hangar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    max-height: min(52vh, 440px);
+    overflow-y: auto;
+  }
+  .hangar-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 215, 150, 0.14);
+    background: rgba(10, 12, 18, 0.6);
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .hangar-card:hover,
+  .hangar-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(255, 204, 102, 0.5);
+    outline: none;
+  }
+  .hangar-card.active {
+    border-color: #ffcc66;
+    box-shadow: 0 0 0 2px rgba(255, 204, 102, 0.35), 0 8px 20px rgba(0, 0, 0, 0.3);
+  }
+  .hangar-card img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .hangar-card.no-thumb img { display: none; }
+  .hangar-card.no-thumb { min-height: 88px; justify-content: center; }
+  .hangar-card .hangar-card-body { padding: 7px 9px 8px; }
+  .hangar-card .hangar-card-name {
+    display: block;
+    font: 800 12px/1.15 var(--game-font-ui);
+    letter-spacing: 0.04em;
+    color: #fff3d8;
+  }
+  .hangar-card .hangar-card-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 231, 176, 0.6);
+  }
+  .hangar-card .hangar-card-badge {
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 225, 170, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 242, 207, 0.9);
+  }
   #title .start-steps {
     position: relative;
     display: grid;
@@ -1866,6 +1933,15 @@
     color: rgba(255, 226, 170, 0.55);
     margin-top: 3px;
   }
+  .menu-panel,
+  #graphics-panel.game-options-panel {
+    background-color: rgba(10, 12, 18, 0.82);
+    background-image:
+      linear-gradient(180deg, rgba(46, 36, 22, 0.42), rgba(10, 12, 18, 0)),
+      radial-gradient(130% 90% at 50% -10%, rgba(255, 204, 102, 0.08), rgba(255, 204, 102, 0) 60%);
+    border: 1px solid rgba(255, 215, 150, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 240, 214, 0.06), 0 18px 48px rgba(0, 0, 0, 0.42);
+  }
   #graphics-overlay.fullscreen-options-shell {
     position: fixed;
     inset: 0;
@@ -2271,6 +2347,10 @@
         <img class="menu-banner-normal" src="assets/ui/menu/07_controls_normal.png" alt="CONTROLS">
         <img class="menu-banner-selected" src="assets/ui/menu/07_controls_selected.png" alt="">
       </button>
+      <button type="button" class="menu-banner" id="menu-btn-planes" style="--tilt: 1.2deg" aria-controls="menu-panel-planes" aria-expanded="false">
+        <img class="menu-banner-normal" src="assets/ui/menu/11_planes_normal.png" alt="PLANES">
+        <img class="menu-banner-selected" src="assets/ui/menu/11_planes_selected.png" alt="">
+      </button>
       <button type="button" class="menu-banner" id="menu-btn-settings" style="--tilt: 1.2deg">
         <img class="menu-banner-normal" src="assets/ui/menu/08_settings_normal.png" alt="SETTINGS">
         <img class="menu-banner-selected" src="assets/ui/menu/08_settings_selected.png" alt="">
@@ -2309,6 +2389,9 @@
       </div>
       <div class="menu-panel" id="menu-panel-about" hidden>
         <p>ELEMENT-115 — a canyon flight sim built for free dogfighting, landing practice, and regenerative terrain runs. F-15 model &quot;Low poly F-15&quot; by SIpriv on Sketchfab, CC-BY.</p>
+      </div>
+      <div class="menu-panel menu-panel-planes" id="menu-panel-planes" hidden>
+        <div class="hangar-grid" id="hangar-grid"></div>
       </div>
     </div>
     <p class="meta">KEYBOARD · CONTROLLER · TOUCH · SOUND ENABLES ON START · SEED <span id="seed-display">----</span></p>
@@ -2445,6 +2528,7 @@ function persistPlayerProfile() {
   } catch {}
 }
 const PROP_MODEL_PRESETS = [
+  { key: 'e115', label: 'E-115 FIGHTER', name: 'Element-115 Fighter', hudLabel: 'E-115', type: 'Jet Fighter', badge: 'DEFAULT', file: 'default', procedural: true },
   { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
   { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/stunt_plane.glb', variant: '1' },
   { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
@@ -2463,7 +2547,7 @@ const PROP_MODEL_PRESETS = [
   // ry flips models authored facing +Z into the game's -Z forward.
   { key: 'f15', label: 'F-15 EAGLE', name: 'F-15 Eagle', hudLabel: 'F-15', type: 'Jet Fighter', badge: 'JET', file: 'models/f-15.glb', jet: true, ry: 0 },
   { key: 'f15lp', label: 'F-15 STRIKE', name: 'F-15 Strike (low poly)', hudLabel: 'F-15 LP', type: 'Jet Fighter', badge: 'JET', file: 'models/low_poly_f-15.glb', jet: true, ry: 0 },
-  { key: 'a10', label: 'A-10 WARTHOG', name: 'A-10 Thunderbolt II', hudLabel: 'A-10', type: 'Attack Jet', badge: 'JET', file: 'models/a-10_thunderbolt_ii_warthog_plane__avion.glb', jet: true, ry: 180 },
+  { key: 'a10', label: 'A-10 WARTHOG', name: 'A-10 Thunderbolt II', hudLabel: 'A-10', type: 'Attack Jet', badge: 'JET', file: 'models/a-10_thunderbolt_ii_warthog_plane__avion.glb', jet: true },
 ];
 const REMOVED_PROP_MODEL_FILES = new Set([
   'models/claude_scruggs.glb',
@@ -8137,9 +8221,12 @@ function updateMultiplayer(dt) {
         if (!t || typeof t !== 'object') return;
         if (Number.isFinite(t.s) && t.s > 0) model.scale.setScalar(t.s);
         if ('rx' in t || 'ry' in t || 'rz' in t) {
+          // ry honors an explicit 0 (models authored facing -Z); only a
+          // genuinely absent/invalid ry falls back to the default 180 flip.
+          const ryDeg = Number.isFinite(Number(t.ry)) ? Number(t.ry) : 180;
           model.rotation.set(
             (Number(t.rx) || 0) * Math.PI / 180,
-            (Number(t.ry) || 180) * Math.PI / 180,
+            ryDeg * Math.PI / 180,
             (Number(t.rz) || 0) * Math.PI / 180
           );
         }
@@ -17505,6 +17592,7 @@ function dismissIntro() {
 }
 (function armIntroDismiss() {
   introDismissHandler = (e) => {
+    if (document.body.classList.contains('options-open')) return;
     if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
     dismissIntro();
   };
@@ -17513,11 +17601,11 @@ function dismissIntro() {
 })();
 
 // __retro_menu__ — main menu nav: PLAY SOLO dismisses the intro directly;
-// MULTIPLAYER/CONTROLS/ABOUT toggle a sub-panel (one open at a time);
-// SETTINGS dismisses the intro and opens the same graphics panel as the P key.
+// MULTIPLAYER/CONTROLS/ABOUT/PLANES toggle a sub-panel (one open at a time);
+// SETTINGS opens the graphics panel OVER the menu (intro stays; guarded in armIntroDismiss).
 (function wireMenuNav() {
-  const panels = { mp: 'menu-panel-mp', controls: 'menu-panel-controls', about: 'menu-panel-about' };
-  const buttons = { mp: 'menu-btn-mp', controls: 'menu-btn-controls', about: 'menu-btn-about' };
+  const panels = { mp: 'menu-panel-mp', controls: 'menu-panel-controls', about: 'menu-panel-about', planes: 'menu-panel-planes' };
+  const buttons = { mp: 'menu-btn-mp', controls: 'menu-btn-controls', about: 'menu-btn-about', planes: 'menu-btn-planes' };
   let activePanel = null;
   function setActivePanel(name) {
     activePanel = name;
@@ -17527,11 +17615,55 @@ function dismissIntro() {
       const show = key === name;
       if (panelEl) panelEl.hidden = !show;
       if (btnEl) btnEl.setAttribute('aria-expanded', String(show));
+      // an opened panel (esp. the hangar grid) can sit below the fold on
+      // short viewports — bring it into view
+      if (panelEl && show) setTimeout(() => panelEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
     }
   }
   function toggleMenuPanel(name) {
     setActivePanel(activePanel === name ? null : name);
   }
+  function buildHangar() {
+    const grid = document.getElementById('hangar-grid');
+    if (!grid) return;
+    const active = getActivePropPreset();
+    PROP_MODEL_PRESETS.forEach((preset) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'hangar-card' + (preset.key === active.key ? ' active' : '');
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.alt = preset.name || preset.label;
+      img.src = `assets/ui/planes/${preset.key}.jpg`;
+      img.addEventListener('error', () => card.classList.add('no-thumb'));
+      card.appendChild(img);
+      const body = document.createElement('div');
+      body.className = 'hangar-card-body';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'hangar-card-name';
+      nameEl.textContent = preset.name || preset.label;
+      body.appendChild(nameEl);
+      const meta = document.createElement('div');
+      meta.className = 'hangar-card-meta';
+      const type = document.createElement('span');
+      type.textContent = preset.type || 'Airframe';
+      const badge = document.createElement('span');
+      badge.className = 'hangar-card-badge';
+      badge.textContent = preset.key === active.key ? 'ACTIVE' : (preset.badge || 'READY');
+      meta.appendChild(type);
+      meta.appendChild(badge);
+      body.appendChild(meta);
+      card.appendChild(body);
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (preset.key === active.key) return;
+        try { sessionStorage.setItem('e115-loading-name', preset.name || preset.label); } catch {}
+        applyPropModelPreset(preset.key);
+      });
+      grid.appendChild(card);
+    });
+  }
+  buildHangar();
   const soloBtn = document.getElementById('menu-btn-solo');
   if (soloBtn) soloBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissIntro(); });
   const mpBtn = document.getElementById('menu-btn-mp');
@@ -17540,12 +17672,27 @@ function dismissIntro() {
   if (controlsBtn) controlsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('controls'); });
   const aboutBtn = document.getElementById('menu-btn-about');
   if (aboutBtn) aboutBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('about'); });
+  const planesBtn = document.getElementById('menu-btn-planes');
+  if (planesBtn) planesBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('planes'); });
   const settingsBtn = document.getElementById('menu-btn-settings');
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    dismissIntro();
     if (typeof window.__toggleOptionsPanel === 'function') window.__toggleOptionsPanel();
   });
+})();
+
+// __plane_loading_flash__ — brief LOADING overlay after a reload-based hangar select
+(function showPlaneLoadingFlash() {
+  let name = null;
+  try { name = sessionStorage.getItem('e115-loading-name'); sessionStorage.removeItem('e115-loading-name'); } catch {}
+  if (!name) return;
+  const o = document.createElement('div');
+  o.id = 'plane-loading-flash';
+  o.textContent = 'LOADING ' + name;
+  o.style.cssText = 'position:fixed;inset:0;z-index:10030;display:flex;align-items:center;justify-content:center;background:rgba(6,8,12,0.92);color:#ffcc66;font:800 20px/1 var(--game-font-ui, sans-serif);letter-spacing:0.2em;text-transform:uppercase;transition:opacity 0.4s ease;';
+  document.body.appendChild(o);
+  setTimeout(() => { o.style.opacity = '0'; }, 700);
+  setTimeout(() => { o.remove(); }, 1200);
 })();
 
 // __overlay_dismiss_focus__ — re-focus game canvas on any click/key

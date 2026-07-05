@@ -1,0 +1,206 @@
+HUMAN: E-115 restored as default preset; image-card hangar screen; poster-paper options/menu theming.
+PLAN P1<-F26 op=replace at=flight-sim3.html:2447-2448#"const PROP_MODEL_PRESETS = [" why=e115-default-preset ref=flight-sim3.html:2475#"localStorage.getItem('flight_prop_model_key') || PROP_MODEL_PRESETS[0].key",flight-sim3.html:2479#"findPropPresetByPlaneFile",flight-sim3.html:2496#"applyPropPresetToParams",flight-sim3.html:7271#"planeFile === 'default'" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=1 fill=-
+<<<P1
+const PROP_MODEL_PRESETS = [
+  { key: 'e115', label: 'E-115 FIGHTER', name: 'Element-115 Fighter', hudLabel: 'E-115', type: 'Jet Fighter', badge: 'DEFAULT', file: 'default', procedural: true },
+  { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
+>>>
+NOTE P1 file:'default' routes applyPropPresetToParams (2496) to set plane=default + delete variant/s/rx/ry/rz/dy and (no jet field) delete jet; findPropPresetByPlaneFile (2479) maps 'default'->e115; loadOptionalPlaneGLB (7271) early-returns keeping makeJet. No other roster consumer uses parallel arrays (all iterate PROP_MODEL_PRESETS: 16215, 20555). Thumbs are derived from key in P5, so no per-preset thumb field is added.
+PLAN P2<-F28 op=insert at=flight-sim3.html:2274#"menu-btn-settings" why=planes-banner-button ref=flight-sim3.html:2270-2273#"menu-btn-controls",flight-sim3.html:904#".menu-banner .menu-banner-selected" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=2 fill=-
+<<<P2
+      <button type="button" class="menu-banner" id="menu-btn-planes" style="--tilt: 1.2deg" aria-controls="menu-panel-planes" aria-expanded="false">
+        <img class="menu-banner-normal" src="assets/ui/menu/11_planes_normal.png" alt="PLANES">
+        <img class="menu-banner-selected" src="assets/ui/menu/11_planes_selected.png" alt="">
+      </button>
+>>>
+PLAN P3<-F28 op=insert at=flight-sim3.html:2313#"    </div>" why=hangar-panel-container ref=flight-sim3.html:2283#"menu-panels",flight-sim3.html:2310-2312#"menu-panel-about" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=3 fill=-
+<<<P3
+      <div class="menu-panel menu-panel-planes" id="menu-panel-planes" hidden>
+        <div class="hangar-grid" id="hangar-grid"></div>
+      </div>
+>>>
+NOTE P3 insert as the last child of #menu-panels (between the menu-panel-about closing tag at 2312 and the #menu-panels closing tag at 2313). Left empty; populated by buildHangar() in P5.
+PLAN P4<-F28 op=insert at=flight-sim3.html:934#"#title .start-steps" why=hangar-grid-css ref=flight-sim3.html:920-933#".menu-panel",flight-sim3.html:886-919#".menu-banner" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=4 fill=-
+<<<P4
+  #menu-panel-planes { padding: 12px; }
+  .hangar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+    max-height: min(52vh, 440px);
+    overflow-y: auto;
+  }
+  .hangar-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 215, 150, 0.14);
+    background: rgba(10, 12, 18, 0.6);
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .hangar-card:hover,
+  .hangar-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(255, 204, 102, 0.5);
+    outline: none;
+  }
+  .hangar-card.active {
+    border-color: #ffcc66;
+    box-shadow: 0 0 0 2px rgba(255, 204, 102, 0.35), 0 8px 20px rgba(0, 0, 0, 0.3);
+  }
+  .hangar-card img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .hangar-card.no-thumb img { display: none; }
+  .hangar-card.no-thumb { min-height: 88px; justify-content: center; }
+  .hangar-card .hangar-card-body { padding: 7px 9px 8px; }
+  .hangar-card .hangar-card-name {
+    display: block;
+    font: 800 12px/1.15 var(--game-font-ui);
+    letter-spacing: 0.04em;
+    color: #fff3d8;
+  }
+  .hangar-card .hangar-card-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 231, 176, 0.6);
+  }
+  .hangar-card .hangar-card-badge {
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 225, 170, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 242, 207, 0.9);
+  }
+>>>
+PLAN P5<-F28,F27,O6,F29 op=replace at=flight-sim3.html:17515-17549#"function wireMenuNav" why=hangar-wire-and-loading-flash ref=flight-sim3.html:2447#"PROP_MODEL_PRESETS",flight-sim3.html:2507#"getActivePropPreset",flight-sim3.html:2513#"applyPropModelPreset",flight-sim3.html:20746#"window.__toggleOptionsPanel = toggleOptions" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=5 fill=-
+<<<P5
+// __retro_menu__ — main menu nav: PLAY SOLO dismisses the intro directly;
+// MULTIPLAYER/CONTROLS/ABOUT/PLANES toggle a sub-panel (one open at a time);
+// SETTINGS opens the graphics panel OVER the menu (intro stays; guarded in armIntroDismiss).
+(function wireMenuNav() {
+  const panels = { mp: 'menu-panel-mp', controls: 'menu-panel-controls', about: 'menu-panel-about', planes: 'menu-panel-planes' };
+  const buttons = { mp: 'menu-btn-mp', controls: 'menu-btn-controls', about: 'menu-btn-about', planes: 'menu-btn-planes' };
+  let activePanel = null;
+  function setActivePanel(name) {
+    activePanel = name;
+    for (const key of Object.keys(panels)) {
+      const panelEl = document.getElementById(panels[key]);
+      const btnEl = document.getElementById(buttons[key]);
+      const show = key === name;
+      if (panelEl) panelEl.hidden = !show;
+      if (btnEl) btnEl.setAttribute('aria-expanded', String(show));
+    }
+  }
+  function toggleMenuPanel(name) {
+    setActivePanel(activePanel === name ? null : name);
+  }
+  function buildHangar() {
+    const grid = document.getElementById('hangar-grid');
+    if (!grid) return;
+    const active = getActivePropPreset();
+    PROP_MODEL_PRESETS.forEach((preset) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'hangar-card' + (preset.key === active.key ? ' active' : '');
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.alt = preset.name || preset.label;
+      img.src = `assets/ui/planes/${preset.key}.jpg`;
+      img.addEventListener('error', () => card.classList.add('no-thumb'));
+      card.appendChild(img);
+      const body = document.createElement('div');
+      body.className = 'hangar-card-body';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'hangar-card-name';
+      nameEl.textContent = preset.name || preset.label;
+      body.appendChild(nameEl);
+      const meta = document.createElement('div');
+      meta.className = 'hangar-card-meta';
+      const type = document.createElement('span');
+      type.textContent = preset.type || 'Airframe';
+      const badge = document.createElement('span');
+      badge.className = 'hangar-card-badge';
+      badge.textContent = preset.key === active.key ? 'ACTIVE' : (preset.badge || 'READY');
+      meta.appendChild(type);
+      meta.appendChild(badge);
+      body.appendChild(meta);
+      card.appendChild(body);
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (preset.key === active.key) return;
+        try { sessionStorage.setItem('e115-loading-name', preset.name || preset.label); } catch {}
+        applyPropModelPreset(preset.key);
+      });
+      grid.appendChild(card);
+    });
+  }
+  buildHangar();
+  const soloBtn = document.getElementById('menu-btn-solo');
+  if (soloBtn) soloBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissIntro(); });
+  const mpBtn = document.getElementById('menu-btn-mp');
+  if (mpBtn) mpBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('mp'); });
+  const controlsBtn = document.getElementById('menu-btn-controls');
+  if (controlsBtn) controlsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('controls'); });
+  const aboutBtn = document.getElementById('menu-btn-about');
+  if (aboutBtn) aboutBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('about'); });
+  const planesBtn = document.getElementById('menu-btn-planes');
+  if (planesBtn) planesBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMenuPanel('planes'); });
+  const settingsBtn = document.getElementById('menu-btn-settings');
+  if (settingsBtn) settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.__toggleOptionsPanel === 'function') window.__toggleOptionsPanel();
+  });
+})();
+
+// __plane_loading_flash__ — brief LOADING overlay after a reload-based hangar select
+(function showPlaneLoadingFlash() {
+  let name = null;
+  try { name = sessionStorage.getItem('e115-loading-name'); sessionStorage.removeItem('e115-loading-name'); } catch {}
+  if (!name) return;
+  const o = document.createElement('div');
+  o.id = 'plane-loading-flash';
+  o.textContent = 'LOADING ' + name;
+  o.style.cssText = 'position:fixed;inset:0;z-index:10030;display:flex;align-items:center;justify-content:center;background:rgba(6,8,12,0.92);color:#ffcc66;font:800 20px/1 var(--game-font-ui, sans-serif);letter-spacing:0.2em;text-transform:uppercase;transition:opacity 0.4s ease;';
+  document.body.appendChild(o);
+  setTimeout(() => { o.style.opacity = '0'; }, 700);
+  setTimeout(() => { o.remove(); }, 1200);
+})();
+>>>
+NOTE P5 drops the old `dismissIntro();` from the SETTINGS handler (was line 17546) so options open over the menu; the intro-dismiss guard is P7. getActivePropPreset/applyPropModelPreset/PROP_MODEL_PRESETS are globals defined at 2447-2527. Card click sets sessionStorage then applyPropModelPreset (reloads via location.assign, 2520).
+PLAN P6<-F29,F30 op=insert at=flight-sim3.html:1869#"#graphics-overlay.fullscreen-options-shell {" why=poster-paper-card-theme ref=flight-sim3.html:921-930#".menu-panel",flight-sim3.html:1826-1868#"game-options-panel" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=6 fill=-
+<<<P6
+  .menu-panel,
+  #graphics-panel.game-options-panel {
+    background-color: rgba(10, 12, 18, 0.82);
+    background-image:
+      linear-gradient(180deg, rgba(46, 36, 22, 0.42), rgba(10, 12, 18, 0)),
+      radial-gradient(130% 90% at 50% -10%, rgba(255, 204, 102, 0.08), rgba(255, 204, 102, 0) 60%);
+    border: 1px solid rgba(255, 215, 150, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 240, 214, 0.06), 0 18px 48px rgba(0, 0, 0, 0.42);
+  }
+>>>
+NOTE P6 inserted after the .preset-card span rule (1868) so it wins on equal specificity for box-shadow/border/background; it overrides only card chrome (no DOM/control/writer changes, per F29 scope guard). The higher-specificity .fullscreen-options-shell-card rule (1879) sets position/size only and is unaffected.
+PLAN P7<-F29 op=diff at=flight-sim3.html:17506-17513#"function armIntroDismiss" why=guard-intro-dismiss-when-options-open ref=flight-sim3.html:17497#"function dismissIntro",flight-sim3.html:20735#"document.body.classList.add('options-open')" test="awk '/^<script>$/{f=1;next} /^<\/script>$/{f=0} f' /Users/jkneen/Downloads/ships/flight-sim3.html > /tmp/fs3.js && node --check /tmp/fs3.js && curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8765/flight-sim3.html | grep -qx 200" order=7 fill=-
+<<<P7
+   introDismissHandler = (e) => {
++    if (document.body.classList.contains('options-open')) return;
+     if (isTypingTarget(e.target) || isPreflightInteractiveTarget(e.target)) return;
+     dismissIntro();
+>>>
+NOTE P7 openOptions adds body.options-open (20735), closeOptions removes it (20740). The capture-phase introDismissHandler (registered at 17511-17512) runs before the graphics panel's bubble-phase ESC handler (20770), so this guard makes ESC/click-dim close options and return to the menu instead of dismissing the intro.
+DONE stage=O plan=7 tok~=2600

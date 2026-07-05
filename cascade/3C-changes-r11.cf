@@ -1,0 +1,9 @@
+HUMAN: E-115 default restored, image-card hangar screen, poster-paper theming — all 7 items landed clean.
+CHG C1<-P1 st=ok ver=pass t="node --check ok; e115 preset added as PRESET[0] key='e115' file='default' procedural:true, no jet field" drift=0 note=e115-default-preset
+CHG C2<-P2 st=ok ver=pass t="node --check ok; menu-btn-planes banner inserted before menu-btn-settings" drift=0 note=planes-banner-button
+CHG C3<-P3 st=ok ver=pass t="node --check ok; #menu-panel-planes/#hangar-grid inserted as last child of #menu-panels" drift=0 note=hangar-panel-container
+CHG C4<-P4 st=ok ver=pass t="node --check ok; .hangar-grid/.hangar-card CSS inserted before #title .start-steps" drift=0 note=hangar-grid-css
+CHG C5<-P5 st=ok ver=pass t="node --check ok; wireMenuNav replaced (planes panel wiring + buildHangar via preset.key thumb + onerror no-thumb fallback), settingsBtn dismissIntro() call dropped, showPlaneLoadingFlash added" drift=+75 note=hangar-wire-and-loading-flash
+CHG C6<-P6 st=ok ver=pass t="node --check ok; .menu-panel,#graphics-panel.game-options-panel poster-paper rule inserted after .preset-card span, before #graphics-overlay.fullscreen-options-shell; no DOM/writer lines touched (git diff confirms only comment/map/dismissIntro-call removals, all inside P5 hunk)" drift=+64 note=poster-paper-card-theme
+CHG C7<-P7 st=ok ver=pass t="node --check ok; introDismissHandler guarded with options-open class check" drift=+72 note=guard-intro-dismiss-when-options-open
+DONE stage=S ok=7 adapt=0 blk=0 deleg=0 esc=0 tok~=2100
