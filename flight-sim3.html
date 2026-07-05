@@ -17588,6 +17588,13 @@ function updateHUD(dt = 1 / 60) {
 //  MAIN LOOP
 // =============================================================
 let lastTime = 0;
+// dt smoothing: at fluctuating frame rates the raw frame delta alternates
+// (e.g. 16.7/33.3ms straddling the vsync boundary), so physics step sizes
+// alternate 2:1 and the plane visibly lurches fore/aft ("juddering forward
+// and backward"). A tight EMA filters the alternation while still tracking
+// genuine rate changes within ~150ms; its mean equals the true mean, so
+// game time does not drift.
+let _dtEma = 0;
 let running = false;
 const FIXED_PHYSICS_STEP = 1 / 120; // 120Hz physics update rate
 let physicsAccumulator = 0;
@@ -17612,8 +17619,10 @@ function updateLivePhysicsSmooth(dt) {
 
 function animate(now) {
   requestAnimationFrame(animate);
-  const dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
+  const rawDt = Math.min(0.05, (now - lastTime) / 1000 || 0);
   lastTime = now;
+  _dtEma = _dtEma > 0 ? _dtEma + (rawDt - _dtEma) * 0.25 : rawDt;
+  const dt = Math.min(0.05, _dtEma);
   updateTimeOfDay(dt);
   updateMultiplayer(dt);
   pollGamepadInput();
