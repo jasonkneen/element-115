@@ -2428,6 +2428,7 @@
 (() => {
 'use strict';
 
+// @module src/game/01-boot-config.js
 const bootParamSource = (() => {
   const hashStr = (window.location.hash || '').replace(/^#/, '');
   if (hashStr.includes('=')) return hashStr;
@@ -2615,6 +2616,7 @@ function cyclePropModel(direction = 1) {
   applyPropModelPreset(next.key);
 }
 
+// @module src/game/02-worldgen.js
 // =============================================================
 //  SEED + NOISE — deterministic worldgen
 // =============================================================
@@ -2865,6 +2867,7 @@ function buildWorldOpportunities() {
   };
 }
 
+// @module src/game/03-scene-postfx.js
 // =============================================================
 //  SCENE
 // =============================================================
@@ -3721,6 +3724,7 @@ const sandMatLowPoly = new THREE.ShaderMaterial({
   extensions: { derivatives: true },
 });
 
+// @module src/game/04-terrain.js
 // =============================================================
 //  TERRAIN CHUNKS
 // =============================================================
@@ -4640,6 +4644,7 @@ function updateHorizonChunks(px, pz) {
   }
 }
 
+// @module src/game/05-airfield.js
 // =============================================================
 //  RUNWAY + TOWER
 // =============================================================
@@ -5384,6 +5389,7 @@ function updateAirfieldAmbient(dt) {
   }
 }
 
+// @module src/game/06-jet.js
 // =============================================================
 //  FIGHTER JET
 // =============================================================
@@ -6690,6 +6696,7 @@ const aeroFlexState = {
   shake: 0,
 };
 
+// @module src/game/07-mp-plane-load.js
 // =============================================================
 //  DAMAGE DECALS (D12) — scorch-mark sprites attached to the jet.
 //  Each decal is a sprite parented under `jet` so it rides with
@@ -8487,6 +8494,7 @@ function updateMultiplayer(dt) {
   );
 })();
 
+// @module src/game/08-style-biome.js
 // =============================================================
 //  STYLE TOGGLE — realistic ↔ low-poly stylised
 // =============================================================
@@ -8654,6 +8662,7 @@ function cycleBiome() {
   applyBiome(next);
 }
 
+// @module src/game/09a-fx-combat.js
 // =============================================================
 //  ATMOSPHERIC EFFECTS — particles, clouds, sun glow
 // =============================================================
@@ -9831,6 +9840,10 @@ const _combatTmpA = new THREE.Vector3();
 const _combatTmpB = new THREE.Vector3();
 const _combatTmpC = new THREE.Vector3();
 const _combatTmpD = new THREE.Vector3();
+const _combatTmpE = new THREE.Vector3();
+const _combatTmpF = new THREE.Vector3();
+const _combatCrashOffset = new THREE.Vector3(0, 2.4, -1.2);
+const _combatCrashRingOffset = new THREE.Vector3(0, 2.4, 0);
 const _projectileForward = new THREE.Vector3(0, 0, 1);
 const _missileForward = new THREE.Vector3(0, 0, -1);
 
@@ -10602,20 +10615,23 @@ function updateCombat(dt) {
       // target. >0 = heading into target.
       _combatTmpD.copy(targetPos).sub(plane.pos);
       if (_combatTmpD.lengthSq() > 1e-6) _combatTmpD.normalize();
-      const forward = plane.vel.clone();
-      if (forward.lengthSq() > 1e-6) forward.normalize();
-      const approach = Math.max(0, forward.dot(_combatTmpD));
+      _combatTmpA.copy(plane.vel);
+      if (_combatTmpA.lengthSq() > 1e-6) _combatTmpA.normalize();
+      const approach = Math.max(0, _combatTmpA.dot(_combatTmpD));
       // 0..1 severity. 60 m/s head-on = 0.5, 120 m/s head-on = 1.0.
       const severity = Math.min(1, (relSpeed / 140) * (0.4 + approach * 0.6));
       // Small targets (barrels, drones) scuff the paint; big ones
       // (traffic, floating) ruin the plane. Use radius as proxy.
       const massMul = Math.min(1, target.radius / 10);
       const playerDmg = severity * (0.2 + massMul * 0.6);
+      // Scratch copies — damagePlane/destroyTarget may read pos while we reuse temps later.
+      _combatTmpE.copy(targetPos);
+      _combatTmpF.copy(targetPos);
       const fatal = damagePlane(playerDmg, 'airframe', {
         reason: 'COLLISION',
-        worldPos: targetPos.clone(),
+        worldPos: _combatTmpE,
       });
-      destroyTarget(target, targetPos.clone(),
+      destroyTarget(target, _combatTmpF,
         target.kind === 'fuel' ? 1.65 :
         target.kind === 'traffic' ? 1.4 :
         target.kind === 'floatingTarget' ? 1.6 :
@@ -10625,8 +10641,7 @@ function updateCombat(dt) {
       );
       // Big kinetic transfer: rebound the player away from the target.
       if (!fatal) {
-        const push = _combatTmpD.clone().multiplyScalar(-playerSpeed * 0.35);
-        plane.vel.addScaledVector(push, 0.6);
+        plane.vel.addScaledVector(_combatTmpD, -playerSpeed * 0.35 * 0.6);
         statusMsg.textContent = `HULL ${Math.round(plane.health)}% — IMPACT`;
         statusMsg.className = 'panel warn';
       }
@@ -10639,11 +10654,11 @@ function updateCombat(dt) {
     combatState.crashFxTriggered = true;
     combatState.crashBlastTimer = 0.9;
     crashBlast.visible = true;
-    crashBlast.position.copy(plane.pos).add(new THREE.Vector3(0, 2.4, -1.2));
+    crashBlast.position.copy(plane.pos).add(_combatCrashOffset);
     crashBlast.scale.set(34, 34, 1);
     crashBlast.material.opacity = 1.0;
-    spawnExplosion(plane.pos.clone(), 1.7, 1.6);
-    shockwaveRingPool.emit(plane.pos.clone().add(new THREE.Vector3(0, 2.4, 0)), { endScale: 70, opacity: 0.8, color: 0xffb060 });
+    spawnExplosion(plane.pos, 1.7, 1.6);
+    shockwaveRingPool.emit(_combatTmpA.copy(plane.pos).add(_combatCrashRingOffset), { endScale: 70, opacity: 0.8, color: 0xffb060 });
     if (typeof flashStatus === 'function') flashStatus('AIRCRAFT LOST — PRESS R · OR REPLAY', 'panel warn', 2.5);
     // Surface the REPLAY panel so the player can watch what killed them.
     if (typeof syncReplayUI === 'function') syncReplayUI();
@@ -10682,13 +10697,13 @@ function updateCombat(dt) {
     const groundH = (p.pos.x * p.pos.x + p.pos.z * p.pos.z < AIRFIELD_FLAT_R2)
       ? AIRFIELD_SURFACE_Y : getHeight(p.pos.x, p.pos.z);
     if (p.pos.y <= groundH + 0.12) {
-      const hitPos = p.pos.clone();
-      hitPos.y = groundH + 0.05;
+      _combatTmpE.copy(p.pos);
+      _combatTmpE.y = groundH + 0.05;
       if (p.type === 'alien' || p.type === 'ufo-pulse') {
-        spawnGunSurfaceDamage(hitPos, { type: 'alien', size: p.type === 'ufo-pulse' ? 0.9 : 0.74 });
-        impactBlastPool.emitCluster(hitPos, p.type === 'ufo-pulse' ? 7 : 5, 0.9, 0.06, 0.24, 0.8);
+        spawnGunSurfaceDamage(_combatTmpE, { type: 'alien', size: p.type === 'ufo-pulse' ? 0.9 : 0.74 });
+        impactBlastPool.emitCluster(_combatTmpE, p.type === 'ufo-pulse' ? 7 : 5, 0.9, 0.06, 0.24, 0.8);
       } else {
-        spawnGunSurfaceDamage(hitPos, { type: 'bullet', size: 0.34 });
+        spawnGunSurfaceDamage(_combatTmpE, { type: 'bullet', size: 0.34 });
       }
       deactivateProjectile(p);
       continue;
@@ -10698,10 +10713,10 @@ function updateCombat(dt) {
       const playerMiss = p.pos.distanceTo(plane.pos);
       const maintainedLock = !p.cmConfused && (p.lockStrength || 0) >= 0.62;
       if (!plane.crashed && maintainedLock && playerMiss < 6.8) {
-        const hitPos = p.pos.clone();
-        impactBlastPool.emitCluster(hitPos, 8, 1.05, 0.08, 0.36, 0.95);
-        impactSparkPool.emitCluster(hitPos, 10, 0.82, 0.16, 0.42, 0.9);
-            damagePlane(0.9, 'airframe', { reason: 'UFO PULSE', worldPos: hitPos });
+        _combatTmpE.copy(p.pos);
+        impactBlastPool.emitCluster(_combatTmpE, 8, 1.05, 0.08, 0.36, 0.95);
+        impactSparkPool.emitCluster(_combatTmpE, 10, 0.82, 0.16, 0.42, 0.9);
+        damagePlane(0.9, 'airframe', { reason: 'UFO PULSE', worldPos: _combatTmpE });
         if (typeof flashStatus === 'function') flashStatus(`HULL ${Math.round(plane.health)}% · UFO PULSE HIT`, 'panel warn', 1.0);
         deactivateProjectile(p);
         continue;
@@ -10712,7 +10727,7 @@ function updateCombat(dt) {
       if (!target.alive || !target.object.visible) continue;
       const targetPos = getTargetWorldPosition(target, _combatTmpC);
       if (p.pos.distanceTo(targetPos) < target.radius) {
-        damageDestructible(target, targetPos.clone(), p.damage || 0.34, p.intensity || 0.32, p.source || 'shot');
+        damageDestructible(target, targetPos, p.damage || 0.34, p.intensity || 0.32, p.source || 'shot');
         deactivateProjectile(p);
         break;
       }
@@ -10729,16 +10744,18 @@ function updateCombat(dt) {
     m.launchAge = (m.launchAge || 0) + dt;
     if (!m.engineLit && m.launchAge >= (m.ignitionDelay || 0.32)) {
       m.engineLit = true;
-      const igniteDir = m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward.clone().normalize() : _combatTmpB.copy(m.vel).normalize();
-      const igniteVel = igniteDir.clone().multiplyScalar(255).addScaledVector(plane.vel, 0.35);
-      m.vel.lerp(igniteVel, 0.86);
+      const igniteDir = m.launchForward && m.launchForward.lengthSq() > 0.01
+        ? _combatTmpA.copy(m.launchForward).normalize()
+        : _combatTmpB.copy(m.vel).normalize();
+      _combatTmpE.copy(igniteDir).multiplyScalar(255).addScaledVector(plane.vel, 0.35);
+      m.vel.lerp(_combatTmpE, 0.86);
       if (m.flare && m.flare.material) {
         m.flare.material.opacity = 1.0;
         m.flare.scale.setScalar(1.35);
       }
-      impactBlastPool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.2), 18, 1.32, 0.10, 0.52, 1.35);
-      explosionFirePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.15), 16, 1.85, 0.18, 0.62, 1.18);
-      explosionSmokePool.emitCluster(m.pos.clone().addScaledVector(igniteDir, -1.8), 20, 1.9, 0.22, 1.35, 1.55);
+      impactBlastPool.emitCluster(_combatTmpF.copy(m.pos).addScaledVector(igniteDir, -1.2), 18, 1.32, 0.10, 0.52, 1.35);
+      explosionFirePool.emitCluster(_combatTmpF.copy(m.pos).addScaledVector(igniteDir, -1.15), 16, 1.85, 0.18, 0.62, 1.18);
+      explosionSmokePool.emitCluster(_combatTmpF.copy(m.pos).addScaledVector(igniteDir, -1.8), 20, 1.9, 0.22, 1.35, 1.55);
       if (typeof playSfx === 'function') playSfx('mg-burst', { throttleMs: 70, maxMs: 220, volume: 1.0, rate: 1.58 });
     }
     const target = m.engineLit && m.target && m.target.destructible && m.target.destructible.alive ? m.target : null;
@@ -10749,7 +10766,9 @@ function updateCombat(dt) {
       const speed = Math.max(180, m.vel.length());
       m.vel.lerp(desired.multiplyScalar(285), Math.min(1, dt * (2.2 + (targetHudState.lockAmount || 0) * 2.2))).normalize().multiplyScalar(Math.max(speed, 245));
     } else if (m.engineLit) {
-      const dumbDir = m.launchForward && m.launchForward.lengthSq() > 0.01 ? m.launchForward.clone().normalize() : _combatTmpB.copy(m.vel).normalize();
+      const dumbDir = m.launchForward && m.launchForward.lengthSq() > 0.01
+        ? _combatTmpA.copy(m.launchForward).normalize()
+        : _combatTmpB.copy(m.vel).normalize();
       m.vel.lerp(dumbDir.multiplyScalar(Math.max(245, m.vel.length() + dt * 80)), Math.min(1, dt * 1.8));
     } else {
       m.vel.addScaledVector(m.dropDir || _combatTmpC.set(0, -1, 0), 28 * dt);
@@ -10767,16 +10786,16 @@ function updateCombat(dt) {
       m.smokeTimer -= dt;
       if (m.smokeTimer <= 0) {
         m.smokeTimer = 0.018;
-        const trailPos = m.pos.clone().addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.45);
-        explosionSmokePool.emitCluster(trailPos, 4, 1.28, 0.08, 0.98, 1.18);
-        if (Math.random() < 0.55) explosionFirePool.emitCluster(trailPos, 1, 0.72, 0.05, 0.18, 0.38);
+        _combatTmpE.copy(m.pos).addScaledVector(_combatTmpB.copy(m.vel).normalize(), -1.45);
+        explosionSmokePool.emitCluster(_combatTmpE, 4, 1.28, 0.08, 0.98, 1.18);
+        if (Math.random() < 0.55) explosionFirePool.emitCluster(_combatTmpE, 1, 0.72, 0.05, 0.18, 0.38);
       }
     }
     const groundH = (m.pos.x * m.pos.x + m.pos.z * m.pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(m.pos.x, m.pos.z);
     if (m.pos.y <= groundH + 0.2) {
-      const hitPos = m.pos.clone();
-      hitPos.y = groundH + 0.05;
-      spawnGroundImpactExplosion(hitPos, 1.35);
+      _combatTmpE.copy(m.pos);
+      _combatTmpE.y = groundH + 0.05;
+      spawnGroundImpactExplosion(_combatTmpE, 1.35);
       deactivateMissile(m);
       continue;
     }
@@ -10785,7 +10804,7 @@ function updateCombat(dt) {
       const targetPos = getTargetWorldPosition(targetObj, _combatTmpC);
       if (m.pos.distanceTo(targetPos) < targetObj.radius + 2.4) {
         combatState.missileHits += 1;
-        damageDestructible(targetObj, targetPos.clone(), 4.2, 1.55, 'missile');
+        damageDestructible(targetObj, targetPos, 4.2, 1.55, 'missile');
         deactivateMissile(m);
         break;
       }
@@ -11110,6 +11129,7 @@ function updateAtmospheric(dt) {
   if (window.__mountainPortalSpin) window.__mountainPortalSpin(dt);
 }
 
+// @module src/game/09b-clouds-sky.js
 // =============================================================
 //  VOLUMETRIC CLOUDS — dodecahedron puffs, low-poly stylised,
 //  world-space with wrap-around, biome-tinted
@@ -11724,6 +11744,7 @@ function updateLensFlare() {
   });
 }
 
+// @module src/game/09c-ambient.js
 // =============================================================
 //  DUST DEVILS — swirling sand columns, deterministic placement
 // =============================================================
@@ -11907,17 +11928,29 @@ function updateHeat(dt) {
   }
   heatPool.update(dt);
 }
+const _dustFwd = new THREE.Vector3();
+const _dustRight = new THREE.Vector3();
+const _dustDrift = new THREE.Vector3();
+const _dustPos = new THREE.Vector3();
+const _dustVel = new THREE.Vector3();
+
 function emitRunwayDustBurst(center, intensity = 1.0, lateral = 0) {
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
-  const drift = forward.clone().multiplyScalar(-0.4 - intensity * 1.1);
-  drift.x += lateral * 0.28;
-  drift.y = 0.45 + intensity * 0.35;
-  drift.z += (Math.random() - 0.5) * 0.35;
+  _dustFwd.set(0, 0, -1).applyQuaternion(plane.quat);
+  _dustDrift.copy(_dustFwd).multiplyScalar(-0.4 - intensity * 1.1);
+  _dustDrift.x += lateral * 0.28;
+  _dustDrift.y = 0.45 + intensity * 0.35;
+  _dustDrift.z += (Math.random() - 0.5) * 0.35;
   for (let i = 0; i < Math.max(2, Math.round(2 + intensity * 3)); i++) {
-    const pos = center.clone();
-    pos.x += (Math.random() - 0.5) * 0.9;
-    pos.z += (Math.random() - 0.5) * 0.9;
-    runwayPropWashPool.emit(pos, 0.7 + intensity * 0.35, 0.8 + intensity * 0.6, drift.clone().multiplyScalar(0.6 + Math.random() * 0.45));
+    _dustPos.copy(center);
+    _dustPos.x += (Math.random() - 0.5) * 0.9;
+    _dustPos.z += (Math.random() - 0.5) * 0.9;
+    // emit() copies vel/pos into the pool particle — scratch is safe.
+    runwayPropWashPool.emit(
+      _dustPos,
+      0.7 + intensity * 0.35,
+      0.8 + intensity * 0.6,
+      _dustVel.copy(_dustDrift).multiplyScalar(0.6 + Math.random() * 0.45),
+    );
   }
 }
 function updateRunwayPropWash(dt) {
@@ -11930,16 +11963,16 @@ function updateRunwayPropWash(dt) {
   propWashState.active = propWashState.mix > 0.08;
   if (propWashState.active && propWashState.timer > Math.max(0.03, 0.085 - propWashState.mix * 0.04)) {
     propWashState.timer = 0;
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quat);
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(plane.quat);
+    _dustRight.set(1, 0, 0).applyQuaternion(plane.quat);
+    _dustFwd.set(0, 0, -1).applyQuaternion(plane.quat);
     for (const side of [-1, 1]) {
-      const pos = plane.pos.clone()
-        .addScaledVector(right, side * 1.7)
-        .addScaledVector(forward, 1.1);
-      pos.y = (pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2)
+      _dustPos.copy(plane.pos)
+        .addScaledVector(_dustRight, side * 1.7)
+        .addScaledVector(_dustFwd, 1.1);
+      _dustPos.y = (_dustPos.x * _dustPos.x + _dustPos.z * _dustPos.z < AIRFIELD_FLAT_R2)
         ? AIRFIELD_SURFACE_Y + 0.12
-        : getHeight(pos.x, pos.z) + 0.12;
-      emitRunwayDustBurst(pos, 0.55 + propWashState.mix * 0.95, side);
+        : getHeight(_dustPos.x, _dustPos.z) + 0.12;
+      emitRunwayDustBurst(_dustPos, 0.55 + propWashState.mix * 0.95, side);
     }
   }
   runwayPropWashPool.update(dt);
@@ -12007,6 +12040,7 @@ function updateBirds(t) {
   }
 }
 
+// @module src/game/09d-audio.js
 // =============================================================
 //  SOUND — WebAudio + online CC0 prop-engine sample (engine, wind, warnings)
 // =============================================================
@@ -12686,6 +12720,7 @@ function maybeTriggerEngineStart() {
 // (near the jet creation) with `var` so the decal setup IIFE can assign
 // them before this block runs. Do not re-declare here.
 
+// @module src/game/10-physics.js
 // =============================================================
 //  PLANE STATE + PHYSICS
 // =============================================================
@@ -13142,6 +13177,8 @@ const _visHeroUp = new THREE.Vector3();
 const _visHeroRight = new THREE.Vector3();
 const _visLocalVel = new THREE.Vector3();
 const _visInvQ = new THREE.Quaternion();
+const _physWorldPos = new THREE.Vector3();
+const _physDustPos = new THREE.Vector3();
 
 function updatePhysics(dt) {
   if (plane.crashed) return;
@@ -13535,7 +13572,7 @@ function updatePhysics(dt) {
       audioThud(0.6 + severity * 0.35);
       const fatal = damagePlane(dmg, 'airframe', {
         reason: 'TERRAIN IMPACT',
-        worldPos: plane.pos.clone(),
+        worldPos: _physWorldPos.copy(plane.pos),
       });
       if (fatal) {
         plane.vel.set(0, 0, 0);
@@ -13554,7 +13591,7 @@ function updatePhysics(dt) {
       audioThud(0.55 + sev * 0.3);
       const fatal = damagePlane(dmg, 'airframe', {
         reason: 'BELLY LANDING',
-        worldPos: plane.pos.clone(),
+        worldPos: _physWorldPos.copy(plane.pos),
       });
       plane.pos.y = groundH + 0.4;
       if (fatal) {
@@ -13587,10 +13624,10 @@ function updatePhysics(dt) {
         const dmg = 0.25 + sev * 0.85;
         statusMsg.className = 'panel warn';
         audioThud(0.5 + sev * 0.35);
-        if (wasAirborne) emitRunwayDustBurst(plane.pos.clone().setY(groundH + 0.16), 1.15 + sev * 0.8);
+        if (wasAirborne) emitRunwayDustBurst(_physDustPos.copy(plane.pos).setY(groundH + 0.16), 1.15 + sev * 0.8);
         const fatal = damagePlane(dmg, 'airframe', {
           reason: 'HARD LANDING',
-          worldPos: plane.pos.clone(),
+          worldPos: _physWorldPos.copy(plane.pos),
         });
         if (fatal) {
           plane.vel.set(0, 0, 0);
@@ -13615,7 +13652,7 @@ function updatePhysics(dt) {
         if (wasAirborne && vertVel < -2) {
           audioThud(Math.min(0.6, Math.abs(vertVel) * 0.06));
         }
-        if (wasAirborne) emitRunwayDustBurst(plane.pos.clone().setY(groundH + 0.14), 0.55 + Math.max(0, -vertVel) * 0.08);
+        if (wasAirborne) emitRunwayDustBurst(_physDustPos.copy(plane.pos).setY(groundH + 0.14), 0.55 + Math.max(0, -vertVel) * 0.08);
         plane.vel.y = Math.max(0, plane.vel.y);
         plane.onGround = true;
         if (wasAirborne) {
@@ -13694,11 +13731,12 @@ function updatePhysics(dt) {
     console.warn('[physics] NaN detected at extreme attitude — resetting to safe state');
     plane.vel.set(0, 0, Math.max(0, plane.vel.length() * 0.5)); // preserve some forward speed
     plane.angVel.set(0, 0, 0);
-    plane.quat.setFromEuler(new THREE.Euler(0, Math.atan2(plane.pos.x, plane.pos.z), 0));
+    plane.quat.setFromEuler(_physEuler.set(0, Math.atan2(plane.pos.x, plane.pos.z), 0));
     plane.pos.y = Math.max(50, plane.pos.y); // pop up slightly to avoid ground intersection
   }
 }
 
+// @module src/game/11-jet-visual-cam.js
 // =============================================================
 //  JET VISUAL UPDATE — gear animation, afterburner
 // =============================================================
@@ -15411,6 +15449,7 @@ function updateCamera(dt) {
   camera.userData.cameraFocusYOffset = lookTarget.y - jet.position.y;
 }
 
+// @module src/game/12a-targeting.js
 // =============================================================
 //  HUD
 // =============================================================
@@ -16202,6 +16241,7 @@ function getAimAssistDirection(origin, baseDir, out = _hudWorldG) {
 }
 ensureTargetHudPool();
 resetReticleHud();
+// @module src/game/12b-mission.js
 function setFlightPhase(label, tone = '') {
   flightPhaseState.label = label;
   flightPhaseState.tone = tone || '';
@@ -16666,6 +16706,7 @@ let nhudFuel = 100;
 let nhudFps = 60;
 let gSmoothed = 1;
 let lastVel = new THREE.Vector3();
+// @module src/game/12c-hud-panels.js
 function updateFlightPhase(speedKts, aglFt, aoaDeg) {
   if (!running) {
     setFlightPhase('PREFLIGHT');
@@ -17584,6 +17625,7 @@ function updateHUD(dt = 1 / 60) {
   if (typeof updateWindHUD === 'function') updateWindHUD();
 }
 
+// @module src/game/13-main-loop.js
 // =============================================================
 //  MAIN LOOP
 // =============================================================
@@ -17599,6 +17641,10 @@ let running = false;
 const FIXED_PHYSICS_STEP = 1 / 120; // 120Hz physics update rate
 let physicsAccumulator = 0;
 let physicsAlpha = 1.0;
+// Frame counter for staggered secondary systems. PERF_BASELINE showed
+// animate() JS (~25–30ms) dominates; full-rate physics/render stay every
+// frame while cosmetic/low-priority systems run at 1/2 or 1/3 rate.
+let _frameIndex = 0;
 
 function updateLivePhysicsSmooth(dt) {
   // Cap dt to prevent the "spiral of death" if frame rate drops significantly
@@ -17623,6 +17669,9 @@ function animate(now) {
   lastTime = now;
   _dtEma = _dtEma > 0 ? _dtEma + (rawDt - _dtEma) * 0.25 : rawDt;
   const dt = Math.min(0.05, _dtEma);
+  _frameIndex = (_frameIndex + 1) | 0;
+  const oddFrame = (_frameIndex & 1) === 1;
+  const every3 = (_frameIndex % 3) === 0;
   updateTimeOfDay(dt);
   updateMultiplayer(dt);
   pollGamepadInput();
@@ -17660,19 +17709,28 @@ function animate(now) {
   updateAtmospheric(dt);
   updateShadow();
   updateSunShadowRig();
-  updateHeat(dt);
-  updateRunwayPropWash(dt);
-  updateBirds(now);
-  updateDustDevils(now, plane.pos.x, plane.pos.z);
+  // Secondary / cosmetic systems — half or third rate. dt is still the
+  // real frame delta so any internal exp-smoothing stays time-correct;
+  // systems that only sample `now` (birds/dust) simply move less often.
+  if (oddFrame) {
+    updateHeat(dt * 2);
+    updateRunwayPropWash(dt * 2);
+    updateBirds(now);
+    updateDustDevils(now, plane.pos.x, plane.pos.z);
+    updateGenerativeInstallations(dt * 2);
+  }
   updateTraffic(dt);
   updateFloatingTarget(dt);
   updatePracticeRingCourse(dt);
   updateWater(dt, plane.pos.x, plane.pos.z);
   updateAirfieldAmbient(dt);
-  updateGenerativeInstallations(dt);
   updateAudio(dt);
-  updateMissionDebrief(dt, plane.vel.length() * 1.94);
-  updateLandingCompleteFlow(plane.vel.length() * 1.94);
+  // Mission/UI flow can lag a frame without affecting feel
+  if (every3) {
+    const speedKts = plane.vel.length() * 1.94;
+    updateMissionDebrief(dt * 3, speedKts);
+    updateLandingCompleteFlow(speedKts);
+  }
   updateHUD(dt);
   updateCombat(dt);
   if (typeof updateGateScoring === 'function') updateGateScoring(dt);
@@ -17725,7 +17783,7 @@ updateMotionBlurPostFX();
 prewarmLightStatePrograms();
 try { renderer.compile(scene, camera); } catch (e) {}  // safety net for any state outside the prewarm enum
 renderScene();
-
+// @module src/game/14-ui-scoring.js
 // =============================================================
 //  START SCREEN
 // =============================================================
@@ -18912,6 +18970,7 @@ function resetGateScoring(respawn = false) {
   };
 })();
 
+// @module src/game/15-traffic-course.js
 // =============================================================
 //  TRAFFIC — other aircraft on fixed procedural paths
 // =============================================================
@@ -20254,6 +20313,7 @@ function updatePracticeRingCourse(dt) {
   }
 })();
 
+// @module src/game/16-gfx-panel-ap.js
 // =============================================================
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================

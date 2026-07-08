@@ -3,10 +3,26 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceName = 'flight-sim3.html';
 const sourcePath = path.join(root, sourceName);
+
+// Rebuild flight-sim3.html from src/game modules before packaging.
+function assembleGameSource() {
+  const assemblePath = path.join(root, 'tools', 'assemble-game.mjs');
+  const result = spawnSync(process.execPath, [assemblePath], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `assemble-game failed (exit ${result.status}):\n${result.stdout || ''}${result.stderr || ''}`,
+    );
+  }
+  if (result.stdout) process.stdout.write(result.stdout);
+}
 const distDir = path.join(root, 'dist');
 const outGamePath = path.join(distDir, 'game.html');
 const outIndexPath = path.join(distDir, 'index.html');
@@ -78,6 +94,7 @@ ${chunkList}
 }
 
 async function main() {
+  assembleGameSource();
   const source = await readFile(sourcePath, 'utf8');
   const sourceBuffer = Buffer.from(source, 'utf8');
   const sourceHash = sha256(sourceBuffer);

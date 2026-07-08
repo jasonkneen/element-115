@@ -16,7 +16,8 @@ A browser-based 3D flight simulator with realistic physics, multiple flyable pla
 ## Quick Start (Local)
 ```bash
 bun install
-bun run build          # produces dist/ with game.html + assets
+bun run assemble       # rebuild flight-sim3.html from src/game modules
+bun run build          # assemble + produce dist/ with game.html + assets
 bun run preview:dist   # serve the built game
 ```
 
@@ -32,11 +33,16 @@ Configured for Netlify (see `netlify.toml`):
 - Push to Netlify or any static host
 
 ## Project Structure
-- `flight-sim3.html` — main client (self-contained game)
-- `tools/build-game.mjs` — packaging/obfuscation step for release
+- `src/game/*.js` — **source of truth** for game logic (21 modules)
+- `src/shell/` — HTML/CSS shell around the game IIFE
+- `flight-sim3.html` — assembled client (`bun run assemble`)
+- `tools/assemble-game.mjs` — stitch modules → `flight-sim3.html`
+- `tools/build-game.mjs` — assemble + packaging for release
 - `tweaks-server.mjs` / `multiplayer-server.mjs` — optional backend
 - `models/` — GLB assets (small required ones committed)
 - `archive/` — historical versions and experiments
+
+See [src/README.md](src/README.md) for the module map and edit rules.
 
 ## Contributing
 See [CONTRIBUTING.md](CONTRIBUTING.md)

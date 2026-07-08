@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  assemble-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun install
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Assemble check (src/ → flight-sim3.html)
+        run: bun run assemble && bun run assemble:check
+
+      - name: Syntax-check assembled IIFE
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('flight-sim3.html').read_text()
+          start = html.find('(() => {')
+          end = html.rfind('})();') + 4
+          assert start >= 0 and end > start, 'IIFE not found'
+          Path('/tmp/flight-sim-check.js').write_text(html[start:end])
+          print('extracted', end - start, 'bytes')
+          PY
+          node --check /tmp/flight-sim-check.js
+
+      - name: Headless __sim smoke
+        run: bun run test:smoke
