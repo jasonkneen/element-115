@@ -102,14 +102,24 @@ function persistPlayerProfile() {
     localStorage.setItem(PLAYER_SPAWN_KEY, playerProfileState.spawnMode || DEFAULT_SPAWN_MODE);
   } catch {}
 }
+// Default airframe: procedural Element-115 jet fighter (file:'default').
+const DEFAULT_PROP_MODEL_KEY = 'e115';
 const PROP_MODEL_PRESETS = [
-  { key: 'e115', label: 'E-115 FIGHTER', name: 'Element-115 Fighter', hudLabel: 'E-115', type: 'Jet Fighter', badge: 'DEFAULT', file: 'default', procedural: true },
+  { key: 'e115', label: 'E-115 FIGHTER', name: 'Element-115 Fighter', hudLabel: 'E-115', type: 'Jet Fighter', badge: 'DEFAULT', file: 'default', procedural: true, jet: true },
+  // Jets (GLB). jet:true skips prop detection/synthesis, keeps afterburner FX + jet audio.
+  // Both F-15 GLBs are authored nose-along +X; ry:-90 maps nose to flight -Z
+  // (twin tails end up at +Z = aft, facing the chase cam). Re-center runs on load.
+  { key: 'f15', label: 'F-15 EAGLE', name: 'F-15 Eagle', hudLabel: 'F-15', type: 'Jet Fighter', badge: 'JET', file: 'models/f-15.glb', jet: true, ry: -90 },
+  { key: 'f15lp', label: 'F-15 STRIKE', name: 'F-15 Strike (low poly)', hudLabel: 'F-15 LP', type: 'Jet Fighter', badge: 'JET', file: 'models/low_poly_f-15.glb', jet: true, ry: -90 },
+  // low_poly_a-10 has a real landing-gear clip; the older "avion" GLB sits off-camera
+  // with the prior rx=90 / pz=-24 tweak and is kept only as a URL fallback.
+  { key: 'a10', label: 'A-10 WARTHOG', name: 'A-10 Thunderbolt II', hudLabel: 'A-10', type: 'Attack Jet', badge: 'JET', file: 'models/low_poly_a-10_warthog.glb', jet: true, ry: 0 },
+  // Props / warbirds (calibrated entries in plane-tweaks.json where available)
   { key: 'dusty', label: 'DUSTY TURBO', name: 'Dusty Turbo', hudLabel: 'DUSTY', type: 'Hero Prop', badge: 'READY', file: 'models/disney_planes_-_dusty_turbo.glb' },
   { key: 'stunt1', label: 'STUNT PLANE I', name: 'Stunt Plane I', hudLabel: 'STUNT I', type: 'Stunt Prop', badge: 'V1', file: 'models/stunt_plane.glb', variant: '1' },
   { key: 'stunt2', label: 'STUNT PLANE II', name: 'Stunt Plane II', hudLabel: 'STUNT II', type: 'Stunt Prop', badge: 'V2', file: 'models/stunt_plane.glb', variant: '2' },
   { key: 'stunt3', label: 'STUNT PLANE III', name: 'Stunt Plane III', hudLabel: 'STUNT III', type: 'Stunt Prop', badge: 'V3', file: 'models/stunt_plane.glb', variant: '3' },
   { key: 'stunt4', label: 'STUNT PLANE IV', name: 'Stunt Plane IV', hudLabel: 'STUNT IV', type: 'Stunt Prop', badge: 'V4', file: 'models/stunt_plane.glb', variant: '4' },
-  // Calibrated warbirds/props (existing entries in plane-tweaks.json)
   { key: 'corsair', label: 'F4U CORSAIR', name: 'F4U-1 Corsair', hudLabel: 'CORSAIR', type: 'Warbird', badge: 'WWII', file: 'models/corsair_f4u-1_airplane.glb' },
   { key: 'macchi', label: 'MACCHI C.202', name: 'Macchi C.202 Folgore', hudLabel: 'FOLGORE', type: 'Warbird', badge: 'WWII', file: 'models/italian_macchi_c.202_folgore.glb' },
   { key: 'yak9', label: 'YAK-9', name: 'Yakovlev Yak-9', hudLabel: 'YAK-9', type: 'Warbird', badge: 'WWII', file: 'models/yak-9.glb' },
@@ -117,12 +127,6 @@ const PROP_MODEL_PRESETS = [
   { key: 'ripslinger', label: 'RIPSLINGER', name: 'Ripslinger', hudLabel: 'RIP', type: 'Racing Prop', badge: 'RACE', file: 'models/ripslinger.glb' },
   { key: 'p100', label: 'P-100 AVENGER', name: 'P-100 Avenger', hudLabel: 'P-100', type: 'Sport Prop', badge: 'SPORT', file: 'models/p-100_avenger_-_free.glb' },
   { key: 'lowpolytrainer', label: 'LOW POLY TRAINER', name: 'Low Poly Trainer', hudLabel: 'TRAINER', type: 'Utility Prop', badge: 'TRAIN', file: 'models/low_poly_plane.glb' },
-  // Jets (auto-calibrated on load; "Low poly F-15" by SIpriv on Sketchfab, CC-BY).
-  // jet:true skips prop detection/synthesis, keeps afterburner FX + jet audio;
-  // ry flips models authored facing +Z into the game's -Z forward.
-  { key: 'f15', label: 'F-15 EAGLE', name: 'F-15 Eagle', hudLabel: 'F-15', type: 'Jet Fighter', badge: 'JET', file: 'models/f-15.glb', jet: true, ry: 0 },
-  { key: 'f15lp', label: 'F-15 STRIKE', name: 'F-15 Strike (low poly)', hudLabel: 'F-15 LP', type: 'Jet Fighter', badge: 'JET', file: 'models/low_poly_f-15.glb', jet: true, ry: 0 },
-  { key: 'a10', label: 'A-10 WARTHOG', name: 'A-10 Thunderbolt II', hudLabel: 'A-10', type: 'Attack Jet', badge: 'JET', file: 'models/a-10_thunderbolt_ii_warthog_plane__avion.glb', jet: true },
 ];
 const REMOVED_PROP_MODEL_FILES = new Set([
   'models/claude_scruggs.glb',
@@ -131,8 +135,11 @@ const REMOVED_PROP_MODEL_FILES = new Set([
 const PROP_MODEL_BY_KEY = new Map(PROP_MODEL_PRESETS.map(p => [p.key, p]));
 
 function getStoredPropModelKey() {
-  try { return localStorage.getItem('flight_prop_model_key') || PROP_MODEL_PRESETS[0].key; }
-  catch { return PROP_MODEL_PRESETS[0].key; }
+  try {
+    const stored = localStorage.getItem('flight_prop_model_key');
+    if (stored && PROP_MODEL_BY_KEY.has(stored)) return stored;
+  } catch {}
+  return DEFAULT_PROP_MODEL_KEY;
 }
 
 function findPropPresetByPlaneFile(file) {
@@ -166,7 +173,9 @@ function applyPropPresetToParams(params, preset) {
 function getActivePropPreset() {
   const explicitPreset = findPropPresetByParams(bootParams);
   if (explicitPreset) return explicitPreset;
-  return PROP_MODEL_BY_KEY.get(getStoredPropModelKey()) || PROP_MODEL_PRESETS[0];
+  return PROP_MODEL_BY_KEY.get(getStoredPropModelKey())
+    || PROP_MODEL_BY_KEY.get(DEFAULT_PROP_MODEL_KEY)
+    || PROP_MODEL_PRESETS[0];
 }
 
 function applyPropModelPreset(key) {

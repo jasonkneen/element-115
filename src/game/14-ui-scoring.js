@@ -104,11 +104,13 @@ function dismissIntro() {
   function buildHangar() {
     const grid = document.getElementById('hangar-grid');
     if (!grid) return;
+    grid.innerHTML = '';
     const active = getActivePropPreset();
     PROP_MODEL_PRESETS.forEach((preset) => {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'hangar-card' + (preset.key === active.key ? ' active' : '');
+      card.dataset.planeKey = preset.key;
       const img = document.createElement('img');
       img.loading = 'lazy';
       img.alt = preset.name || preset.label;
@@ -134,8 +136,10 @@ function dismissIntro() {
       card.appendChild(body);
       card.addEventListener('click', (e) => {
         e.stopPropagation();
+        e.preventDefault();
         if (preset.key === active.key) return;
         try { sessionStorage.setItem('e115-loading-name', preset.name || preset.label); } catch {}
+        try { localStorage.setItem('flight_prop_model_key', preset.key); } catch {}
         applyPropModelPreset(preset.key);
       });
       grid.appendChild(card);

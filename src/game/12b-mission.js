@@ -305,7 +305,7 @@ function syncPropModelPicker() {
     });
   }
   if (planePickerNote) {
-    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. Prop planes only — press M in flight or use Options [P] to switch.`;
+    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. All hangar planes selectable — press M in flight or use Options [P] / Planes menu to switch.`;
   }
 }
 if (mpCallsignInput) {

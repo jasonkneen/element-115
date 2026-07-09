@@ -161,66 +161,24 @@ const audio = {
   propTextureBlend: 0,
 };
 
-// Crash-replay theme — `final.mp3` triggered when the replay reaches
-// the crash moment, plays through (no loop) until the user stops the
-// replay, resets the plane, or otherwise restarts. Routed through
-// audio.master when possible so the master mute toggle still works.
+// Crash-replay theme — intentionally disabled (was `final.mp3` on impact).
+// Keep the stub so call sites in the replay path stay safe no-ops.
 const crashFinalMusic = {
   el: null,
   source: null,
   routed: false,
   triggered: false,
-  unavailable: false,
+  unavailable: true,
   warnedUnavailable: false,
-  warnUnavailable(reason) {
-    this.unavailable = true;
-    if (this.warnedUnavailable) return;
-    this.warnedUnavailable = true;
-    console.warn('[finalMusic] unavailable:', reason && reason.message || reason || 'final.mp3 failed to load');
-  },
-  ensure() {
-    if (this.el) return this.el;
-    const el = new Audio('final.mp3');
-    el.preload = 'auto';
-    el.loop = false;
-    el.addEventListener('error', () => this.warnUnavailable('final.mp3 failed to load'));
-    this.el = el;
-    return el;
-  },
-  routeThroughMaster() {
-    if (this.routed || !this.el || !audio.ctx || !audio.master) return;
-    try {
-      this.source = audio.ctx.createMediaElementSource(this.el);
-      this.source.connect(audio.master);
-      this.routed = true;
-    } catch (err) {
-      // Already routed (some browsers throw on second source creation),
-      // or routing unsupported — fall back to default device output.
-      console.warn('[finalMusic] route failed:', err && err.message || err);
-    }
-  },
+  warnUnavailable() {},
+  ensure() { return null; },
+  routeThroughMaster() {},
   play() {
-    if (this.triggered || this.unavailable) return;
+    // No crash music — user preference. Replay still runs silently.
     this.triggered = true;
-    const el = this.ensure();
-    if (audio.ctx && audio.ctx.state === 'suspended') {
-      try { audio.ctx.resume(); } catch {}
-    }
-    this.routeThroughMaster();
-    try {
-      el.currentTime = 0;
-      const p = el.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(err => this.warnUnavailable(err));
-      }
-    } catch (err) {
-      this.warnUnavailable(err);
-    }
   },
   stop() {
     this.triggered = false;
-    if (!this.el) return;
-    try { this.el.pause(); this.el.currentTime = 0; } catch {}
   },
 };
 

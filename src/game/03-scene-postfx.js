@@ -385,7 +385,8 @@ function initPostFX() {
     if (typeof THREE.UnrealBloomPass === 'function' && typeof THREE.Vector2 === 'function') {
       // Half-res input: the bloom mip chain is bandwidth-bound and visually
       // indistinguishable at half size for the soft strengths used here.
-      postFX.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.45, 0.28, 0.86);
+      // strength/radius/threshold: soft defaults; gfx panel overwrites on boot
+      postFX.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 0.12, 0.24, 0.90);
       postFX.bloomPass.enabled = false;
       postFX.composer.addPass(postFX.bloomPass);
     }

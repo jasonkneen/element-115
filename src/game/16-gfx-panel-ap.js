@@ -3,15 +3,16 @@
 //  GRAPHICS PANEL (F17/F18/F19) — live-toggleable render settings
 // =============================================================
 (function setupGraphicsPanel() {
-  const LEGACY_LS_KEYS = ['gfx-settings-v2', 'gfx-settings-v3', 'gfx-settings-v4', 'gfx-settings-v5'];
-  const LS_KEY = 'gfx-settings-v6';
+  const LEGACY_LS_KEYS = ['gfx-settings-v2', 'gfx-settings-v3', 'gfx-settings-v4', 'gfx-settings-v5', 'gfx-settings-v6'];
+  const LS_KEY = 'gfx-settings-v7';
   // Defaults track the ultra preset for visual quality, but with bloom and
   // motion-blur dialed down — full ultra blew them out by default.
   const DEFAULTS = {
     fxaa: true, shadowsOn: true, shadowQuality: 'high', shadowDistance: 320,
     // dof defaults OFF: r128 BokehPass re-renders the whole scene for its depth
     // pass (~2x geometry cost per frame) for a barely-visible blur at our apertures.
-    dof: false, bloom: true, bloomStrength: 0.25, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
+    // Bloom starts soft so airfield lights/sky don't wash out on first load.
+    dof: false, bloom: true, bloomStrength: 0.12, fog: true, cloudDensity: 0.95, cloudStyle: 'soft', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true, particleScale: 1.2, floraDensity: 1.15, floraCullDistance: 450, ambientFxDensity: 1.12,
     waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true,
     practiceRingPreset: 'training', practiceRingEnabled: true, practiceRingCount: 8, practiceRingScale: 1.0, practiceRingGlow: 1.0, practiceRingColor: 'cyan', practiceRingDensity: 1.0, practiceRingOpacity: 1.0, practiceRingBob: 0.85, practiceRingSpin: 0.9,
     flightProfile: 'trainer',
@@ -22,10 +23,10 @@
     fps: false, renderScale: 1.0, resolutionScale: 1.0, adaptiveRes: true, renderDistance: 1.0, motionBlur: false, motionBlurAmount: 0.30,
   };
   const PRESETS = {
-    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.16, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
-    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.32, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.85, resolutionScale: 0.95, motionBlur: false, motionBlurAmount: 0.30, renderDistance: 1.0 },
-    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.44, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: false, motionBlurAmount: 0.40, renderDistance: 1.3 },
-    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.58, fog: true, cloudDensity: 0.95, cloudStyle: 'fluffy', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: false, motionBlurAmount: 0.50, renderDistance: 1.6 },
+    low:    { fxaa: false, shadowsOn: false, shadowQuality: 'low',  shadowDistance: 140, dof: false, bloom: false, bloomStrength: 0.10, fog: true, cloudDensity: 0.16, cloudStyle: 'chunky', terrainFade: 0.34, nightLift: 0.12, atmosphereDepth: 0.78, airframeFill: 0.52, replayHeroLight: false, particleScale: 0.30, floraDensity: 0.30, floraCullDistance: 250, ambientFxDensity: 0.22, waterReflectivity: 1.28, waterFresnel: 1.10, waterGlint: 1.08, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.60, resolutionScale: 0.78, motionBlur: false, motionBlurAmount: 0.52, renderDistance: 0.7 },
+    medium: { fxaa: true,  shadowsOn: true,  shadowQuality: 'med',  shadowDistance: 210, dof: false, bloom: true,  bloomStrength: 0.16, fog: true, cloudDensity: 0.52, cloudStyle: 'chunky', terrainFade: 0.46, nightLift: 0.22, atmosphereDepth: 0.88, airframeFill: 0.42, replayHeroLight: true,  particleScale: 0.82, floraDensity: 0.75, floraCullDistance: 350, ambientFxDensity: 0.65, waterReflectivity: 1.34, waterFresnel: 1.16, waterGlint: 1.18, waterOpacity: 0.92, enhancedWater: false, renderScale: 0.85, resolutionScale: 0.95, motionBlur: false, motionBlurAmount: 0.30, renderDistance: 1.0 },
+    high:   { fxaa: true,  shadowsOn: true,  shadowQuality: 'high', shadowDistance: 260, dof: false, bloom: true,  bloomStrength: 0.22, fog: true, cloudDensity: 0.78, cloudStyle: 'soft',   terrainFade: 0.66, nightLift: 0.38, atmosphereDepth: 1.0, airframeFill: 0.58, replayHeroLight: true,  particleScale: 1.0,  floraDensity: 1.0,  floraCullDistance: 450, ambientFxDensity: 1.0, waterReflectivity: 1.42, waterFresnel: 1.22, waterGlint: 1.28, waterOpacity: 0.93, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.0, motionBlur: false, motionBlurAmount: 0.40, renderDistance: 1.3 },
+    ultra:  { fxaa: true,  shadowsOn: true,  shadowQuality: 'ultra', shadowDistance: 320, dof: false, bloom: true,  bloomStrength: 0.28, fog: true, cloudDensity: 0.95, cloudStyle: 'fluffy', terrainFade: 0.84, nightLift: 0.55, atmosphereDepth: 1.14, airframeFill: 0.75, replayHeroLight: true,  particleScale: 1.2,  floraDensity: 1.15, floraCullDistance: 600, ambientFxDensity: 1.12, waterReflectivity: 1.56, waterFresnel: 1.30, waterGlint: 1.42, waterOpacity: 0.94, enhancedWater: true, renderScale: 1.0,  resolutionScale: 1.18, motionBlur: false, motionBlurAmount: 0.50, renderDistance: 1.6 },
   };
 
   const gfx = Object.assign({}, DEFAULTS);
@@ -58,6 +59,11 @@
     gfx.motionBlur = false;
     if (gfx.motionBlurAmount == null || gfx.motionBlurAmount > 0.5) gfx.motionBlurAmount = 0.30;
     gfx.__mbShakeMigration = 1;
+  }
+  // Soften stock bloom so first-load / preset picks don't blow out the sky.
+  if (gfx.__bloomSoftMigration == null) {
+    if (gfx.bloomStrength == null || gfx.bloomStrength > 0.18) gfx.bloomStrength = DEFAULTS.bloomStrength;
+    gfx.__bloomSoftMigration = 1;
   }
   if (gfx.motionBlurAmount == null) {
     gfx.motionBlur = true;
@@ -249,6 +255,7 @@
   };
   const recommendedFlightProfileForPlane = (preset) => {
     if (!preset) return 'trainer';
+    if (preset.jet || (preset.type || '').includes('Jet') || (preset.type || '').includes('Attack')) return 'racer';
     if ((preset.type || '').includes('Stunt') || /^stunt/.test(preset.key)) return 'stunt';
     if ((preset.type || '').includes('Utility') || preset.key === 'bush') return 'bush';
     if ((preset.type || '').includes('Racing') || ['scruggs', 'ripslinger'].includes(preset.key)) return 'racer';
@@ -654,7 +661,7 @@
     panel.appendChild(presetRow);
 
     panel.appendChild(el('div', { style: headerStyle }, 'AIRFRAME'));
-    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'Prop planes only. Click a card to load it, or press M in flight to cycle.'));
+    panel.appendChild(el('div', { style: 'font-size:9px;opacity:0.58;margin:-2px 0 8px;line-height:1.45;' }, 'All airframes. Click a card to load it, or press M in flight to cycle.'));
     const activePreset = getActivePropPreset();
     const planeGrid = el('div', { class: 'orientation-grid airframe-grid', style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px;' });
     PROP_MODEL_PRESETS.forEach((preset) => {

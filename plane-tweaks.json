@@ -90,12 +90,28 @@
     "pz": -12.6
   },
   "models/a-10_thunderbolt_ii_warthog_plane__avion.glb": {
-    "s": 0.4272,
+    "s": 0.5,
     "rx": 0,
     "ry": 180,
+    "rz": 0
+  },
+  "models/low_poly_a-10_warthog.glb": {
+    "s": 0.674,
+    "rx": 0,
+    "ry": 0,
     "rz": 0,
     "px": 0,
-    "py": -4.21,
-    "pz": -24.0
+    "py": -1.0,
+    "pz": -2.2
+  },
+  "models/f-15.glb": {
+    "rx": 0,
+    "ry": -90,
+    "rz": 0
+  },
+  "models/low_poly_f-15.glb": {
+    "rx": 0,
+    "ry": -90,
+    "rz": 0
   }
 }

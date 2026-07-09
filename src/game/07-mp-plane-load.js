@@ -667,7 +667,27 @@ function updateMultiplayer(dt) {
   }
   if (!planeFile || planeFile === 'default') return;
 
+  // Snapshot user-authored URL/hash tweaks BEFORE hangar-preset fill-ins.
+  // Preset keys (e.g. a10 rx:90, f15 ry:0) must NOT block plane-tweaks.json —
+  // that was breaking calibrated scale/position for half the roster.
+  const userUrlTweakKeys = new Set(
+    ['s', 'rx', 'ry', 'rz', 'dx', 'dy', 'dz', 'px', 'py', 'pz'].filter((k) => params.has(k))
+  );
+
+  // Prefer the hangar preset (if this file maps to one) so jet flag + orientation
+  // from PROP_MODEL_PRESETS always apply even when the URL is sparse.
+  const matchedPreset = findPropPresetByParams(params) || findPropPresetByPlaneFile(planeFile);
+  if (matchedPreset) {
+    if (matchedPreset.jet && params.get('jet') !== '1') params.set('jet', '1');
+    if (matchedPreset.variant != null && !params.has('variant')) params.set('variant', String(matchedPreset.variant));
+    for (const k of ['s', 'rx', 'ry', 'rz', 'dy']) {
+      if (matchedPreset[k] != null && !params.has(k)) params.set(k, String(matchedPreset[k]));
+    }
+  }
+
   // URL params for tweaking: #plane=X&s=<scale>&rx=&ry=&rz=&dy=
+  // (may include hangar-preset fill-ins; plane-tweaks.json still wins later unless
+  // the user explicitly put the key in the URL).
   const userScale = parseFloat(params.get('s'));
   const rx = (parseFloat(params.get('rx')) || 0) * Math.PI / 180;
   // Most models face +Z (sim forward is -Z) so the DEFAULT is a 180 flip —
@@ -755,9 +775,19 @@ function updateMultiplayer(dt) {
       const s = (isFinite(userScale) && userScale > 0) ? userScale : auto;
 
       model.scale.setScalar(s);
-      // Centre on jet origin; drop belly to y=0 in local space so gear still touches
-      model.position.set(-center.x * s, -center.y * s + dy, -center.z * s);
+      model.position.set(0, 0, 0);
       model.rotation.set(rx, ry, rz);
+      // Re-center AFTER rotation. Centering pre-rotation leaves models that
+      // need ry±90 (F-15 LP, etc.) several metres off the jet origin — the
+      // chase cam frames jet.position, so the mesh looks uncentered / "wrong".
+      model.updateMatrixWorld(true);
+      {
+        const postBox = new THREE.Box3().setFromObject(model);
+        const postCenter = new THREE.Vector3();
+        postBox.getCenter(postCenter);
+        model.position.set(-postCenter.x, -postCenter.y + dy, -postCenter.z);
+      }
+      model.updateMatrixWorld(true);
 
       // Compute the model's bounds in the frame it is ABOUT to live in
       // (jet-local), BEFORE attaching to jet. If we ran setFromObject
@@ -766,7 +796,6 @@ function updateMultiplayer(dt) {
       // time this async callback fires), pushing the procedural prop
       // tens of metres off the nose and out of frame. See bug: "prop
       // spins in telemetry but is invisible on screen".
-      model.updateMatrixWorld(true);
       const modelBoxLocal = new THREE.Box3().setFromObject(model);
 
       // The stunt variants share the real stunt-plane mesh and swap between
@@ -836,67 +865,132 @@ function updateMultiplayer(dt) {
       // extra pass compiles only the GLB's few distinct programs.
       prewarmLightStatePrograms();
 
-      // Swapped-in GLB planes are visual models only — their rigs have no
-      // retractable-gear animation. Treat them as fixed-gear: gear stays
-      // at 1 forever, G-key toggles are ignored (see updatePhysics + key
-      // handler). This prevents the gear-up crash path from firing when
-      // the pilot lands with gear still "down".
+      // Swapped-in GLB planes default to fixed-gear. If we find a real
+      // retract animation (F-15 clips) or named wheel nodes, wire glbGear so
+      // G toggles a visual retract. Physics gear stays fixed unless the
+      // airframe is a jet with a clip (true retractable undercarriage).
       plane.fixedGear = true;
       plane.gear = 1;
       plane.gearTarget = 1;
-
-      // ——— GLB retractable-gear detection (visual-only track, F18) ———
-      // Four Sketchfab prop models ship named wheel/strut nodes. Wire them to
-      // the G key as a cosmetic retract animation. plane.fixedGear STAYS true
-      // so gear physics (drag / landing safety / crash path) is unchanged — the
-      // only new state is plane.glbGear. Models with no matching nodes leave
-      // glbGear null and behave exactly as fixed-gear did before.
       plane.glbGear = null;
+
+      // ——— GLB retractable-gear: animation clips first (F-15 "F15 ldg" / "flight_mode") ———
+      // These models have no "wheel" node names — gear is bone-driven via GLTF clips.
       try {
-        const gearNameRx = /gear|wheel|tyre|tire|strut|undercarriage|lg_|oleo/i;
-        const paintChildRx = /_paint_0$|_plane_0$/i;   // skip texture-only child nodes
-        const rawGear = [];
-        model.traverse(o => {
-          if (!o || o === model) return;
-          const nm = o.name || '';
-          if (gearNameRx.test(nm) && !paintChildRx.test(nm)) rawGear.push(o);
-        });
-        const gearSet = new Set(rawGear);
-        // Prefer the top-most matched transform node (drop matched descendants).
-        const topGear = rawGear.filter(o => {
-          let p = o.parent;
-          while (p && p !== model) { if (gearSet.has(p)) return false; p = p.parent; }
-          return true;
-        });
-        if (topGear.length) {
-          jet.updateMatrixWorld(true);
-          const pScale = new THREE.Vector3();
-          const nodes = topGear.map(node => {
-            const box = new THREE.Box3().setFromObject(node);   // world-space AABB
-            const h = box.isEmpty() ? 0.5 : (box.max.y - box.min.y);
-            if (node.parent) node.parent.getWorldScale(pScale); else pScale.set(1, 1, 1);
-            // Spin only true wheels (not housings/struts) on ground roll.
-            const spin = /wheel|tyre|tire/i.test(node.name || '')
-              && !/box|strut|oleo|undercarriage/i.test(node.name || '');
-            return {
-              node,
-              baseY: node.position.y,
-              baseScaleY: node.scale.y,
-              tuck: (h * 1.2) / (pScale.y || 1),   // retract lift in node-local units
-              spin,
-              radius: Math.max(0.15, h * 0.5),     // world-unit wheel radius for spin
-            };
-          });
-          plane.glbGear = { nodes, deployed: true, anim: 1 };
-          console.log(`[plane-swap] GLB gear: ${nodes.length} node(s) [${topGear.map(n => n.name).join(', ')}], `
-            + `${nodes.filter(n => n.spin).length} spinning`);
+        const clips = (gltf.animations && gltf.animations.length) ? gltf.animations : [];
+        const gearClip = clips.find((c) => /ldg|gear|landing|undercarriage|flight[_\s-]?mode/i.test(c.name || ''))
+          || (clips.length === 1 ? clips[0] : null);
+        if (gearClip && typeof THREE.AnimationMixer === 'function') {
+          const mixer = new THREE.AnimationMixer(model);
+          const action = mixer.clipAction(gearClip);
+          action.enabled = true;
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+          action.play();
+          action.paused = true;
+          const duration = Math.max(0.05, gearClip.duration || 1);
+
+          // Decide which end of the clip is gear-DOWN: sample mid gear-bone Y
+          // at t=0 vs t=duration — lower mean world Y = wheels extended.
+          const sampleGearY = (t) => {
+            action.time = Math.max(0, Math.min(duration, t));
+            mixer.update(0);
+            model.updateMatrixWorld(true);
+            let sum = 0, n = 0;
+            model.traverse((o) => {
+              if (!o || !o.isMesh) return;
+              // Prefer bones known to move in the F-15 ldg clip, else any mesh
+              // under a bone* parent near the belly half of the model.
+              const nm = (o.name || '') + ' ' + ((o.parent && o.parent.name) || '');
+              if (!/bone23|bone26|bone31|bone32|bone33|bone34|wheel|gear|ldg|cylinder_1[012]|cylinder_2[4-8]/i.test(nm)) return;
+              const box = new THREE.Box3().setFromObject(o);
+              if (box.isEmpty()) return;
+              sum += (box.min.y + box.max.y) * 0.5;
+              n++;
+            });
+            return n ? sum / n : 0;
+          };
+          const y0 = sampleGearY(0);
+          const y1 = sampleGearY(duration);
+          // invert=false → time 0 = DOWN (anim 1), time duration = UP (anim 0)
+          const invert = y0 > y1 + 0.02; // t=0 higher ⇒ t=0 is retracted
+          action.time = invert ? duration : 0;
+          mixer.update(0);
+
+          plane.glbGear = {
+            mode: 'clip',
+            mixer,
+            action,
+            duration,
+            invert: !!invert,
+            deployed: true,
+            anim: 1,
+            nodes: [],
+          };
+          // Jets with a real gear clip: couple into physics gear (drag / gear-up landings).
+          if (matchedPreset && matchedPreset.jet) {
+            plane.fixedGear = false;
+            plane.gear = 1;
+            plane.gearTarget = 1;
+          }
+          jet.userData.glbAnimMixer = mixer;
+          console.log(`[plane-swap] GLB gear CLIP "${gearClip.name}" ${duration.toFixed(2)}s invert=${!!invert} y0=${y0.toFixed(2)} y1=${y1.toFixed(2)}`);
         }
-      } catch (e) { plane.glbGear = null; }
+      } catch (e) {
+        console.warn('[plane-swap] gear clip setup failed', e && e.message || e);
+        plane.glbGear = null;
+      }
+
+      // ——— Named wheel/strut nodes (stunt / tucano / p100 / trainer) ———
+      // Cosmetic retract: translate+squash. plane.fixedGear stays true so
+      // gear-up crash path does not fire on prop planes with decorative wheels.
+      if (!plane.glbGear) {
+        try {
+          const gearNameRx = /gear|wheel|tyre|tire|strut|undercarriage|lg_|oleo/i;
+          const paintChildRx = /_paint_0$|_plane_0$/i;   // skip texture-only child nodes
+          const rawGear = [];
+          model.traverse(o => {
+            if (!o || o === model) return;
+            const nm = o.name || '';
+            if (gearNameRx.test(nm) && !paintChildRx.test(nm)) rawGear.push(o);
+          });
+          const gearSet = new Set(rawGear);
+          // Prefer the top-most matched transform node (drop matched descendants).
+          const topGear = rawGear.filter(o => {
+            let p = o.parent;
+            while (p && p !== model) { if (gearSet.has(p)) return false; p = p.parent; }
+            return true;
+          });
+          if (topGear.length) {
+            jet.updateMatrixWorld(true);
+            const pScale = new THREE.Vector3();
+            const nodes = topGear.map(node => {
+              const box = new THREE.Box3().setFromObject(node);   // world-space AABB
+              const h = box.isEmpty() ? 0.5 : (box.max.y - box.min.y);
+              if (node.parent) node.parent.getWorldScale(pScale); else pScale.set(1, 1, 1);
+              // Spin only true wheels (not housings/struts) on ground roll.
+              const spin = /wheel|tyre|tire/i.test(node.name || '')
+                && !/box|strut|oleo|undercarriage/i.test(node.name || '');
+              return {
+                node,
+                baseY: node.position.y,
+                baseScaleY: node.scale.y,
+                tuck: (h * 1.2) / (pScale.y || 1),   // retract lift in node-local units
+                spin,
+                radius: Math.max(0.15, h * 0.5),     // world-unit wheel radius for spin
+              };
+            });
+            plane.glbGear = { mode: 'nodes', nodes, deployed: true, anim: 1 };
+            console.log(`[plane-swap] GLB gear: ${nodes.length} node(s) [${topGear.map(n => n.name).join(', ')}], `
+              + `${nodes.filter(n => n.spin).length} spinning`);
+          }
+        } catch (e) { plane.glbGear = null; }
+      }
 
       // Keep the HUD gear chip visible. Retractable GLB gear starts DOWN and is
       // driven per-frame in updateHUD (P8); fixed-gear models stay FIXED.
       const ch2 = document.getElementById('ch-line2');
-      if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · P OPTIONS · R RESET';
+      if (ch2) ch2.textContent = 'SHIFT/CTRL THROTTLE · SPACE GUNS · C TARGET · X MSL · M MODEL · P OPTIONS · R RESET · G GEAR';
       const gearRow = document.getElementById('gear');
       if (gearRow) {
         gearRow.textContent = plane.glbGear ? 'DOWN' : 'FIXED';
@@ -908,7 +1002,7 @@ function updateMultiplayer(dt) {
       // The procedural afterburner + engine contrail + heat-haze only make
       // sense for fighters. GLB presets flagged jet:true (F-15, A-10) keep
       // them and get jet engine audio instead of the prop sample loop.
-      const jetSwap = params.get('jet') === '1';
+      const jetSwap = params.get('jet') === '1' || !!(matchedPreset && matchedPreset.jet);
       if (!jetSwap) {
         if (jet.userData.afterburner) jet.userData.afterburner.visible = false;
         if (jet.userData.ab2)         jet.userData.ab2.visible = false;
@@ -918,6 +1012,7 @@ function updateMultiplayer(dt) {
       }
 
       // ——— Find propeller meshes to spin ———
+      // Jets skip the entire prop pipeline (named / extracted / procedural).
       const propNames = /prop(eller)?|blade|spinner|rotor|fan/i;
       const props = [];
       const rawProps = [];
@@ -925,6 +1020,10 @@ function updateMultiplayer(dt) {
       // checks (P3) rejected it as a mis-detection. Suppresses the procedural
       // spinner fallback so we prefer NO prop over a visibly wrong one.
       let extractionRejected = false;
+      if (jetSwap) {
+        plane.props = [];
+        console.log('[plane-swap] jet airframe — skipped prop detection');
+      } else {
       const addPropDiscToPivot = (pivot, sweepR) => {
         if (!(sweepR > 0.12)) return;
         const discGeo = new THREE.CircleGeometry(sweepR * 1.02, 40);
@@ -1156,11 +1255,16 @@ function updateMultiplayer(dt) {
           const noseZ    = best.endSign < 0 ? modelBoxLocal.min.z : modelBoxLocal.max.z;
           const nearNose = Math.abs(best.hub.z - noseZ) <= spanZ * 0.15;
           const axisOK   = Math.abs(best.hub.x) <= 0.6;
-          if (!perpOK || !nearNose || !axisOK) {
-            console.log(`[plane-swap] prop-extraction REJECTED perp=${perpOK} nearNose=${nearNose} axis=${axisOK} `
-              + `(cz=${cz.toFixed(2)} cxy=${cxy.toFixed(2)} hubX=${best.hub.x.toFixed(2)} hubZ=${best.hub.z.toFixed(2)}) — static, no wrong spin`);
+          // Real props are a few hundred–few thousand tris. 10k+ usually means
+          // we carved a wing/fuselage slab (corsair aft = 40k was a classic fail).
+          // Size-only fails still allow the procedural spinner fallback; geometric
+          // fails set extractionRejected so we prefer static over a wrong spin.
+          const sizeOK   = best.tri <= 8000 && best.tightness < 0.55;
+          if (!perpOK || !nearNose || !axisOK || !sizeOK) {
+            console.log(`[plane-swap] prop-extraction REJECTED perp=${perpOK} nearNose=${nearNose} axis=${axisOK} size=${sizeOK} `
+              + `(cz=${cz.toFixed(2)} cxy=${cxy.toFixed(2)} hubX=${best.hub.x.toFixed(2)} hubZ=${best.hub.z.toFixed(2)} tri=${best.tri} tight=${best.tightness.toFixed(3)}) — static, no wrong spin`);
             best = null;
-            extractionRejected = true;
+            if (!perpOK || !nearNose || !axisOK) extractionRejected = true;
           } else {
             // (1) Recenter the spin axis: snap X to the fuselage line and Y
             // onto the nose-third centreline. Applied to best.hub BEFORE the
@@ -1366,18 +1470,10 @@ function updateMultiplayer(dt) {
           : (p.name || 'named')).join(', ');
         console.log(`[plane-swap] ${props.length} prop mesh(es): ${tagged}`);
       }
+      } // end !jetSwap prop pipeline
 
-      // Jets never spin props: drop any synthesized spinner outright and
-      // leave misdetected real geometry static (removing it could delete an
-      // actual jet part — nozzle, wheel — that the detector mistook for a prop).
-      if (jetSwap) {
-        for (const p of props) {
-          if (p.userData.__isProceduralProp) jet.remove(p);
-        }
-        props.length = 0;
-      }
-      // CRITICAL: always assign props to plane object so telemetry shows prop_count>0
-      plane.props = props;
+      // CRITICAL: always assign props to plane object so telemetry shows prop_count
+      if (!jetSwap) plane.props = props;
 
       function computeModelBoxInJetLocal() {
         jet.updateMatrixWorld(true);
@@ -1527,8 +1623,22 @@ function updateMultiplayer(dt) {
       const hostIsLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
       const isBuiltStaticGame = /(?:^|\/)game\.html$/i.test(location.pathname);
       const tweakReadEndpoint = (hostIsLocal && !isBuiltStaticGame) ? '/api/tweaks' : 'plane-tweaks.json';
-      const hadUrlTweaks = ['s','rx','ry','rz','dx','dy','dz']
-        .some(k => params.has(k));
+
+      // Shift model so its AABB centre sits on the jet origin (optional py lift).
+      // Call after any scale/rotation change. Explicit px/py/pz tweaks are applied
+      // AFTER this so calibrated offsets still work.
+      const recenterModelOnJet = (extraPy = 0) => {
+        model.updateMatrixWorld(true);
+        jet.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(model);
+        if (b.isEmpty()) return;
+        const cWorld = b.getCenter(new THREE.Vector3());
+        const cLocal = jet.worldToLocal(cWorld.clone());
+        model.position.x -= cLocal.x;
+        model.position.y -= cLocal.y;
+        model.position.z -= cLocal.z;
+        if (extraPy) model.position.y += extraPy;
+      };
 
       const applyTweak = (t) => {
         if (!t || typeof t !== 'object') return;
@@ -1543,9 +1653,25 @@ function updateMultiplayer(dt) {
             (Number(t.rz) || 0) * Math.PI / 180
           );
         }
-        if (Number.isFinite(t.px)) model.position.x = t.px;
-        if (Number.isFinite(t.py)) model.position.y = t.py;
-        if (Number.isFinite(t.pz)) model.position.z = t.pz;
+        // Re-center on the jet origin after scale/rotation unless the tweak
+        // file supplies an explicit absolute position (calibrated props).
+        const hasPos = Number.isFinite(t.px) || Number.isFinite(t.py) || Number.isFinite(t.pz);
+        if (hasPos) {
+          if (Number.isFinite(t.px)) model.position.x = t.px;
+          if (Number.isFinite(t.py)) model.position.y = t.py;
+          if (Number.isFinite(t.pz)) model.position.z = t.pz;
+        } else {
+          recenterModelOnJet(0);
+        }
+        // Re-capture node-gear rest poses after orientation/scale changes so
+        // retract still tucks relative to the final pose.
+        if (plane.glbGear && plane.glbGear.mode === 'nodes' && plane.glbGear.nodes) {
+          for (const rec of plane.glbGear.nodes) {
+            if (!rec || !rec.node) continue;
+            rec.baseY = rec.node.position.y;
+            rec.baseScaleY = rec.node.scale.y;
+          }
+        }
         if (typeof jet.userData.__refreshSwappedAnchors === 'function') jet.userData.__refreshSwappedAnchors();
       };
 
@@ -1559,16 +1685,64 @@ function updateMultiplayer(dt) {
         pz: +model.position.z.toFixed(3),
       });
 
-      // Fetch saved tweak (if any); apply only when URL hash is clean.
-      // Legacy tweaks were keyed by bare filename; current keys include
-      // the 'models/' prefix. Accept either form so old saves still apply.
+      // Merge order:
+      //   1) plane-tweaks.json calibrated baseline (always, when present)
+      //   2) hangar-preset fill-ins only for keys not in the tweak file
+      //   3) explicit user URL/hash keys always win
+      // Previously any preset-injected ry/rx blocked the whole tweak file and
+      // left A-10 / F-15 / etc. at auto-scale facing the wrong way.
       fetch(tweakReadEndpoint, { cache: 'no-cache' })
         .then(r => r.ok ? r.json() : {})
         .then(all => {
-          if (!all || typeof all !== 'object') return;
+          if (!all || typeof all !== 'object') all = {};
           const bareKey = planeFile.replace(/^models\//, '');
-          const saved = all[planeFile] || all[bareKey] || all['models/' + bareKey];
-          if (saved && !hadUrlTweaks) applyTweak(saved);
+          const saved = all[planeFile] || all[bareKey] || all['models/' + bareKey] || null;
+          if (saved) applyTweak(saved);
+
+          // Preset orientation/scale only fills keys the tweak file omitted
+          // and the user did not set in the URL.
+          if (matchedPreset) {
+            const fill = {};
+            for (const k of ['s', 'rx', 'ry', 'rz']) {
+              if (matchedPreset[k] == null) continue;
+              if (userUrlTweakKeys.has(k)) continue;
+              if (saved && Object.prototype.hasOwnProperty.call(saved, k)) continue;
+              fill[k] = matchedPreset[k];
+            }
+            if (matchedPreset.dy != null && !userUrlTweakKeys.has('dy') && !userUrlTweakKeys.has('py')
+                && !(saved && (Object.prototype.hasOwnProperty.call(saved, 'py') || Object.prototype.hasOwnProperty.call(saved, 'dy')))) {
+              // dy is a URL convenience; map onto py if no py yet
+              if (!Number.isFinite(model.position.y) || !(saved && Object.prototype.hasOwnProperty.call(saved, 'py'))) {
+                fill.py = matchedPreset.dy;
+              }
+            }
+            if (Object.keys(fill).length) applyTweak(fill);
+          }
+
+          // Explicit user URL overrides always win.
+          if (userUrlTweakKeys.size) {
+            const o = {};
+            if (userUrlTweakKeys.has('s')) {
+              const v = parseFloat(params.get('s'));
+              if (Number.isFinite(v) && v > 0) o.s = v;
+            }
+            if (userUrlTweakKeys.has('rx')) o.rx = parseFloat(params.get('rx')) || 0;
+            if (userUrlTweakKeys.has('ry')) {
+              const v = parseFloat(params.get('ry'));
+              if (Number.isFinite(v)) o.ry = v;
+            }
+            if (userUrlTweakKeys.has('rz')) o.rz = parseFloat(params.get('rz')) || 0;
+            if (userUrlTweakKeys.has('px')) o.px = parseFloat(params.get('px')) || 0;
+            if (userUrlTweakKeys.has('py') || userUrlTweakKeys.has('dy')) {
+              const v = parseFloat(params.get(userUrlTweakKeys.has('py') ? 'py' : 'dy'));
+              if (Number.isFinite(v)) o.py = v;
+            }
+            if (userUrlTweakKeys.has('pz') || userUrlTweakKeys.has('dz')) {
+              const v = parseFloat(params.get(userUrlTweakKeys.has('pz') ? 'pz' : 'dz'));
+              if (Number.isFinite(v)) o.pz = v;
+            }
+            applyTweak(o);
+          }
         })
         .catch(() => {})
         .finally(() => buildTweakHUD());

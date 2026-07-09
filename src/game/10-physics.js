@@ -302,6 +302,10 @@ function resetPlane() {
   plane.throttleTarget = spawn.throttle;
   plane.gear = 1;
   plane.gearTarget = 1;
+  if (plane.glbGear) {
+    plane.glbGear.deployed = true;
+    plane.glbGear.anim = 1;
+  }
   plane.brake = 0;
   plane.landingLights = false;
   plane.onGround = spawn.onGround;
@@ -375,10 +379,15 @@ function updateInputLatches(dt) {
 
   if (keys['KeyG'] || (INPUT_FLAGS.gamepad && gamepadState.gear)) {
     if (!gearPressed) {
-      // Fixed-gear aircraft (e.g. the swapped-in Disney Dusty prop) ignore
-      // the retract toggle — their gear is always down.
-      if (!plane.fixedGear) plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
-      else if (plane.glbGear) plane.glbGear.deployed = !plane.glbGear.deployed;
+      // Physics retract (procedural jet + F-15 clip gear): toggles gearTarget.
+      // Cosmetic GLB node gear (props with named wheels): toggles glbGear.deployed
+      // while fixedGear stays true so gear-up crash path is not armed.
+      if (!plane.fixedGear) {
+        plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
+        if (plane.glbGear) plane.glbGear.deployed = plane.gearTarget > 0.5;
+      } else if (plane.glbGear) {
+        plane.glbGear.deployed = !plane.glbGear.deployed;
+      }
       gearPressed = true;
     }
   } else gearPressed = false;

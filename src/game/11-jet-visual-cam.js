@@ -175,22 +175,43 @@ function updateJetVisual() {
     }
   }
 
-  // ——— GLB retractable-gear animation (F18, visual only) ———
-  // Nodes translate up by 1.2× their height and squash to 0.15 Y over 0.6s to
-  // fake tucking into the wing/fuselage; wheels spin on ground roll. Physics
-  // gear (plane.gear) is untouched — this is purely cosmetic.
+  // ——— GLB retractable-gear animation ———
+  // Two modes:
+  //   clip  — F-15 etc. bone clips (AnimationMixer); time scrubbed 0..duration
+  //   nodes — named wheel nodes translate/squash (cosmetic, props)
+  // When plane.fixedGear is false (jet clip gear), follow physics plane.gear.
+  // When fixedGear is true, follow glbGear.deployed from the G-key toggle.
   if (plane.glbGear) {
     const gg = plane.glbGear;
-    const target = gg.deployed ? 1 : 0;
-    const step = _jvDt / 0.6;                    // full travel in 0.6s
-    if (gg.anim < target) gg.anim = Math.min(target, gg.anim + step);
-    else if (gg.anim > target) gg.anim = Math.max(target, gg.anim - step);
+    if (!plane.fixedGear) {
+      gg.deployed = plane.gear > 0.5;
+      gg.anim = plane.gear; // 1=down already lerped in physics
+    } else {
+      const target = gg.deployed ? 1 : 0;
+      const step = _jvDt / 0.6;                    // full travel in 0.6s
+      if (gg.anim < target) gg.anim = Math.min(target, gg.anim + step);
+      else if (gg.anim > target) gg.anim = Math.max(target, gg.anim - step);
+    }
     const a = gg.anim;                           // 1 = down, 0 = tucked
-    for (const rec of gg.nodes) {
-      rec.node.position.y = rec.baseY + (1 - a) * rec.tuck;
-      rec.node.scale.y = rec.baseScaleY * (0.15 + 0.85 * a);
-      if (rec.spin && plane.onGround && a > 0.5) {
-        rec.node.rotation.x -= (groundSpeed / rec.radius) * _jvDt;
+
+    if (gg.mode === 'clip' && gg.mixer && gg.action) {
+      // invert=false: t=0 down, t=duration up  →  time = (1-a)*duration
+      // invert=true:  t=0 up,   t=duration down →  time = a*duration
+      const dur = gg.duration || 1;
+      const time = gg.invert ? (a * dur) : ((1 - a) * dur);
+      try {
+        gg.action.paused = true;
+        gg.action.enabled = true;
+        gg.action.time = Math.max(0, Math.min(dur, time));
+        gg.mixer.update(0);
+      } catch (_) { /* ignore one-frame mixer glitches */ }
+    } else if (gg.nodes && gg.nodes.length) {
+      for (const rec of gg.nodes) {
+        rec.node.position.y = rec.baseY + (1 - a) * rec.tuck;
+        rec.node.scale.y = rec.baseScaleY * (0.15 + 0.85 * a);
+        if (rec.spin && plane.onGround && a > 0.5) {
+          rec.node.rotation.x -= (groundSpeed / Math.max(0.05, rec.radius)) * _jvDt;
+        }
       }
     }
   }
