@@ -105,7 +105,9 @@ function dismissIntro() {
     const grid = document.getElementById('hangar-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    const active = getActivePropPreset();
+    const selection = getAircraftSelectionState();
+    const active = selection.visual;
+    const requested = selection.requested;
     PROP_MODEL_PRESETS.forEach((preset) => {
       const card = document.createElement('button');
       card.type = 'button';
@@ -129,7 +131,9 @@ function dismissIntro() {
       type.textContent = preset.type || 'Airframe';
       const badge = document.createElement('span');
       badge.className = 'hangar-card-badge';
-      badge.textContent = preset.key === active.key ? 'ACTIVE' : (preset.badge || 'READY');
+      badge.textContent = preset.key === active.key
+        ? 'ACTIVE'
+        : (selection.status === 'loading' && preset.key === requested.key ? 'LOADING' : (preset.badge || 'READY'));
       meta.appendChild(type);
       meta.appendChild(badge);
       body.appendChild(meta);
@@ -137,7 +141,7 @@ function dismissIntro() {
       card.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (preset.key === active.key) return;
+        if (preset.key === requested.key && selection.status !== 'fallback') return;
         try { sessionStorage.setItem('e115-loading-name', preset.name || preset.label); } catch {}
         try { localStorage.setItem('flight_prop_model_key', preset.key); } catch {}
         applyPropModelPreset(preset.key);
@@ -146,6 +150,7 @@ function dismissIntro() {
     });
   }
   buildHangar();
+  window.addEventListener('aircraftvisualchange', buildHangar);
   const soloBtn = document.getElementById('menu-btn-solo');
   if (soloBtn) soloBtn.addEventListener('click', (e) => { e.stopPropagation(); dismissIntro(); });
   const mpBtn = document.getElementById('menu-btn-mp');
@@ -159,7 +164,8 @@ function dismissIntro() {
   const settingsBtn = document.getElementById('menu-btn-settings');
   if (settingsBtn) settingsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (typeof window.__toggleOptionsPanel === 'function') window.__toggleOptionsPanel();
+    if (typeof window.__openOptionsPanel === 'function') window.__openOptionsPanel('video');
+    else if (typeof window.__toggleOptionsPanel === 'function') window.__toggleOptionsPanel();
   });
 })();
 
@@ -1188,4 +1194,3 @@ function resetGateScoring(respawn = false) {
     }
   };
 })();
-

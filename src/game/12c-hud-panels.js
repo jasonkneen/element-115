@@ -49,8 +49,7 @@ function updateStatusGuidance(speedKts, aoaDeg) {
     return;
   }
 
-  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
-    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const groundH = getSurfaceHeight(plane.pos.x, plane.pos.z);
   const aglFt = Math.max(0, (plane.pos.y - groundH) * 3.28);
   const landingTrainingArmed = !plane.onGround && plane.gear > 0.95 && speedKts > 55 && speedKts < 165 && aglFt > 20 && aglFt < 900 && Math.abs(plane.pos.x) < 90 && Math.abs(plane.pos.z) > 220 && Math.abs(plane.pos.z) < 1200;
 
@@ -592,8 +591,7 @@ function updateHUD(dt = 1 / 60) {
     $aoa.className = aoaClass;
   }
 
-  const terrH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
-    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const terrH = getSurfaceHeight(plane.pos.x, plane.pos.z);
   const aglFt = Math.max(0, (plane.pos.y - terrH) * 3.28);
   updateFlightPhase(sp, aglFt, aoa);
 
@@ -916,4 +914,3 @@ function updateHUD(dt = 1 / 60) {
   if (typeof updateCenterHUD === 'function') updateCenterHUD(spRound, ft);
   if (typeof updateWindHUD === 'function') updateWindHUD();
 }
-

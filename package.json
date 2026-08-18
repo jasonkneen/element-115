@@ -6,10 +6,14 @@
   "description": "Browser flight sim with plane selection, tweakable GLB models, and multiplayer.",
   "scripts": {
     "install:check": "bun --version",
+    "prepare:runtime": "bun tools/sync-three-runtime.mjs",
+    "postinstall": "bun tools/sync-three-runtime.mjs",
     "assemble": "bun tools/assemble-game.mjs",
     "assemble:check": "bun tools/assemble-game.mjs --check",
-    "test:smoke": "bun tools/smoke-sim.mjs",
-    "test": "bun run assemble:check && bun run test:smoke",
+    "test:smoke": "bun run prepare:runtime && bun tools/smoke-sim.mjs",
+    "test:physics": "bun run prepare:runtime && bun tools/physics-smoke.mjs",
+    "test:production": "bun run build && bun tools/production-smoke.mjs",
+    "test": "bun run prepare:runtime && bun run assemble:check && bun tools/smoke-sim.mjs && bun tools/physics-smoke.mjs",
     "web": "bun tweaks-server.mjs",
     "mp": "bun multiplayer-server.mjs",
     "dev": "bun --watch tweaks-server.mjs",
@@ -24,6 +28,9 @@
   "devDependencies": {
     "concurrently": "^9.0.0",
     "playwright": "^1.49.0"
+  },
+  "dependencies": {
+    "three": "0.128.0"
   },
   "engines": {
     "bun": ">=1.1.0"

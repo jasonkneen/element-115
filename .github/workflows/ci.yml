@@ -40,3 +40,6 @@ jobs:
 
       - name: Headless __sim smoke
         run: bun run test:smoke
+
+      - name: Production menu and hangar smoke
+        run: bun run test:production

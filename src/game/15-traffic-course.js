@@ -18,6 +18,10 @@ const TRAFFIC_UFO_TARGET_FILE = 'procedural:ufo-saucer';
 // saucer destruction is visibility-only (destroyTarget), models are never
 // removed from the scene.
 let saucerSharedMats = null;
+// Saucer glow distress lerp endpoints (calm cyan → distressed red-orange).
+// Module-scope scratch so the per-frame glow update allocates nothing.
+const _saucerGlowCalm = new THREE.Color(0x60f6ff);
+const _saucerGlowDistress = new THREE.Color(0xff5a2a);
 function getSaucerSharedMats() {
   if (saucerSharedMats) return saucerSharedMats;
   const hull = new THREE.MeshStandardMaterial({
@@ -80,6 +84,9 @@ function createSaucerTargetModel(opts = {}) {
     blending: THREE.AdditiveBlending,
     toneMapped: false,
   });
+  // The ring glow gets its OWN material instance so the two glow layers can
+  // pulse independently (see glowPhase below) instead of in lockstep.
+  const ringGlowMat = glowMat.clone();
 
   const hull = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5.8, 0.82, 56, 1), shared.hull);
   hull.name = 'ufo symmetric saucer hull';
@@ -100,12 +107,14 @@ function createSaucerTargetModel(opts = {}) {
   const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat);
   lowerGlow.name = 'ufo underside glow';
   lowerGlow.position.y = -0.48;
+  lowerGlow.userData.glowPhase = 0;
   root.add(lowerGlow);
 
-  const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), glowMat);
+  const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), ringGlowMat);
   ringGlow.name = 'ufo equator glow';
   ringGlow.rotation.x = Math.PI / 2;
   ringGlow.position.y = 0.18;
+  ringGlow.userData.glowPhase = 1.05;   // phase-offset from the underside glow
   root.add(ringGlow);
   root.userData.glowParts.push(lowerGlow, ringGlow);
 
@@ -504,8 +513,7 @@ function updateTraffic(dt) {
           const orbitRadius = 170 + Math.sin(phase * 0.7) * 48;
           const desired = _combatTmpA.copy(plane.pos)
             .add(_trafficOrbit.set(Math.cos(phase) * orbitRadius, 0, Math.sin(phase) * orbitRadius));
-          const terrain = desired.x * desired.x + desired.z * desired.z < AIRFIELD_FLAT_R2
-            ? AIRFIELD_SURFACE_Y : getHeight(desired.x, desired.z);
+          const terrain = getSurfaceHeight(desired.x, desired.z);
           desired.y = Math.max(terrain + 72, plane.pos.y + 42 + Math.sin(phase * 1.6) * 38);
           pos.lerp(desired, aiBlend * 0.42);
           const face = _combatTmpB.copy(plane.pos).sub(pos);
@@ -528,7 +536,7 @@ function updateTraffic(dt) {
     }
 
     if (isUfo && t.destructible) {
-      const terrainH = (pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(pos.x, pos.z);
+      const terrainH = getSurfaceHeight(pos.x, pos.z);
       const minClearance = terrainH + 8.5;
       const lowClearance = pos.y < minClearance;
       if (lowClearance) {
@@ -613,14 +621,34 @@ function updateTraffic(dt) {
         t.child.rotation.z = t.bankSmoothed * 0.55;
         const lights = t.child.userData.beaconLights || [];
         const pulseT = nowMs * 0.004;
-        for (let i = 0; i < lights.length; i++) {
-          const beacon = lights[i];
-          const pulse = 0.62 + Math.max(0, Math.sin(pulseT + (beacon.userData.phase || 0) * Math.PI * 2)) * 0.45;
-          beacon.material.opacity = Math.min(1, pulse);
-          beacon.scale.setScalar(0.82 + pulse * 0.42 + (t.aiBlend || 0) * 0.18);
+        // Beacon pulse refreshed at ~12 Hz per saucer — 18 saucers × 12
+        // beacons × sin() per frame was ~216 sin/frame, and the pulse
+        // frequencies here are ≤ ~1 Hz, so 12 Hz is visually identical.
+        t.beaconPulseAcc = (t.beaconPulseAcc || 0) + dt;
+        if (t.beaconPulseAcc >= 1 / 12) {
+          t.beaconPulseAcc = 0;
+          for (let i = 0; i < lights.length; i++) {
+            const beacon = lights[i];
+            const pulse = 0.62 + Math.max(0, Math.sin(pulseT + (beacon.userData.phase || 0) * Math.PI * 2)) * 0.45;
+            beacon.material.opacity = Math.min(1, pulse);
+            beacon.scale.setScalar(0.82 + pulse * 0.42 + (t.aiBlend || 0) * 0.18);
+          }
         }
+        // Distress glow: dogfighting or below-half-hull saucers shift their
+        // glow toward red-orange and pulse faster/hotter — damaged/aggressive
+        // UFOs telegraph state. Glow materials are per-saucer (safe to
+        // mutate); the shared hull/rim/canopy/beacon materials are untouched.
+        const ufoHullFrac = t.destructible && t.destructible.maxHealth
+          ? clamp01((t.destructible.health || 0) / Math.max(1, t.destructible.maxHealth))
+          : 1;
+        const distressTarget = (t.aiMode === 'dogfight' || ufoHullFrac < 0.5) ? 1 : 0;
+        t.glowDistress = (t.glowDistress || 0) + (distressTarget - (t.glowDistress || 0)) * Math.min(1, dt * 3.2);
+        const distress = t.glowDistress;
         for (const glow of (t.child.userData.glowParts || [])) {
-          if (glow.material) glow.material.opacity = 0.28 + Math.max(0, Math.sin(pulseT * 0.8 + (t.evasivePhase || 0))) * 0.24;
+          if (!glow.material) continue;
+          glow.material.opacity = 0.28 + distress * 0.10
+            + Math.max(0, Math.sin(pulseT * (0.8 + distress * 1.7) + (t.evasivePhase || 0) + (glow.userData.glowPhase || 0))) * (0.24 + distress * 0.30);
+          glow.material.color.lerpColors(_saucerGlowCalm, _saucerGlowDistress, distress);
         }
         const destructible = t.destructible;
         if (destructible) {
@@ -642,7 +670,7 @@ function updateTraffic(dt) {
         }
         const beam = t.child.userData.landingBeam;
         if (beam && beam.material) {
-          const groundH = pos.x * pos.x + pos.z * pos.z < AIRFIELD_FLAT_R2 ? AIRFIELD_SURFACE_Y : getHeight(pos.x, pos.z);
+          const groundH = getSurfaceHeight(pos.x, pos.z);
           const length = Math.max(7, pos.y - groundH - 1.5);
           const beamTarget = clamp01(sample.beam || 0);
           t.beamSmoothed += (beamTarget - (t.beamSmoothed || 0)) * Math.min(1, dt * 4.6);
@@ -1340,4 +1368,3 @@ function updatePracticeRingCourse(dt) {
     scene.add(pathMarker);
   }
 })();
-

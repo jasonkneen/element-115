@@ -161,6 +161,47 @@ const clouds = buildClouds();
 bootLog.step('clouds', clouds && clouds.data && clouds.data.length > 0,
   `${clouds && clouds.data ? clouds.data.length : 0} puffs · density=${weather.clouds}`);
 
+// =============================================================
+//  HIGH CLOUD LAYER — a sparse set of huge soft sprites at 1200–1700 m,
+//  far above the puff clouds. One shared material (no per-sprite/per-frame
+//  allocation); drift + wrap rides updateClouds, and the TOD tint/opacity
+//  rides the same per-frame cloud update in updateTimeOfDay.
+// =============================================================
+const HIGH_CLOUD_COUNT = 8;
+const highCloudMat = new THREE.SpriteMaterial({
+  map: cloudWispTex,
+  color: currentBiome.cloudColor,
+  transparent: true,
+  opacity: 0.1,
+  depthWrite: false,
+  depthTest: true,
+  fog: true,
+});
+const highClouds = (() => {
+  const group = new THREE.Group();
+  const data = [];
+  for (let i = 0; i < HIGH_CLOUD_COUNT; i++) {
+    const sprite = new THREE.Sprite(highCloudMat);
+    const scale = 700 + srand(i, 21, 903) * 500;
+    sprite.scale.set(scale, scale * (0.30 + srand(i, 22, 903) * 0.16), 1);
+    sprite.renderOrder = -2;
+    const angle = srand(i, 23, 903) * Math.PI * 2;
+    const dist = 800 + srand(i, 24, 903) * 3200;
+    data.push({
+      sprite,
+      ox: Math.cos(angle) * dist,
+      oz: Math.sin(angle) * dist,
+      y: 1200 + srand(i, 25, 903) * 500,
+      anchorX: 0, anchorZ: 0,
+      vx: 2.5 + srand(i, 26, 903) * 3,
+      vz: (srand(i, 27, 903) - 0.5) * 2,
+    });
+    group.add(sprite);
+  }
+  scene.add(group);
+  return { group, data };
+})();
+
 function updateClouds(dt, px, pz) {
   for (const c of clouds.data) {
     if (c.holder && c.holder.visible === false) continue;
@@ -183,6 +224,29 @@ function updateClouds(dt, px, pz) {
     c.wisps.forEach((sprite, idx) => {
       sprite.position.y += Math.sin(c.wispPhase + idx * 1.7) * dt * 1.6;
     });
+  }
+
+  // High cloud layer — slow drift + the same wrap rule as the puff field.
+  // weather.clouds scales the visible count (0 → none, 1 → full layer).
+  const highActive = Math.min(HIGH_CLOUD_COUNT, Math.round(clamp01(weather.clouds) * HIGH_CLOUD_COUNT));
+  for (let i = 0; i < highClouds.data.length; i++) {
+    const hc = highClouds.data[i];
+    const vis = i < highActive;
+    if (hc.sprite.visible !== vis) hc.sprite.visible = vis;
+    if (!vis) continue;
+    hc.ox += hc.vx * dt;
+    hc.oz += hc.vz * dt;
+    const wx = hc.anchorX + hc.ox;
+    const wz = hc.anchorZ + hc.oz;
+    const dx = wx - px, dz = wz - pz;
+    if (dx * dx + dz * dz > 4200 * 4200) {
+      const newAng = Math.random() * Math.PI * 2;
+      const newDist = 1200 + Math.random() * 2800;
+      hc.anchorX = px; hc.anchorZ = pz;
+      hc.ox = Math.cos(newAng) * newDist;
+      hc.oz = Math.sin(newAng) * newDist;
+    }
+    hc.sprite.position.set(hc.anchorX + hc.ox, hc.y, hc.anchorZ + hc.oz);
   }
 }
 
@@ -538,6 +602,10 @@ function updateTimeOfDay(dt = 0) {
   const nightGlow = 0.15 + (1 - daylight) * 0.40;
   cloudMat.emissiveIntensity = nightGlow;
   cloudMatLow.emissiveIntensity = nightGlow;
+  // High cloud layer shares the puff field's tint, thinned way down and
+  // dimmed toward night so it reads as high haze rather than low overcast.
+  highCloudMat.color.copy(cloudTarget);
+  highCloudMat.opacity = dayCloudOpacity * 0.16 * (0.35 + daylight * 0.65);
   syncCloudWisps();
 
   sunGrp.userData.core.material.color.copy(todSun);

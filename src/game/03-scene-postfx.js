@@ -9,6 +9,11 @@ const SUN_DIR = new THREE.Vector3(0.58, 0.76, 0.28).normalize();
 const sunDir = SUN_DIR.clone();
 const ATMOS_REALISTIC = Object.freeze({ fogNear: 360, fogFar: 6200, hazeStrength: 0.92, hazeExponent: 1.55 });
 const ATMOS_LOWPOLY  = Object.freeze({ fogNear: 500, fogFar: 6100, hazeStrength: 0.98, hazeExponent: 1.30 });
+// Manual fog in the custom terrain/water shaders is shaped with this exponent
+// (applied to the linear 0..1 factor) so the fade rolls off gradually instead
+// of slamming to 100% at fogFar — the old visible "fog wall" on terrain.
+// 04-terrain.js pinHorizonFog compensates its pinned far by the same exponent.
+const FOG_FAR_SHAPING = 2.2;
 const timeOfDay = {
   phase: 0.12,
   cycleSeconds: 420,
@@ -56,7 +61,7 @@ bootLog.step('scene created');
 // =============================================================
 const WATER_LEVEL = 4.0;
 const WATER_EXTENT = 24000;     // size of the water plane
-const WATER_RUNWAY_R = 420;     // no water within this radius of origin
+const WATER_RUNWAY_R = WATER_AIRFIELD_EXCLUSION_RADIUS; // no water within this radius of origin
 
 const waterMat = new THREE.ShaderMaterial({
   uniforms: {
@@ -79,14 +84,18 @@ const waterMat = new THREE.ShaderMaterial({
     foamColor:    { value: new THREE.Color(0xeaf7ff) },
     foamAmount:   { value: 0.55 },
     specPower:    { value: 90.0 },
-    posterize:    { value: 12.0 },
+    posterize:    { value: 28.0 },
     uEnhance:     { value: 1.0 },
   },
   vertexShader: `
+    uniform float time;
     varying vec3 vWorldPos;
     varying float vDist;
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);
+      // Gentle long-wavelength swell. World-anchored so the 40 m follow-snap
+      // in updateWater doesn't make the surface crawl.
+      wp.y += sin(time * 0.6 + wp.x * 0.012) * 0.35 + cos(time * 0.42 + wp.z * 0.009) * 0.25;
       vWorldPos = wp.xyz;
       vec4 mv = viewMatrix * wp;
       vDist = -mv.z;
@@ -196,11 +205,13 @@ const waterMat = new THREE.ShaderMaterial({
       float foam = clamp((crest + shore * 0.85) * foamAmount * (0.45 + foamN * 0.75), 0.0, 1.0);
       col = mix(col, foamColor, foam * uEnhance);
 
-      // Cel posterization (12 levels reproduces the old low-poly look)
+      // Cel posterization (28 levels — softer banding than the original 12)
       if (posterize > 0.5) col = floor(col * posterize) / posterize;
 
-      // Linear fog so water fades into the horizon haze like terrain
+      // Shaped fog so water fades into the horizon haze like terrain,
+      // rolling off gradually instead of hitting a wall at fogFar
       float fogF = clamp((vDist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+      fogF = pow(fogF, ${FOG_FAR_SHAPING.toFixed(2)});
       col = mix(col, fogColor, fogF);
 
       gl_FragColor = vec4(col, waterOpacity * rwFade);
@@ -211,7 +222,9 @@ const waterMat = new THREE.ShaderMaterial({
   side: THREE.DoubleSide,
 });
 
-const waterGeo = new THREE.PlaneGeometry(WATER_EXTENT, WATER_EXTENT, 1, 1);
+// 128×128 segments give the vertex-stage swell ~2.8 samples per wave (~187 m
+// grid over a ~524 m wavelength) without visible aliasing.
+const waterGeo = new THREE.PlaneGeometry(WATER_EXTENT, WATER_EXTENT, 128, 128);
 waterGeo.rotateX(-Math.PI / 2);
 const waterMesh = new THREE.Mesh(waterGeo, waterMat);
 waterMesh.position.y = WATER_LEVEL;
@@ -232,7 +245,7 @@ function updateWater(dt, px, pz) {
 
 const CAMERA_REFERENCE_ASPECT = 16 / 9;
 const CAMERA_BASE_FOV = 60;
-const CAMERA_MAX_FOV = 68;
+const CAMERA_MAX_FOV = 74;
 const CAMERA_MIN_FOV = 44;
 
 function aspectCorrectedCameraFov(rawVerticalFov, aspect) {
@@ -263,15 +276,18 @@ camera.userData.lensFov = CAMERA_BASE_FOV;
 const renderer = new THREE.WebGLRenderer({
   antialias: false, powerPreference: 'high-performance'
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));
+// Boot cap unified with the gfx panel's applyRenderScale cap (both 1.5) — a
+// lower boot cap used to cause a surprise ~40% pixel jump when the panel
+// later applied its own ceiling.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-// PCF + shadow.radius reads nearly identical to PCFSoft here but is markedly
-// cheaper per shadowed fragment (PCFSoft ignores radius and supersamples instead).
-renderer.shadowMap.type = THREE.PCFShadowMap;
+// PCFSoft: soft penumbra on the terrain/plane shadows. It ignores
+// shadow.radius (supersamples instead) — the radius line below is harmless.
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Flight simulator view');
 document.body.appendChild(renderer.domElement);
@@ -279,13 +295,39 @@ bootLog.step('WebGL renderer', !!renderer.getContext(),
   renderer.capabilities ? `${renderer.capabilities.maxTextureSize}px · ${renderer.capabilities.precision}` : '');
 
 const postFX = {
-  enabled: false,
+  dofEnabled: false,
+  vignetteActive: false,
   ready: false,
   composer: null,
   bokehPass: null,
   fxaaPass: null,
   bloomPass: null,
   motionBlurPass: null,
+  vignettePass: null,
+};
+
+const VIGNETTE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null },
+    strength: { value: 0.32 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    varying vec2 vUv;
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+      color.rgb *= 1.0 - strength * smoothstep(0.42, 1.0, length(vUv - 0.5) * 1.35);
+      gl_FragColor = color;
+    }
+  `,
 };
 
 const MOTION_BLUR_SHADER = {
@@ -404,16 +446,24 @@ function initPostFX() {
       updateFxaaPassResolution();
     }
 
+    if (typeof THREE.ShaderPass === 'function') {
+      // Subtle edge darkening. Last in the chain (after FXAA) so it darkens
+      // the final antialiased frame. Gated by postFX.vignetteActive (gfx panel).
+      postFX.vignettePass = new THREE.ShaderPass(VIGNETTE_SHADER);
+      postFX.vignettePass.enabled = false;
+      postFX.composer.addPass(postFX.vignettePass);
+    }
+
     postFX.ready = true;
   } catch (err) {
     console.warn('[postfx] disabled', err && err.message ? err.message : err);
-    postFX.enabled = false;
+    postFX.dofEnabled = false;
     postFX.ready = false;
   }
 }
 
 function updateDepthOfField() {
-  if (!postFX.enabled || !postFX.bokehPass) return;
+  if (!postFX.dofEnabled || !postFX.bokehPass) return;
   const focusTarget = camera.userData.focusTarget || plane.pos;
   const focusDistance = Math.max(6, camera.position.distanceTo(focusTarget));
   const agl = plane && plane.pos ? Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z)) : 0;
@@ -451,7 +501,8 @@ function renderScene() {
   const fxaaActive = !!(postFX.fxaaPass && postFX.fxaaPass.enabled);
   const bloomActive = !!(postFX.bloomPass && postFX.bloomPass.enabled);
   const motionBlurActive = !!(postFX.motionBlurPass && postFX.motionBlurPass.enabled);
-  if ((postFX.enabled || fxaaActive || bloomActive || motionBlurActive) && postFX.composer) postFX.composer.render();
+  const vignetteActive = !!(postFX.vignetteActive && postFX.vignettePass);
+  if ((postFX.dofEnabled || fxaaActive || bloomActive || motionBlurActive || vignetteActive) && postFX.composer) postFX.composer.render();
   else renderer.render(scene, camera);
 }
 
@@ -544,7 +595,9 @@ const sun = new THREE.DirectionalLight(0xfff1d4, 1.65);
 sun.position.copy(sunDir).multiplyScalar(650);
 sun.target = sunTarget;
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+// Boot at the 'high' preset size — the gfx panel's applyShadows would resize
+// 1024→2048 a beat later anyway (first-frame quality dip).
+sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.00018;
 sun.shadow.normalBias = 0.02;
 sun.shadow.radius = 3;
@@ -697,6 +750,8 @@ const SAND_FS = `
     // ---- Distance haze / aerial perspective ----
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    // Shaped fade — rolls off gradually instead of a wall at fogFar
+    fogF = pow(fogF, ${FOG_FAR_SHAPING.toFixed(2)});
     float horizon = pow(clamp(1.0 - abs(V.y), 0.0, 1.0), hazeExponent);
     float haze = clamp(fogF * (0.86 + horizon * hazeStrength), 0.0, 1.0);
     vec3 hazeColor = mix(fogColor, skyTint, 0.38 + horizon * 0.22);
@@ -827,6 +882,8 @@ const LOWPOLY_FS = `
     // Lighter fog + horizon haze so distant terrain sits deeper in the scene
     float dist = length(vWorldPos - cameraPosition);
     float fogF = clamp((dist - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    // Shaped fade — rolls off gradually instead of a wall at fogFar
+    fogF = pow(fogF, ${FOG_FAR_SHAPING.toFixed(2)});
     float horizon = pow(clamp(1.0 - abs(V.y), 0.0, 1.0), hazeExponent);
     float haze = clamp(fogF * (0.96 + horizon * (hazeStrength + 0.18)), 0.0, 1.0);
     vec3 hazeColor = mix(fogColor, skyTint, 0.66 + horizon * 0.16);
@@ -855,4 +912,3 @@ const sandMatLowPoly = new THREE.ShaderMaterial({
   fragmentShader: LOWPOLY_FS,
   extensions: { derivatives: true },
 });
-

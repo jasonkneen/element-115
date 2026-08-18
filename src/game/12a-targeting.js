@@ -266,6 +266,8 @@ function resetReticleHud() {
     box.el.classList.remove('cue-ready');
     box.el.classList.remove('shield-hit');
     box.el.classList.remove('damaged');
+    box._shieldHueKey = -1;
+    if (box.el.firstChild) box.el.firstChild.style.borderColor = '';
   }
 }
 function mouseFlightUiTarget(target) {
@@ -743,6 +745,8 @@ function updateTargetHud(dt = 1 / 60) {
       poolEntry.el.classList.remove('cue-ready');
       poolEntry.el.classList.remove('shield-hit');
       poolEntry.el.classList.remove('damaged');
+      poolEntry._shieldHueKey = -1;
+      if (poolEntry.el.firstChild) poolEntry.el.firstChild.style.borderColor = '';
       continue;
     }
     poolEntry.el.style.display = 'block';
@@ -767,9 +771,22 @@ function updateTargetHud(dt = 1 / 60) {
     poolEntry.el.classList.toggle('cue-warn', !!(target.cueWarn && !targetBoxLocked));
     poolEntry.el.classList.toggle('cue-ready', !!(target.cueReady || targetBoxLocked));
     const d = target.destructible || null;
-    const shieldPct = d && d.shieldMax ? Math.round((d.shield / Math.max(1, d.shieldMax)) * 100) : 0;
+    const shieldFrac = d && d.shieldMax ? clamp01(d.shield / Math.max(1, d.shieldMax)) : 0;
     const hullPct = d && d.maxHealth ? Math.round((d.health / Math.max(1, d.maxHealth)) * 100) : 100;
-    poolEntry.el.classList.toggle('shield-hit', !!(d && (d.shieldPulse || 0) > 0.08));
+    // Shield-state tint on the bracket frame border: cyan (full) → amber →
+    // red (nearly down). Inline so it beats the class colors; cleared at 0
+    // shield so the standard state colors (lock/cue) take back over.
+    const shieldHueKey = d && d.shieldMax && shieldFrac > 0
+      ? Math.round(shieldFrac > 0.5 ? 40 + (shieldFrac - 0.5) * 294 : shieldFrac * 80)
+      : -1;
+    if (poolEntry._shieldHueKey !== shieldHueKey) {
+      poolEntry._shieldHueKey = shieldHueKey;
+      const frame = poolEntry.el.firstChild;
+      if (frame) frame.style.borderColor = shieldHueKey >= 0 ? `hsl(${shieldHueKey} 95% 58%)` : '';
+    }
+    // Zero-shield targets never flash shield-hit — the flash was misleading
+    // once the shield was already gone.
+    poolEntry.el.classList.toggle('shield-hit', !!(d && d.shield > 0 && (d.shieldPulse || 0) > 0.08));
     poolEntry.el.classList.toggle('damaged', !!(d && hullPct < 100));
     poolEntry.el.style.opacity = targetBoxLocked ? '1' : isTracking ? '0.96' : isActive ? '0.78' : '0.35';
   }

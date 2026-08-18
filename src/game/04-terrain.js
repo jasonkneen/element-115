@@ -16,6 +16,14 @@ const ROCKS_PER_CHUNK = 160;
 const HORIZON_CHUNK_SIZE = 5400;
 const HORIZON_CHUNK_RES = 24;
 let HORIZON_RADIUS = 0;
+// Coarser LOD tiles sample the same analytic surface at wider intervals.  Their
+// edges therefore cannot be assumed to meet a finer tile perfectly.  Rather
+// than lowering the whole tile (which made the world visibly step down at each
+// LOD boundary), give each coarse tile a hidden downward skirt at its edge.
+// The overlap + render ordering keeps finer terrain authoritative while a skirt
+// closes any sub-grid crack at the transition.
+const FAR_LOD_SKIRT_DEPTH = 48;
+const HORIZON_LOD_SKIRT_DEPTH = 96;
 const chunks = new Map();
 const farChunks = new Map();
 const horizonChunks = new Map();
@@ -182,6 +190,7 @@ function processChunkBuildQueues(maxMs = 2.5, hardCap = 6, allowDefer = false) {
 // biome switcher can swap the palette in-place without touching chunk code.
 const STRATA = currentBiome.strata.map(s => ({ h: s.h, c: new THREE.Color(s.c) }));
 const CLIFF_TINT = new THREE.Color(currentBiome.cliffTint);
+const SNOW_CAP_TINT = new THREE.Color(0xffffff);
 
 function strataColor(h, out) {
   for (let i = 0; i < STRATA.length - 1; i++) {
@@ -254,6 +263,25 @@ function applyDistanceCulling(material, defaultCullDistance = 450.0) {
 
 const rockMat = new THREE.MeshLambertMaterial({ color: 0x9c6840 });
 applyDistanceCulling(rockMat, 350.0);
+
+// Shared instancing dummy — chunk builds fill hundreds of instance matrices
+// per call; a module-scoped Object3D avoids the per-build allocation.
+const _instDummy = new THREE.Object3D();
+
+// Shared rock-spire asset — a tall stretched cone, instanced per chunk on
+// steep high ground for ridge silhouettes. Reuses rockMat / rockMatLowPoly.
+const spireGeo = (() => {
+  const g = new THREE.ConeGeometry(1, 3.4, 6, 3);
+  g.translate(0, 1.7, 0); // base at y=0 so instances sit on the surface
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const n = Math.sin(x * 3.9 + SEED) * Math.cos(y * 2.3) * Math.sin(z * 4.7);
+    p.setXYZ(i, x * (1 + n * 0.22), y, z * (1 + n * 0.22));
+  }
+  g.computeVertexNormals();
+  return g;
+})();
 
 
 // =============================================================
@@ -432,6 +460,11 @@ function makeChunk(cx, cz, preHeights) {
     // Sedimentary strata
     strataColor(h, tmp);
 
+    // Snow caps — above 190 m in the snow biome, blend toward white
+    if (currentBiome.name === 'snow' && h > 190) {
+      tmp.lerp(SNOW_CAP_TINT, clamp01((h - 190) / 70) * 0.9);
+    }
+
     // Cliff face tint — steep slopes turn warmer / darker.
     // Neighbor spacing is 10 m vs the old 5 m probes, so halve the scale factor.
     const col = i % GRID_W;
@@ -442,6 +475,8 @@ function makeChunk(cx, cz, preHeights) {
     if (slope > 0.25) {
       tmp.lerp(CLIFF_TINT, (slope - 0.25) * 0.55);
     }
+    // Cliff-base AO — steep faces sit in their own shade, grounding the cliffs
+    if (slope > 0.45) tmp.multiplyScalar(0.88);
 
     // Two-octave noise variation for natural mottling
     const n1 = vnoise(wx * 0.045, wz * 0.045);
@@ -476,7 +511,6 @@ function makeChunk(cx, cz, preHeights) {
 
   // ---- Instanced rocks ----
   const rocks = new THREE.InstancedMesh(rockGeo, rockM, ROCKS_PER_CHUNK);
-  const dummy = new THREE.Object3D();
   let added = 0;
   for (let i = 0; i < ROCKS_PER_CHUNK * 2 && added < ROCKS_PER_CHUNK; i++) {
     const r1 = srand(cx, cz, i * 2);
@@ -490,15 +524,15 @@ function makeChunk(cx, cz, preHeights) {
     const h = sampleH(lxr, lzr);
     if (h < 4) continue;                       // skip valley floors
     const scl = 0.6 + srand(cx, cz, i + 100) * 3.2;
-    dummy.position.set(wx, h - scl * 0.3, wz);
-    dummy.rotation.set(
+    _instDummy.position.set(wx, h - scl * 0.3, wz);
+    _instDummy.rotation.set(
       srand(cx, cz, i + 200) * Math.PI,
       srand(cx, cz, i + 300) * Math.PI * 2,
       srand(cx, cz, i + 400) * Math.PI
     );
-    dummy.scale.set(scl, scl * (0.7 + srand(cx, cz, i + 500) * 0.6), scl);
-    dummy.updateMatrix();
-    rocks.setMatrixAt(added, dummy.matrix);
+    _instDummy.scale.set(scl, scl * (0.7 + srand(cx, cz, i + 500) * 0.6), scl);
+    _instDummy.updateMatrix();
+    rocks.setMatrixAt(added, _instDummy.matrix);
     added++;
   }
   const clutterDensity = (typeof window !== 'undefined' && window.gfx && window.gfx.floraDensity != null)
@@ -515,15 +549,15 @@ function makeChunk(cx, cz, preHeights) {
   const floraMaterial = lowPoly ? floraMatLow : floraMat;
   // Per-chunk caps. The GROUND DETAIL slider scales these via clutterDensity
   // (0.2x..1.6x), so the visible counts span roughly 35..280 pines etc.
-  const CAP_PINE = 180, CAP_CACTUS = 100, CAP_SHRUB = 220, CAP_BOULDER = 60;
+  const CAP_PINE = 180, CAP_CACTUS = 100, CAP_SHRUB = 220, CAP_BOULDER = 60, CAP_SPIRE = 10;
 
   const pines    = new THREE.InstancedMesh(pineGeo,    floraMaterial, CAP_PINE);
   const cacti    = new THREE.InstancedMesh(cactusGeo,  floraMaterial, CAP_CACTUS);
   const shrubs   = new THREE.InstancedMesh(shrubGeo,   floraMaterial, CAP_SHRUB);
   const boulders = new THREE.InstancedMesh(boulderGeo, floraMaterial, CAP_BOULDER);
+  const spires   = new THREE.InstancedMesh(spireGeo,   rockM,         CAP_SPIRE);
 
-  let nPine = 0, nCactus = 0, nShrub = 0, nBoulder = 0;
-  const d = new THREE.Object3D();
+  let nPine = 0, nCactus = 0, nShrub = 0, nBoulder = 0, nSpire = 0;
 
   // Single deterministic scatter loop, biome-gated by elevation + slope.
   // More samples ⇒ more chances for plants/boulders to fill the new caps.
@@ -552,15 +586,28 @@ function makeChunk(cx, cz, preHeights) {
     // Boulders love slopes — higher chance on steep terrain
     if (slope > 0.45 && nBoulder < CAP_BOULDER && pick < 0.35) {
       const scl = 1.2 + srand(cx, cz, i + 3000) * 2.4;
-      d.position.set(wx, h - scl * 0.15, wz);
-      d.rotation.set(
+      _instDummy.position.set(wx, h - scl * 0.15, wz);
+      _instDummy.rotation.set(
         srand(cx, cz, i + 3100) * Math.PI,
         srand(cx, cz, i + 3200) * Math.PI * 2,
         srand(cx, cz, i + 3300) * Math.PI
       );
-      d.scale.set(scl, scl * (0.7 + srand(cx, cz, i + 3400) * 0.5), scl);
-      d.updateMatrix();
-      boulders.setMatrixAt(nBoulder++, d.matrix);
+      _instDummy.scale.set(scl, scl * (0.7 + srand(cx, cz, i + 3400) * 0.5), scl);
+      _instDummy.updateMatrix();
+      boulders.setMatrixAt(nBoulder++, _instDummy.matrix);
+      continue;
+    }
+
+    // Rock spires — tall needles on steep high ground; ridge silhouettes.
+    // pick band sits just above the boulder band so spires don't steal rocks.
+    if (slope > 0.5 && h > 40 && nSpire < CAP_SPIRE && pick >= 0.35 && pick < 0.52) {
+      const scl = 2.2 + srand(cx, cz, i + 9100) * 2.6;
+      const sclY = 3.2 + srand(cx, cz, i + 9200) * 4.4;
+      _instDummy.position.set(wx, h - 0.6, wz);
+      _instDummy.rotation.set(0, srand(cx, cz, i + 9300) * Math.PI * 2, 0);
+      _instDummy.scale.set(scl, sclY, scl);
+      _instDummy.updateMatrix();
+      spires.setMatrixAt(nSpire++, _instDummy.matrix);
       continue;
     }
 
@@ -573,43 +620,43 @@ function makeChunk(cx, cz, preHeights) {
     if (h < 40) {
       if (currentBiome.hasCactus && pick < 0.35 && nCactus < CAP_CACTUS) {
         const scl = 0.9 + srand(cx, cz, i + 4100) * 0.8;
-        d.position.set(wx, h, wz);
-        d.rotation.set(0, srand(cx, cz, i + 4200) * Math.PI * 2, 0);
-        d.scale.set(scl, scl * (0.9 + srand(cx, cz, i + 4300) * 0.3), scl);
-        d.updateMatrix();
-        cacti.setMatrixAt(nCactus++, d.matrix);
+        _instDummy.position.set(wx, h, wz);
+        _instDummy.rotation.set(0, srand(cx, cz, i + 4200) * Math.PI * 2, 0);
+        _instDummy.scale.set(scl, scl * (0.9 + srand(cx, cz, i + 4300) * 0.3), scl);
+        _instDummy.updateMatrix();
+        cacti.setMatrixAt(nCactus++, _instDummy.matrix);
       } else if (pick < currentBiome.shrubChance && nShrub < CAP_SHRUB) {
         const scl = 0.6 + srand(cx, cz, i + 5100) * 0.8;
-        d.position.set(wx, h, wz);
-        d.rotation.set(0, srand(cx, cz, i + 5200) * Math.PI * 2, 0);
-        d.scale.set(scl, scl, scl);
-        d.updateMatrix();
-        shrubs.setMatrixAt(nShrub++, d.matrix);
+        _instDummy.position.set(wx, h, wz);
+        _instDummy.rotation.set(0, srand(cx, cz, i + 5200) * Math.PI * 2, 0);
+        _instDummy.scale.set(scl, scl, scl);
+        _instDummy.updateMatrix();
+        shrubs.setMatrixAt(nShrub++, _instDummy.matrix);
       }
     } else if (h < 140) {
       if (pick < currentBiome.pineChance && nPine < CAP_PINE) {
         const scl = 0.7 + srand(cx, cz, i + 6100) * 0.9;
-        d.position.set(wx, h, wz);
-        d.rotation.set(0, srand(cx, cz, i + 6200) * Math.PI * 2, 0);
-        d.scale.set(scl, scl * (0.85 + srand(cx, cz, i + 6300) * 0.4), scl);
-        d.updateMatrix();
-        pines.setMatrixAt(nPine++, d.matrix);
+        _instDummy.position.set(wx, h, wz);
+        _instDummy.rotation.set(0, srand(cx, cz, i + 6200) * Math.PI * 2, 0);
+        _instDummy.scale.set(scl, scl * (0.85 + srand(cx, cz, i + 6300) * 0.4), scl);
+        _instDummy.updateMatrix();
+        pines.setMatrixAt(nPine++, _instDummy.matrix);
       } else if (pick < 0.95 && nShrub < CAP_SHRUB) {
         const scl = 0.6 + srand(cx, cz, i + 7100) * 0.6;
-        d.position.set(wx, h, wz);
-        d.rotation.set(0, srand(cx, cz, i + 7200) * Math.PI * 2, 0);
-        d.scale.set(scl, scl, scl);
-        d.updateMatrix();
-        shrubs.setMatrixAt(nShrub++, d.matrix);
+        _instDummy.position.set(wx, h, wz);
+        _instDummy.rotation.set(0, srand(cx, cz, i + 7200) * Math.PI * 2, 0);
+        _instDummy.scale.set(scl, scl, scl);
+        _instDummy.updateMatrix();
+        shrubs.setMatrixAt(nShrub++, _instDummy.matrix);
       }
     } else {
       if (pick < 0.15 && nShrub < CAP_SHRUB) {
         const scl = 0.5 + srand(cx, cz, i + 8100) * 0.5;
-        d.position.set(wx, h, wz);
-        d.rotation.set(0, srand(cx, cz, i + 8200) * Math.PI * 2, 0);
-        d.scale.set(scl, scl, scl);
-        d.updateMatrix();
-        shrubs.setMatrixAt(nShrub++, d.matrix);
+        _instDummy.position.set(wx, h, wz);
+        _instDummy.rotation.set(0, srand(cx, cz, i + 8200) * Math.PI * 2, 0);
+        _instDummy.scale.set(scl, scl, scl);
+        _instDummy.updateMatrix();
+        shrubs.setMatrixAt(nShrub++, _instDummy.matrix);
       }
     }
   }
@@ -618,12 +665,14 @@ function makeChunk(cx, cz, preHeights) {
   cacti.count    = Math.max(0, Math.min(nCactus, Math.round(nCactus * clutterDensity)));   cacti.instanceMatrix.needsUpdate = true;    cacti.userData.__densityGroup = 'terrain-clutter'; cacti.userData.__baseCount = nCactus; if (nCactus) group.add(cacti);
   shrubs.count   = Math.max(0, Math.min(nShrub, Math.round(nShrub * clutterDensity)));     shrubs.instanceMatrix.needsUpdate = true;   shrubs.userData.__densityGroup = 'terrain-clutter'; shrubs.userData.__baseCount = nShrub; if (nShrub) group.add(shrubs);
   boulders.count = Math.max(0, Math.min(nBoulder, Math.round(nBoulder * clutterDensity))); boulders.instanceMatrix.needsUpdate = true; boulders.userData.__densityGroup = 'terrain-clutter'; boulders.userData.__baseCount = nBoulder; if (nBoulder) group.add(boulders);
+  spires.count   = Math.max(0, Math.min(nSpire, Math.round(nSpire * clutterDensity)));     spires.instanceMatrix.needsUpdate = true;   spires.userData.__densityGroup = 'terrain-clutter';   spires.userData.__baseCount = nSpire;   if (nSpire) group.add(spires);
 
   scene.add(group);
-  return { group, geo, terrainMesh: mesh, clutter: [rocks, pines, cacti, shrubs, boulders], cxW, czW };
+  return { group, geo, terrainMesh: mesh, clutter: [rocks, pines, cacti, shrubs, boulders, spires], cxW, czW };
 }
 
 let _lastChunkCellX = null, _lastChunkCellZ = null;
+let _clutterVisLastX = 1e9, _clutterVisLastZ = 1e9, _clutterVisLastCull = -1, _clutterVisLastChunks = -1;
 function updateChunks(px, pz) {
   const pcx = Math.floor(px / CHUNK_SIZE);
   const pcz = Math.floor(pz / CHUNK_SIZE);
@@ -647,12 +696,7 @@ function updateChunks(px, pz) {
 
     for (const [key, c] of chunks) {
       if (!wanted.has(key)) {
-        scene.remove(c.group);
-        c.geo.dispose();
-        // sandMat + rockGeo + rockMat are shared across chunks — don't dispose them.
-        // But each InstancedMesh (rocks + up to 4 flora) owns a per-chunk instanceMatrix
-        // GPU buffer; dispose() frees that buffer (shared geometry/material untouched).
-        c.group.traverse(o => { if (o.isInstancedMesh) o.dispose(); });
+        disposeNearChunk(c);
         chunks.delete(key);
       }
     }
@@ -664,14 +708,22 @@ function updateChunks(px, pz) {
   // once they're beyond the cull distance skips that submission entirely.
   // Margin = chunk half-diagonal so the shader fade ring is never clipped.
   const cullBase = (window.gfx && window.gfx.floraCullDistance != null) ? window.gfx.floraCullDistance : 450;
-  const clutterVisRange = cullBase * (500 / 450) + CHUNK_SIZE * 0.71 + 60;
-  const visRangeSq = clutterVisRange * clutterVisRange;
-  for (const c of chunks.values()) {
-    if (!c.clutter) continue;
-    const dx = c.cxW - px, dz = c.czW - pz;
-    const vis = (dx * dx + dz * dz) < visRangeSq;
-    for (let i = 0; i < c.clutter.length; i++) {
-      if (c.clutter[i].visible !== vis) c.clutter[i].visible = vis;
+  // The result depends only on plane position, cull range, and the chunk set —
+  // skip the per-frame walk over every chunk's clutter meshes while the plane
+  // has moved < 50 m and nothing else changed (stationary hovering).
+  const clutterMovedSq = (px - _clutterVisLastX) * (px - _clutterVisLastX) + (pz - _clutterVisLastZ) * (pz - _clutterVisLastZ);
+  if (cullBase !== _clutterVisLastCull || chunks.size !== _clutterVisLastChunks || clutterMovedSq > 50 * 50) {
+    _clutterVisLastX = px; _clutterVisLastZ = pz;
+    _clutterVisLastCull = cullBase; _clutterVisLastChunks = chunks.size;
+    const clutterVisRange = cullBase * (500 / 450) + CHUNK_SIZE * 0.71 + 60;
+    const visRangeSq = clutterVisRange * clutterVisRange;
+    for (const c of chunks.values()) {
+      if (!c.clutter) continue;
+      const dx = c.cxW - px, dz = c.czW - pz;
+      const vis = (dx * dx + dz * dz) < visRangeSq;
+      for (let i = 0; i < c.clutter.length; i++) {
+        if (c.clutter[i].visible !== vis) c.clutter[i].visible = vis;
+      }
     }
   }
 }
@@ -690,6 +742,171 @@ function shareTerrainUniforms(cloneMat, sourceMat, opts = {}) {
     if (sourceMat.uniforms[k]) cloneMat.uniforms[k] = sourceMat.uniforms[k];
   }
   if (opts.shareFogFar && sourceMat.uniforms.fogFar) cloneMat.uniforms.fogFar = sourceMat.uniforms.fogFar;
+}
+
+// A coarse tile must remain visually behind any finer tile that overlaps it.
+// Polygon offset pushes the coarse depth away from the camera, so a later fine
+// tile wins the depth test without losing terrain occlusion for distant aircraft
+// or scenery. The material is deliberately per-tile: polygon state and horizon
+// fog are tile-specific, so it must be disposed with that tile.
+function makeLodTerrainMaterial(sourceMat, opts = {}) {
+  const material = sourceMat.clone();
+  shareTerrainUniforms(material, sourceMat, { shareFogFar: !!opts.shareFogFar });
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = opts.polygonOffsetFactor == null ? 1 : opts.polygonOffsetFactor;
+  material.polygonOffsetUnits = opts.polygonOffsetUnits == null ? 4 : opts.polygonOffsetUnits;
+  material.depthWrite = true;
+  material.depthTest = true;
+  material.needsUpdate = true;
+  return material;
+}
+
+// Skirts use the same live uniform objects as their parent tile, including a
+// horizon tile's pinned fog distance.  Keeping this material per tile avoids
+// mutating the shared near-terrain material just to make skirts double-sided.
+function makeLodSkirtMaterial(baseMaterial) {
+  const material = baseMaterial.clone();
+  if (baseMaterial.uniforms && material.uniforms) {
+    for (const key of Object.keys(baseMaterial.uniforms)) material.uniforms[key] = baseMaterial.uniforms[key];
+  }
+  material.side = THREE.DoubleSide;
+  material.depthWrite = true;
+  material.depthTest = true;
+  material.polygonOffset = true;
+  material.polygonOffsetFactor = baseMaterial.polygonOffsetFactor;
+  material.polygonOffsetUnits = baseMaterial.polygonOffsetUnits;
+  material.needsUpdate = true;
+  return material;
+}
+
+// Build four independent edge strips below a tile.  Base vertices keep their
+// exact sampled height while the lower vertices are only a visual seal; the
+// physics surface remains getHeight().  Independent quads avoid changing the
+// base tile's smooth normals at its visible edge.
+function makeTerrainEdgeSkirt(size, res, heights, colors, depth) {
+  const gridW = res + 1;
+  const step = size / res;
+  const positions = [];
+  const skirtColors = [];
+  const indices = [];
+  const pointAt = (idx) => {
+    const ix = idx % gridW;
+    const iz = (idx / gridW) | 0;
+    return {
+      x: ix * step - size * 0.5,
+      y: heights[idx],
+      z: iz * step - size * 0.5,
+      idx,
+    };
+  };
+  const colorAt = (idx, shade = 1) => {
+    const ci = idx * 3;
+    skirtColors.push(colors[ci] * shade, colors[ci + 1] * shade, colors[ci + 2] * shade);
+  };
+  const addQuad = (aIdx, bIdx) => {
+    const a = pointAt(aIdx);
+    const b = pointAt(bIdx);
+    const base = positions.length / 3;
+    positions.push(
+      a.x, a.y, a.z,
+      b.x, b.y, b.z,
+      b.x, b.y - depth, b.z,
+      a.x, a.y - depth, a.z,
+    );
+    colorAt(a.idx);
+    colorAt(b.idx);
+    colorAt(b.idx, 0.72);
+    colorAt(a.idx, 0.72);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+
+  // North/south then west/east.  The skirt material is double-sided because
+  // a tile may be viewed from either the inner or outer side of an LOD ring.
+  for (let x = 0; x < res; x++) addQuad(x, x + 1);
+  for (let x = 0; x < res; x++) addQuad(res * gridW + x + 1, res * gridW + x);
+  for (let z = 0; z < res; z++) addQuad((z + 1) * gridW, z * gridW);
+  for (let z = 0; z < res; z++) addQuad(z * gridW + res, (z + 1) * gridW + res);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(skirtColors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function attachTerrainEdgeSkirt(mesh, size, res, heights, colors, depth) {
+  const skirt = new THREE.Mesh(
+    makeTerrainEdgeSkirt(size, res, heights, colors, depth),
+    makeLodSkirtMaterial(mesh.material)
+  );
+  skirt.renderOrder = mesh.renderOrder;
+  mesh.add(skirt);
+  return skirt;
+}
+
+function disposeNearChunk(c) {
+  scene.remove(c.group);
+  if (c.geo) c.geo.dispose();
+  // sandMat + rockGeo + rockMat are shared across chunks — don't dispose them.
+  // But each InstancedMesh owns a per-chunk instanceMatrix GPU buffer.
+  c.group.traverse(o => { if (o.isInstancedMesh && o.dispose) o.dispose(); });
+}
+
+function disposeLodChunk(c) {
+  if (!c) return;
+  scene.remove(c.mesh);
+  if (c.geo) c.geo.dispose();
+  if (c.skirt && c.skirt.geometry) c.skirt.geometry.dispose();
+  const materials = new Set([c.mesh && c.mesh.material, c.skirt && c.skirt.material]);
+  for (const material of materials) if (material && material.dispose) material.dispose();
+}
+
+// The shared terrain shaders shape fogF with pow(fogF, FOG_FAR_SHAPING)
+// (03-scene-postfx.js). A pin tuned for the old linear fog would leave horizon
+// tiles half as fogged at mid-ring distances, popping out against the
+// fully-fogged far ring as a new wall. This factor pulls the pin in so the
+// SHAPED factor at ~70% of the ring distance matches the old linear factor.
+const HORIZON_FOG_PIN_FACTOR = Math.pow(0.7, 1 - 1 / FOG_FAR_SHAPING);
+
+function pinHorizonFog(material) {
+  // Horizon tiles intentionally own fogFar: their view extent is larger than
+  // the shared far-terrain fog ceiling, so never re-share this uniform later.
+  if (material.uniforms && material.uniforms.fogFar) {
+    const fogNear = material.uniforms.fogNear ? material.uniforms.fogNear.value : 0;
+    material.uniforms.fogFar.value = Math.max(
+      material.uniforms.fogFar.value || 0,
+      fogNear + ((HORIZON_RADIUS + 0.5) * HORIZON_CHUNK_SIZE - fogNear) * HORIZON_FOG_PIN_FACTOR
+    );
+  }
+}
+
+function refreshFarChunkMaterial(c, sourceMat) {
+  const oldBase = c.mesh.material;
+  const oldSkirt = c.skirt && c.skirt.material;
+  c.mesh.material = makeLodTerrainMaterial(sourceMat, {
+    shareFogFar: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 4,
+  });
+  if (c.skirt) c.skirt.material = makeLodSkirtMaterial(c.mesh.material);
+  if (oldBase && oldBase.dispose) oldBase.dispose();
+  if (oldSkirt && oldSkirt.dispose) oldSkirt.dispose();
+}
+
+function refreshHorizonChunkMaterial(c, sourceMat) {
+  const oldBase = c.mesh.material;
+  const oldSkirt = c.skirt && c.skirt.material;
+  c.mesh.material = makeLodTerrainMaterial(sourceMat, {
+    shareFogFar: false,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 8,
+  });
+  pinHorizonFog(c.mesh.material);
+  if (c.skirt) c.skirt.material = makeLodSkirtMaterial(c.mesh.material);
+  if (oldBase && oldBase.dispose) oldBase.dispose();
+  if (oldSkirt && oldSkirt.dispose) oldSkirt.dispose();
 }
 
 function makeFarChunk(cx, cz, preHeights) {
@@ -722,6 +939,10 @@ function makeFarChunk(cx, cz, preHeights) {
     pos.setY(i, h);
 
     strataColor(h, tmp);
+    // Snow caps — same rule as the near chunks
+    if (currentBiome.name === 'snow' && h > 190) {
+      tmp.lerp(SNOW_CAP_TINT, clamp01((h - 190) / 70) * 0.9);
+    }
     // Slope tint from 50 m grid neighbors (was 12 m probes → rescale factor)
     const col = i % GRID_W;
     const row = (i / GRID_W) | 0;
@@ -729,6 +950,8 @@ function makeFarChunk(cx, cz, preHeights) {
     const hE = heights[row < GRID_W - 1 ? i + GRID_W : i - GRID_W];
     const slope = Math.min(1, (Math.abs(hN - h) + Math.abs(hE - h)) * 0.0043);
     if (slope > 0.25) tmp.lerp(CLIFF_TINT, (slope - 0.25) * 0.55);
+    // Cliff-base AO — matches the near-chunk shading
+    if (slope > 0.45) tmp.multiplyScalar(0.88);
 
     // Subtle atmospheric desaturation for far chunks — they're already
     // fog-tinted but this makes the blend even smoother
@@ -742,24 +965,20 @@ function makeFarChunk(cx, cz, preHeights) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 
-  const mesh = new THREE.Mesh(geo, sandM);
-  // Drop far chunks well below the surface so near-chunk valleys (which,
-  // at 10 m sampling, dig deeper than the 50 m far grid can ever reach)
-  // don't let the coarser mesh poke through and Z-fight. 8 m covers the
-  // worst-case valley aliasing for this heightfield. The fog tint hides
-  // the seam at distance.
-  mesh.position.set(cxW, -8.0, czW);
-  // Belt-and-braces: push far-chunk fragments slightly back in depth so
-  // any residual coplanar fight at the LOD seam resolves in favour of
-  // the high-detail near tile.
-  mesh.material = mesh.material.clone();
-  shareTerrainUniforms(mesh.material, sandM, { shareFogFar: true });
-  mesh.material.polygonOffset = true;
-  mesh.material.polygonOffsetFactor = 1;
-  mesh.material.polygonOffsetUnits = 4;
+  const mesh = new THREE.Mesh(geo, makeLodTerrainMaterial(sandM, {
+    shareFogFar: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 4,
+  }));
+  // Keep geometry on the authoritative surface.  The tile overlaps the near
+  // ring, renders first with a depth offset, and carries a downward edge skirt;
+  // together those mechanisms prevent both coarse-tile poke-through and the
+  // old visible 8 m LOD drop.
+  mesh.position.set(cxW, 0, czW);
   mesh.renderOrder = -1;
+  const skirt = attachTerrainEdgeSkirt(mesh, FAR_CHUNK_SIZE, FAR_CHUNK_RES, heights, colors, FAR_LOD_SKIRT_DEPTH);
   scene.add(mesh);
-  return { mesh, geo, cxW, czW };
+  return { mesh, geo, skirt, cxW, czW };
 }
 
 let _lastFarCellX = null, _lastFarCellZ = null;
@@ -802,11 +1021,7 @@ function updateFarChunks(px, pz) {
 
     for (const [key, c] of farChunks) {
       if (!wanted.has(key)) {
-        scene.remove(c.mesh);
-        c.geo.dispose();
-        // makeFarChunk clones the shared sand material per chunk (for polygonOffset),
-        // so this clone is unique to this chunk — dispose it to free its program ref.
-        if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+        disposeLodChunk(c);
         farChunks.delete(key);
       }
     }
@@ -844,9 +1059,13 @@ function makeHorizonChunk(cx, cz, preHeights) {
   const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
 
-  const hasPre = !!(preHeights && preHeights.length === pos.count);
+  let heights = preHeights;
+  if (!heights || heights.length !== pos.count) {
+    heights = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) heights[i] = getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+  }
   for (let i = 0; i < pos.count; i++) {
-    const h = hasPre ? preHeights[i] : getHeight(cxW + pos.getX(i), czW + pos.getZ(i));
+    const h = heights[i];
     pos.setY(i, h);
     strataColor(h, tmp);
     // Heavy atmospheric desaturation — these tiles sit 15-24 km out, deep in fog.
@@ -856,30 +1075,25 @@ function makeHorizonChunk(cx, cz, preHeights) {
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 
-  const mesh = new THREE.Mesh(geo, sandM);
-  // Sit below the far tier (which sits below near) so the coarsest grid never pokes
-  // through finer LOD; heavy fog hides the offset at this range.
-  mesh.position.set(cxW, -16.0, czW);
-  mesh.material = mesh.material.clone();
-  shareTerrainUniforms(mesh.material, sandM); // fogFar stays per-clone: pinned to horizon extent below
-  mesh.material.polygonOffset = true;
-  mesh.material.polygonOffsetFactor = 2;
-  mesh.material.polygonOffsetUnits = 8;
-  // Pin this clone's fog ceiling to the horizon extent so the tile stays visible to
-  // its own range regardless of the shared material's current fog (which tracks the
-  // far ring). Guards against the clone being fogged to invisible at 15-24 km.
-  if (mesh.material.uniforms && mesh.material.uniforms.fogFar) {
-    mesh.material.uniforms.fogFar.value = Math.max(mesh.material.uniforms.fogFar.value || 0, (HORIZON_RADIUS + 0.5) * HORIZON_CHUNK_SIZE);
-  }
+  const mesh = new THREE.Mesh(geo, makeLodTerrainMaterial(sandM, {
+    shareFogFar: false,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 8,
+  }));
+  // Horizon geometry stays on the same surface as near/far terrain.  It is
+  // rendered before them with a depth offset and sealed by a deeper skirt,
+  // instead of being translated 16 m below the world.
+  mesh.position.set(cxW, 0, czW);
+  pinHorizonFog(mesh.material);
   mesh.renderOrder = -2;
+  const skirt = attachTerrainEdgeSkirt(mesh, HORIZON_CHUNK_SIZE, HORIZON_CHUNK_RES, heights, colors, HORIZON_LOD_SKIRT_DEPTH);
   scene.add(mesh);
-  return { mesh, geo };
+  return { mesh, geo, skirt };
 }
 
 function disposeAllHorizonChunks() {
   for (const [, c] of horizonChunks) {
-    scene.remove(c.mesh); c.geo.dispose();
-    if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+    disposeLodChunk(c);
   }
   horizonChunks.clear();
   pendingHorizonBuilds.length = 0; pendingHorizonKeys.clear();
@@ -911,10 +1125,8 @@ function updateHorizonChunks(px, pz) {
   trimPendingChunkBuilds(pendingHorizonBuilds, pendingHorizonKeys, wanted);
   for (const [key, c] of horizonChunks) {
     if (!wanted.has(key)) {
-      scene.remove(c.mesh); c.geo.dispose();
-      if (c.mesh.material && c.mesh.material.dispose) c.mesh.material.dispose();
+      disposeLodChunk(c);
       horizonChunks.delete(key);
     }
   }
 }
-

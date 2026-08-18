@@ -24,6 +24,12 @@ node_modules/
 # Generated deploy package
 /dist/
 
+# Generated local copy of the version-locked Three.js browser runtime.
+/vendor/
+
+# Local browser-verification artifacts.
+/output/playwright/
+
 # Tool state
 .grok/
 research/_agent_ids.txt

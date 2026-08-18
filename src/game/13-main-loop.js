@@ -14,6 +14,11 @@ let running = false;
 const FIXED_PHYSICS_STEP = 1 / 120; // 120Hz physics update rate
 let physicsAccumulator = 0;
 let physicsAlpha = 1.0;
+// Let the browser paint the branded menu before the first terrain mesh build.
+// Chunk jobs are queued during bootstrap, worker prefetch may run in parallel,
+// and normal time-budgeted streaming begins after two animation frames.
+const TERRAIN_STARTUP_DEFER_FRAMES = 2;
+let terrainStartupFrames = 0;
 // Frame counter for staggered secondary systems. PERF_BASELINE showed
 // animate() JS (~25–30ms) dominates; full-rate physics/render stay every
 // frame while cosmetic/low-priority systems run at 1/2 or 1/3 rate.
@@ -77,7 +82,10 @@ function animate(now) {
   updateChunks(plane.pos.x, plane.pos.z);
   updateFarChunks(plane.pos.x, plane.pos.z);
   updateHorizonChunks(plane.pos.x, plane.pos.z);
-  processChunkBuildQueues(2.5, 6, true); // real-time: allow brief deferral for worker grids
+  if (terrainStartupFrames >= TERRAIN_STARTUP_DEFER_FRAMES) {
+    processChunkBuildQueues(2.5, 6, true); // real-time: allow brief deferral for worker grids
+  }
+  terrainStartupFrames++;
   updateCamera(dt);
   updateAtmospheric(dt);
   updateShadow();
@@ -130,11 +138,14 @@ function animate(now) {
   renderScene();
 }
 
-// Initial chunk load before first frame
+// Queue initial terrain before the first frame, but do not synchronously build
+// the whole ring here.  Module 14 reveals the menu after this module executes;
+// a 49-near/large-far bulk build previously delayed that first paint badly on
+// production and mobile devices.  The normal RAF budget drains these queues
+// once the menu has had two frames to render.
 updateChunks(plane.pos.x, plane.pos.z);
 updateFarChunks(plane.pos.x, plane.pos.z);
 updateHorizonChunks(plane.pos.x, plane.pos.z);
-processChunkBuildQueues(1e6, 512); // initial bulk load: build the whole starting ring before first frame
 updateTimeOfDay(0);
 updateJetVisual();
 updateSunShadowRig();

@@ -998,6 +998,35 @@
     background: rgba(255, 255, 255, 0.05);
     color: rgba(255, 242, 207, 0.9);
   }
+  /* A laptop-sized 16:9 window is the common production first impression.
+     Keep the full title and the active hangar usable together instead of
+     forcing a large page scroll before the first aircraft can be selected. */
+  @media (orientation: landscape) and (max-height: 760px) {
+    #title {
+      gap: 3px;
+      padding: 8px 12px calc(56px + var(--safe-bottom));
+    }
+    #title .menu-top-title { width: min(220px, 52vw); margin-bottom: 0; }
+    #title h1.menu-main-title img { width: min(310px, 64vw); }
+    #title .menu-subtitle { width: min(235px, 56vw); margin-bottom: 0; }
+    #title .menu-nav { gap: 0; margin-top: 0; }
+    #title .menu-banner { width: min(270px, 52vw); min-height: 34px; }
+    #title .menu-banner img { height: clamp(34px, 5.2vh, 42px); }
+    #menu-panels { width: min(600px, 92vw); margin-top: 0; }
+    .menu-panel { padding: 9px 10px; }
+    #menu-panel-planes { padding: 8px; }
+    .hangar-grid {
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+      max-height: min(38vh, 280px);
+    }
+    .hangar-card { border-radius: 10px; }
+    .hangar-card .hangar-card-body { padding: 5px 7px 6px; }
+    .hangar-card .hangar-card-name { font-size: 10px; }
+    .hangar-card .hangar-card-meta { margin-top: 3px; font-size: 8px; }
+    .hangar-card .hangar-card-badge { padding: 1px 4px; }
+    #poster-bottom-statement { bottom: calc(4px + var(--safe-bottom)); }
+  }
   #title .start-steps {
     position: relative;
     display: grid;
@@ -1961,6 +1990,566 @@
     max-height: min(86vh, 980px);
     overflow: auto;
   }
+  /* Pause console — a flight-operations board rather than one long settings sheet. */
+  #graphics-overlay.fullscreen-options-shell {
+    --pause-ink: #070b11;
+    --pause-panel: #101821;
+    --pause-panel-hi: #17232e;
+    --pause-amber: #f1b95f;
+    --pause-amber-hi: #ffe0a0;
+    --pause-paper: #f8edda;
+    --pause-steel: #7190a0;
+    --pause-danger: #d7654b;
+    isolation: isolate;
+    padding: max(18px, var(--safe-top)) max(18px, var(--safe-right)) max(18px, var(--safe-bottom)) max(18px, var(--safe-left));
+    background:
+      linear-gradient(112deg, rgba(241,185,95,0.08) 0 1px, transparent 1px 18%),
+      radial-gradient(circle at 76% 20%, rgba(87,122,142,0.2), transparent 34%),
+      rgba(3, 7, 11, 0.9);
+    backdrop-filter: blur(14px) saturate(90%);
+    -webkit-backdrop-filter: blur(14px) saturate(90%);
+  }
+  #graphics-overlay.fullscreen-options-shell::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    bottom: 0;
+    left: clamp(20px, 6vw, 94px);
+    width: clamp(5px, 0.65vw, 10px);
+    background: var(--pause-amber);
+    box-shadow: 18px 0 0 rgba(241,185,95,0.14);
+    transform: skewX(-7deg);
+    transform-origin: top;
+  }
+  #graphics-panel.game-options-panel.fullscreen-options-shell-card {
+    inset: 50% auto auto 50%;
+    width: min(1180px, calc(100vw - 56px));
+    height: min(790px, calc(100dvh - 48px));
+    max-width: none;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(241,185,95,0.32);
+    border-radius: 2px;
+    color: var(--pause-paper);
+    background:
+      linear-gradient(90deg, rgba(241,185,95,0.035) 1px, transparent 1px) 0 0 / 42px 42px,
+      linear-gradient(rgba(241,185,95,0.025) 1px, transparent 1px) 0 0 / 42px 42px,
+      linear-gradient(135deg, rgba(23,35,46,0.98), rgba(7,11,17,0.985));
+    box-shadow: 0 32px 100px rgba(0,0,0,0.62), inset 0 1px rgba(255,255,255,0.05);
+  }
+  #graphics-panel.game-options-panel.fullscreen-options-shell-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 82px;
+    height: 7px;
+    background: var(--pause-amber);
+    clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  #graphics-panel button,
+  #graphics-panel summary,
+  #graphics-panel input { font-family: var(--game-font-ui); }
+  #graphics-panel button:focus-visible,
+  #graphics-panel summary:focus-visible,
+  #graphics-panel input:focus-visible {
+    outline: 2px solid var(--pause-amber-hi);
+    outline-offset: 2px;
+  }
+  .options-topbar {
+    height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 18px 26px 16px 30px;
+    border-bottom: 1px solid rgba(241,185,95,0.24);
+    background: linear-gradient(90deg, rgba(241,185,95,0.1), rgba(255,255,255,0.015) 42%, rgba(113,144,160,0.07));
+  }
+  .options-identity {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: end;
+    column-gap: 13px;
+  }
+  #graphics-panel .options-paused-label,
+  #graphics-panel .options-kicker,
+  .options-flight-status > span,
+  .options-page-index,
+  .options-section-label,
+  .options-footer,
+  .options-aircraft-state {
+    font-family: 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+  }
+  #graphics-panel .options-paused-label {
+    grid-row: 1 / span 2;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding: 0 11px;
+    color: var(--pause-ink);
+    background: var(--pause-amber);
+    font-size: 9px;
+    font-weight: 900;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  #graphics-panel.game-options-panel .options-title {
+    margin: 0;
+    color: var(--pause-paper);
+    font-family: Impact, 'Arial Narrow', 'Roboto Condensed', sans-serif;
+    font-size: clamp(31px, 4vw, 48px);
+    font-weight: 900;
+    line-height: 0.86;
+    letter-spacing: 0.035em;
+    transform: scaleX(0.92);
+    transform-origin: left center;
+  }
+  #graphics-panel.game-options-panel .options-kicker {
+    margin: 6px 0 0;
+    color: var(--pause-steel);
+    font-size: 8px;
+  }
+  .options-flight-status {
+    min-width: 210px;
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    text-align: right;
+  }
+  .options-flight-status > span { color: var(--pause-steel); font-size: 8px; }
+  .options-flight-status > strong {
+    max-width: 280px;
+    color: var(--pause-amber-hi);
+    font-size: 14px;
+    line-height: 1.15;
+  }
+  .options-flight-status .options-close-hint { margin-top: 4px; color: rgba(248,237,218,0.62); }
+  .options-layout {
+    display: grid;
+    grid-template-columns: 235px minmax(0, 1fr);
+    height: calc(100% - 132px);
+    min-height: 0;
+  }
+  .options-nav {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 20px 13px 16px 18px;
+    border-right: 1px solid rgba(241,185,95,0.18);
+    background: rgba(3,8,13,0.54);
+  }
+  .options-resume,
+  .options-nav-item {
+    width: 100%;
+    min-height: 56px;
+    border: 0;
+    color: rgba(248,237,218,0.72);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+  }
+  .options-resume {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    align-items: center;
+    gap: 10px;
+    min-height: 62px;
+    margin-bottom: 11px;
+    padding: 10px 13px;
+    color: var(--pause-ink);
+    background: var(--pause-amber);
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
+  }
+  .options-resume:hover { background: var(--pause-amber-hi); }
+  .options-resume-mark {
+    width: 0;
+    height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 11px solid var(--pause-ink);
+  }
+  .options-resume strong,
+  .options-nav-copy strong { display: block; font-size: 11px; letter-spacing: 0.11em; }
+  .options-resume small,
+  .options-nav-copy small { display: block; margin-top: 3px; font-size: 8px; letter-spacing: 0.06em; opacity: 0.64; }
+  .options-nav-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 17px 8px 10px;
+    border-left: 2px solid transparent;
+  }
+  .options-nav-item::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 7px solid transparent;
+    transform: translateY(-50%);
+  }
+  .options-nav-item:hover { color: var(--pause-paper); background: rgba(255,255,255,0.035); }
+  .options-nav-item.is-selected {
+    color: var(--pause-amber-hi);
+    border-left-color: var(--pause-amber);
+    background: linear-gradient(90deg, rgba(241,185,95,0.16), rgba(241,185,95,0.015));
+  }
+  .options-nav-item.is-selected::after { border-left-color: var(--pause-amber); }
+  .options-nav-number {
+    color: var(--pause-steel);
+    font: 700 9px/1 'SF Mono', 'Courier New', monospace;
+    letter-spacing: 0.12em;
+  }
+  .options-nav-item.is-selected .options-nav-number { color: var(--pause-amber); }
+  .options-content {
+    min-width: 0;
+    overflow: auto;
+    padding: 26px clamp(22px, 4vw, 48px) 42px;
+    scrollbar-color: rgba(241,185,95,0.46) rgba(255,255,255,0.04);
+    scrollbar-width: thin;
+  }
+  .options-content::-webkit-scrollbar { width: 7px; }
+  .options-content::-webkit-scrollbar-thumb { background: rgba(241,185,95,0.46); }
+  .options-page[hidden] { display: none; }
+  .options-page-heading {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(241,185,95,0.19);
+  }
+  .options-page-index { padding-top: 5px; color: var(--pause-amber); font-size: 8px; }
+  .options-page-heading h2 {
+    margin: 0;
+    color: var(--pause-paper);
+    font-family: Impact, 'Arial Narrow', 'Roboto Condensed', sans-serif;
+    font-size: clamp(29px, 4vw, 44px);
+    font-weight: 900;
+    line-height: 0.98;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .options-page-heading p {
+    max-width: 620px;
+    margin: 7px 0 0;
+    color: rgba(248,237,218,0.56);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .options-section-label {
+    margin: 24px 0 10px;
+    color: var(--pause-steel);
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .options-aircraft-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .options-aircraft-card {
+    position: relative;
+    min-width: 0;
+    min-height: 116px;
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    gap: 0 10px;
+    padding: 7px;
+    overflow: hidden;
+    border: 1px solid rgba(113,144,160,0.24);
+    border-radius: 0;
+    color: var(--pause-paper);
+    background: rgba(10,17,24,0.78);
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  }
+  .options-aircraft-card:hover {
+    z-index: 1;
+    border-color: rgba(241,185,95,0.62);
+    background: rgba(23,35,46,0.94);
+    transform: translateY(-2px);
+  }
+  .options-aircraft-card.is-selected {
+    border-color: var(--pause-amber);
+    background: linear-gradient(135deg, rgba(241,185,95,0.18), rgba(16,24,33,0.94) 62%);
+    box-shadow: inset 3px 0 var(--pause-amber);
+  }
+  .options-aircraft-image {
+    grid-row: 1 / span 2;
+    display: block;
+    min-height: 100px;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(113,144,160,0.18), rgba(7,11,17,0.9));
+  }
+  .options-aircraft-image.is-missing::after {
+    content: 'NO PREVIEW';
+    display: grid;
+    place-items: center;
+    height: 100%;
+    color: var(--pause-steel);
+    font: 8px/1 'SF Mono', monospace;
+    letter-spacing: 0.12em;
+  }
+  .options-aircraft-image.is-missing img { display: none; }
+  .options-aircraft-image img { width: 100%; height: 100%; object-fit: cover; filter: saturate(0.78) contrast(1.05); }
+  .options-aircraft-card.is-selected img { filter: saturate(1) contrast(1.08); }
+  .options-aircraft-copy { align-self: center; min-width: 0; }
+  .options-aircraft-copy strong {
+    display: block;
+    overflow: hidden;
+    color: var(--pause-paper);
+    font-size: 11px;
+    line-height: 1.22;
+    text-overflow: ellipsis;
+  }
+  .options-aircraft-copy > span {
+    display: block;
+    margin-top: 5px;
+    color: var(--pause-steel);
+    font-size: 8px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+  .options-aircraft-state {
+    align-self: end;
+    color: rgba(248,237,218,0.42);
+    font-size: 7px;
+  }
+  .options-aircraft-card.is-selected .options-aircraft-state { color: var(--pause-amber); }
+  .options-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .options-choice-grid-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #graphics-panel .options-choice {
+    position: relative;
+    min-height: 72px;
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    padding: 13px 14px;
+    border: 1px solid rgba(113,144,160,0.25);
+    border-radius: 0;
+    color: var(--pause-paper);
+    background: rgba(10,17,24,0.72);
+    cursor: pointer;
+    text-align: left;
+  }
+  #graphics-panel .options-choice:hover { border-color: rgba(241,185,95,0.52); background: var(--pause-panel-hi); }
+  #graphics-panel .options-choice.is-selected {
+    border-color: var(--pause-amber);
+    background: linear-gradient(135deg, rgba(241,185,95,0.17), rgba(16,24,33,0.92));
+    box-shadow: inset 3px 0 var(--pause-amber);
+  }
+  #graphics-panel .options-choice strong { font-size: 11px; letter-spacing: 0.1em; }
+  #graphics-panel .options-choice > span { color: var(--pause-steel); font-size: 9px; text-transform: uppercase; }
+  #graphics-panel .options-choice em {
+    position: absolute;
+    top: 6px;
+    right: 7px;
+    color: var(--pause-amber);
+    font: normal 6px/1 'SF Mono', monospace;
+    letter-spacing: 0.1em;
+  }
+  .options-setting-block,
+  .options-reset-zone {
+    margin-top: 18px;
+    padding: 2px 16px 13px;
+    border-left: 2px solid rgba(113,144,160,0.3);
+    background: rgba(7,11,17,0.35);
+  }
+  .options-settings-two-col {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 24px;
+    padding-top: 10px;
+  }
+  #graphics-panel details {
+    margin: 10px 0 0 !important;
+    border: 1px solid rgba(113,144,160,0.22) !important;
+    border-radius: 0 !important;
+    background: rgba(7,11,17,0.38) !important;
+  }
+  #graphics-panel details > summary {
+    padding: 13px 15px !important;
+    border-left: 2px solid transparent;
+    background: rgba(113,144,160,0.055) !important;
+  }
+  #graphics-panel details[open] > summary { border-left-color: var(--pause-amber); background: rgba(241,185,95,0.07) !important; }
+  #graphics-panel details > summary strong { color: var(--pause-paper) !important; }
+  #graphics-panel details > div { padding: 10px 16px 15px !important; }
+  #graphics-panel input[type="range"] {
+    height: 4px;
+    margin-top: 7px;
+    background: linear-gradient(90deg, rgba(241,185,95,0.46), rgba(113,144,160,0.18));
+  }
+  #graphics-panel input[type="range"]::-webkit-slider-thumb {
+    width: 14px;
+    height: 14px;
+    border: 3px solid var(--pause-ink);
+    background: var(--pause-amber);
+    box-shadow: 0 0 0 1px var(--pause-amber);
+  }
+  #graphics-panel input[type="range"]::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--pause-ink);
+    background: var(--pause-amber);
+  }
+  .options-bindings {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(113,144,160,0.16);
+    border: 1px solid rgba(113,144,160,0.16);
+  }
+  .options-bindings > div {
+    display: grid;
+    grid-template-columns: minmax(80px, 1fr) 110px minmax(120px, 1.25fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 47px;
+    padding: 9px 12px;
+    background: rgba(7,11,17,0.88);
+  }
+  .options-bindings strong { color: var(--pause-steel); font-size: 8px; letter-spacing: 0.12em; }
+  .options-bindings kbd {
+    width: fit-content;
+    padding: 5px 8px;
+    border: 1px solid rgba(241,185,95,0.36);
+    border-bottom-width: 2px;
+    border-radius: 2px;
+    color: var(--pause-amber-hi);
+    background: rgba(241,185,95,0.07);
+    font: 700 9px/1 'SF Mono', monospace;
+  }
+  .options-bindings span { color: rgba(248,237,218,0.5); font-size: 8px; letter-spacing: 0.06em; }
+  .options-reset-zone {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 22px;
+    margin-top: 24px;
+    padding: 16px;
+    border-left-color: var(--pause-danger);
+  }
+  .options-reset-zone strong { display: block; color: var(--pause-paper); font-size: 10px; letter-spacing: 0.1em; }
+  .options-reset-zone span { display: block; margin-top: 5px; color: rgba(248,237,218,0.5); font-size: 9px; }
+  #graphics-panel .options-danger-button {
+    min-width: 150px;
+    padding: 10px 13px;
+    border: 1px solid rgba(215,101,75,0.68);
+    border-radius: 0;
+    color: #ffd1c7;
+    background: rgba(215,101,75,0.11);
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    cursor: pointer;
+  }
+  #graphics-panel .options-danger-button:hover { background: rgba(215,101,75,0.26); color: #fff; }
+  .options-footer {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 26px;
+    padding: 0 22px;
+    border-top: 1px solid rgba(113,144,160,0.18);
+    color: rgba(248,237,218,0.4);
+    background: rgba(3,8,13,0.78);
+    font-size: 7px;
+  }
+  @media (max-width: 980px) {
+    .options-aircraft-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .options-choice-grid-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .options-bindings { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px), (pointer: coarse) and (max-width: 920px) {
+    #graphics-overlay.fullscreen-options-shell { padding: 0; }
+    #graphics-overlay.fullscreen-options-shell::before { display: none; }
+    #graphics-panel.game-options-panel.fullscreen-options-shell-card {
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100dvh !important;
+      max-width: none !important;
+      max-height: none !important;
+      padding: 0 !important;
+      border: 0;
+      border-radius: 0 !important;
+      transform: none !important;
+      overflow: hidden !important;
+    }
+    .options-topbar { height: 78px; padding: 12px 14px; }
+    #graphics-panel.game-options-panel .options-title { font-size: 28px; }
+    #graphics-panel .options-paused-label { padding: 0 7px; font-size: 7px; }
+    .options-flight-status { min-width: 120px; }
+    .options-flight-status > strong { max-width: 150px; font-size: 10px; }
+    .options-layout { grid-template-columns: 1fr; grid-template-rows: 72px minmax(0, 1fr); height: calc(100% - 110px); }
+    .options-nav {
+      flex-direction: row;
+      gap: 4px;
+      padding: 8px;
+      overflow-x: auto;
+      border-right: 0;
+      border-bottom: 1px solid rgba(241,185,95,0.18);
+    }
+    .options-resume,
+    .options-nav-item { flex: 0 0 124px; min-height: 54px; margin: 0; }
+    .options-resume { grid-template-columns: 18px 1fr; gap: 5px; padding: 7px 9px; }
+    .options-nav-item { grid-template-columns: 20px 1fr; padding: 7px 8px; border-left: 0; border-bottom: 2px solid transparent; }
+    .options-nav-item::after { display: none; }
+    .options-nav-item.is-selected { border-left-color: transparent; border-bottom-color: var(--pause-amber); }
+    .options-nav-copy strong { font-size: 9px; }
+    .options-nav-copy small { display: none; }
+    .options-content { padding: 20px 14px 34px; }
+    .options-page-heading { grid-template-columns: 1fr; gap: 5px; margin-bottom: 16px; padding-bottom: 13px; }
+    .options-page-heading h2 { font-size: 30px; }
+    .options-page-index { padding: 0; }
+    .options-aircraft-card { grid-template-columns: 88px minmax(0, 1fr); min-height: 100px; }
+    .options-aircraft-image { min-height: 86px; }
+    .options-settings-two-col { grid-template-columns: 1fr; }
+    .options-bindings > div { grid-template-columns: minmax(62px, 0.8fr) 90px minmax(100px, 1fr); }
+    .options-footer { gap: 15px; padding: 0 12px; }
+  }
+  @media (max-width: 480px) {
+    .options-flight-status > span:not(.options-close-hint),
+    .options-flight-status > strong { display: none; }
+    .options-flight-status { min-width: auto; }
+    .options-aircraft-grid { grid-template-columns: 1fr; }
+    .options-choice-grid,
+    .options-choice-grid-four { grid-template-columns: 1fr; }
+    .options-reset-zone { align-items: stretch; flex-direction: column; }
+    #graphics-panel .options-danger-button { width: 100%; }
+  }
+  @media (max-height: 540px) and (orientation: landscape) {
+    .options-topbar { height: 62px; padding-top: 8px; padding-bottom: 8px; }
+    #graphics-panel.game-options-panel .options-title { font-size: 26px; }
+    #graphics-panel.game-options-panel .options-kicker { margin-top: 3px; }
+    .options-layout { height: calc(100% - 90px); }
+    .options-footer { height: 28px; }
+    .options-content { padding-top: 15px; }
+    .options-page-heading { margin-bottom: 14px; padding-bottom: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .options-aircraft-card { transition: none; }
+  }
   .features-popup {
     position: fixed;
     inset: 0;
@@ -2260,7 +2849,7 @@
       <details class="hud-action-tray" id="hud-actions-tray">
         <summary class="hud-action" id="hud-actions-summary">SYSTEMS [TAB] <span id="hud-actions-state" class="ok">SHOW</span></summary>
         <div class="hud-control-grid" id="hud-control-grid">
-          <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">DUSTY TURBO</span></button>
+          <button type="button" class="hud-action" id="prop-model-btn">MODEL [M] <span id="prop-model-ind" class="ok">E-115</span></button>
           <button type="button" class="hud-action" id="options-btn">OPTIONS [P] <span id="options-ind" class="ok">OPEN</span></button>
           <button type="button" class="hud-action" id="landing-btn">LIGHTS [L] <span id="landing-ind" class="ok">ON</span></button>
           <button type="button" class="hud-action" id="style-btn">STYLE [T] <span id="style-ind" class="ok">LOW-POLY</span></button>
@@ -2412,19 +3001,19 @@
     </div>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<!-- Version-locked local runtime: production never depends on a mutable CDN. -->
+<script src="vendor/three/r128/build/three.min.js"></script>
+<script src="vendor/three/r128/examples/js/loaders/GLTFLoader.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/MaskPass.js"></script>
+<script src="vendor/three/r128/examples/js/shaders/CopyShader.js"></script>
+<script src="vendor/three/r128/examples/js/shaders/FXAAShader.js"></script>
+<script src="vendor/three/r128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="vendor/three/r128/examples/js/shaders/BokehShader.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/BokehPass.js"></script>
+<script src="vendor/three/r128/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 (() => {
 'use strict';
-

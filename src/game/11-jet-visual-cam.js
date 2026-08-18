@@ -29,8 +29,7 @@ function updateJetVisual() {
   jet.userData.gearR.rotation.z = -(1 - g) * (Math.PI * 0.5);
 
   // Fixed gear stance — slightly wider/splayed under load, tucking in as lift unloads it.
-  const gearGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
-    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const gearGroundH = getSurfaceHeight(plane.pos.x, plane.pos.z);
   const gearAltAGL = Math.max(0, plane.pos.y - gearGroundH);
   const groundSpeed = Math.hypot(plane.vel.x, plane.vel.z);
   const groundLoad = clamp01(1 - gearAltAGL / 8) * g;
@@ -94,6 +93,7 @@ function updateJetVisual() {
     const ab = jet.userData.afterburner;
     const ab2 = jet.userData.ab2;
     const burn = Math.max(0, (plane.throttle - 0.55) / 0.45);
+    plane.abBurn = burn;   // read by the heat-shimmer pass (09c-ambient.js)
     ab.material.opacity = burn * 0.85;
     ab.scale.set(
       0.7 + burn * 0.7,
@@ -106,18 +106,20 @@ function updateJetVisual() {
       0.55 + burn * 0.5,
       0.7 + burn * 1.7
     );
-    // Flicker
-    const fl = 0.92 + Math.sin(performance.now() * 0.08) * 0.04 + Math.random() * 0.05;
+    // Flicker — multi-tone sine jitter (no Math.random) so a replayed
+    // timeline renders identical burner motion.
+    const abT = performance.now() * 0.001;
+    const fl = 0.92 + Math.sin(abT * 80) * 0.04 + Math.sin(abT * 193.0) * 0.03 + Math.sin(abT * 277.0 + 1.7) * 0.02;
     ab.scale.z *= fl;
     ab2.scale.z *= fl;
+  } else {
+    plane.abBurn = 0;   // prop airframe / swapped-in GLB — no burner
   }
 
   // Propeller spin — real mesh OR procedural disc. Spin around the
   // plane's local Z axis (forward) with a small idle trickle + throttle
   // scaling. Procedural disc's motion-blur circle fades in with RPM.
-  // Also emit a visible propeller disc trail — a thin white condensation
-  // puff at the prop disc position, visible at high throttle for extra
-  // realism on prop planes.
+  // Prop-disc condensation puffs: implemented in updateAtmospheric (09a-fx-combat.js).
   if (plane.props && plane.props.length) {
     // Propeller angular speed (rad/s). Real props idle at ~600 RPM
     // (≈63 rad/s) and cruise at 2000–2700 RPM (≈210–280 rad/s). We
@@ -272,8 +274,7 @@ function updateJetVisual() {
       const splashCenter = _visSplashCenter.copy(plane.pos)
         .addScaledVector(forwardWorld, 54)
         .addScaledVector(rightWorld, rig.side * 2.6);
-      const splashGround = (splashCenter.x * splashCenter.x + splashCenter.z * splashCenter.z < AIRFIELD_FLAT_R2)
-        ? AIRFIELD_SURFACE_Y + 0.08 : getHeight(splashCenter.x, splashCenter.z) + 0.18;
+      const splashGround = getSurfaceHeight(splashCenter.x, splashCenter.z) + 0.18;
       rig.splash.position.set(splashCenter.x, splashGround, splashCenter.z);
       rig.splash.rotation.z = Math.atan2(forwardWorld.x, -forwardWorld.z);
       rig.splash.material.opacity = plane.landingLights
@@ -644,6 +645,13 @@ function replayStop() {
   if (typeof crashFinalMusic !== 'undefined') crashFinalMusic.stop();
   syncReplayUI();
 }
+// Test hooks: headless smoke drivers start/stop replay via window.__sim
+// (same convention as __sim.getHeight / __sim.heightPrefetch).
+if (window.__sim) {
+  window.__sim.replay = replay;
+  window.__sim.replayStart = replayStart;
+  window.__sim.replayStop = replayStop;
+}
 // Called from animate() when replay is active, BEFORE updateJetVisual +
 // updateCamera. Writes the recorded frame into plane.pos/plane.quat so
 // the rest of the pipeline (chase cam, chunks, visual jet position)
@@ -661,6 +669,13 @@ function replaySyncState(frames, idx) {
 // Called AFTER updateCamera for non-chase modes, overriding the camera
 // to a different viewpoint. Chase mode leaves the live updateCamera
 // result alone.
+// Scratch + pan state (runs every frame during replay; pattern matches _cam*)
+const _replayLocal = new THREE.Vector3();
+const _replayLook = new THREE.Vector3();
+const _replayMovieLook = new THREE.Vector3();
+const _replayMoviePrevPos = new THREE.Vector3();
+let _replayMovieLookAnchor = null;
+let _replayMovieLookT = 0;
 function replayApplyCamera(frames, idx) {
   if (replay.mode === 'chase') return;  // updateCamera already did the right thing
   const f = frames[Math.min(idx, frames.length - 1)];
@@ -668,18 +683,18 @@ function replayApplyCamera(frames, idx) {
   const q = f.quat;
 
   if (replay.mode === 'cockpit') {
-    const local = new THREE.Vector3(0, 0.55, -1.0).applyQuaternion(q);
+    const local = _replayLocal.set(0, 0.55, -1.0).applyQuaternion(q);
     camera.position.copy(pos).add(local);
     camera.up.set(0, 1, 0).applyQuaternion(q);
-    const lookFwd = new THREE.Vector3(0, 0, -20).applyQuaternion(q);
-    camera.lookAt(pos.clone().add(lookFwd));
+    const lookFwd = _replayLook.set(0, 0, -20).applyQuaternion(q).add(pos);
+    camera.lookAt(lookFwd);
   } else if (replay.mode === 'wingL' || replay.mode === 'wingR') {
     const sign = replay.mode === 'wingL' ? -1 : 1;
-    const local = new THREE.Vector3(sign * 7.2, 0.9, 4.2).applyQuaternion(q);
+    const local = _replayLocal.set(sign * 7.2, 0.9, 4.2).applyQuaternion(q);
     camera.position.copy(pos).add(local);
     camera.up.set(0, 1, 0).applyQuaternion(q);
-    const look = new THREE.Vector3(-sign * 1.4, 0.4, -10).applyQuaternion(q);
-    camera.lookAt(pos.clone().add(look));
+    const look = _replayLook.set(-sign * 1.4, 0.4, -10).applyQuaternion(q).add(pos);
+    camera.lookAt(look);
   } else if (replay.mode === 'movie') {
     const eventAnchor = replay.eventAnchor && idx >= replay.eventAnchor.startFrame && idx <= replay.eventAnchor.endFrame
       ? replay.eventAnchor
@@ -689,7 +704,28 @@ function replayApplyCamera(frames, idx) {
     if (anchor) {
       camera.position.copy(anchor.pos);
       camera.up.set(0, 1, 0);
-      camera.lookAt(anchor.lookAt || pos);
+      // Pan the static tripod camera to track the plane through the segment.
+      // anchor.lookAt is frozen at the segment's mid frame, so aiming at it
+      // let a fast pass carry the subject out of frame within a couple of
+      // seconds. A cut to a new anchor snaps. Within a segment the look point
+      // is feedforward-tracked: it moves by the plane's own frame delta (zero
+      // steady-state lag even at a close 200 m/s flyby, where pure exp
+      // smoothing trails tens of degrees), then exp-blends out any residual
+      // offset from frame stepping / slow-mo transitions.
+      const nowT = performance.now();
+      const target = _replayLook.copy(pos);
+      target.y += 1.0;
+      if (_replayMovieLookAnchor !== anchor) {
+        _replayMovieLookAnchor = anchor;
+        _replayMovieLook.copy(target);
+      } else {
+        _replayMovieLook.add(target).sub(_replayMoviePrevPos);
+        const panDt = Math.min(0.1, Math.max(0, (nowT - _replayMovieLookT) / 1000));
+        _replayMovieLook.lerp(target, 1 - Math.exp(-10.0 * panDt));
+      }
+      _replayMoviePrevPos.copy(target);
+      _replayMovieLookT = nowT;
+      camera.lookAt(_replayMovieLook);
     }
   }
 }
@@ -744,12 +780,15 @@ function replayPostStep() {
   if (frames.length === 0) return;
   replayApplyCamera(frames, replay.playIdx);
 }
+const _replayHeroFwd = new THREE.Vector3();
+const _replayHeroUp = new THREE.Vector3();
+const _replayHeroRight = new THREE.Vector3();
 function updateReplayHeroLightAfterCamera() {
   if (!replay.playing) return;
   const nightFactor = timeOfDay ? (1 - timeOfDay.daylight) : 0;
-  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const camForward = _replayHeroFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+  const camUp = _replayHeroUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  const camRight = _replayHeroRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
   replayHeroRig.spot.visible = true;
   replayHeroRig.fill.visible = true;
   replayHeroRig.spot.position.copy(camera.position)
@@ -770,10 +809,25 @@ function updateReplayHeroLightAfterCamera() {
   replayHeroRig.fill.intensity = 0.85 + nightFactor * 0.25;
 }
 const LOCAL_LEADERBOARD_KEY = 'ships-local-leaderboard-v1';
+function normalizeLocalLeaderboardRow(row) {
+  if (!row || !Number.isFinite(Number(row.score))) return null;
+  const name = String(row.name || 'PILOT').toUpperCase().replace(/[^A-Z0-9 _-]/g, '').trim().slice(0, 14) || 'PILOT';
+  const grade = String(row.grade || 'C').toUpperCase().replace(/[^A-Z+-]/g, '').slice(0, 3) || 'C';
+  const boundedInt = (value, min, max) => Math.max(min, Math.min(max, Math.round(Number(value) || 0)));
+  return {
+    name,
+    grade,
+    score: boundedInt(row.score, 0, 9_999_999),
+    kills: boundedInt(row.kills, 0, 9_999),
+    streak: boundedInt(row.streak, 0, 9_999),
+    reason: String(row.reason || '').slice(0, 80),
+    at: String(row.at || '').slice(0, 40),
+  };
+}
 function readLocalLeaderboard() {
   try {
     const rows = JSON.parse(localStorage.getItem(LOCAL_LEADERBOARD_KEY) || '[]');
-    return Array.isArray(rows) ? rows.filter(r => r && Number.isFinite(Number(r.score))).slice(0, 10) : [];
+    return Array.isArray(rows) ? rows.map(normalizeLocalLeaderboardRow).filter(Boolean).slice(0, 10) : [];
   } catch { return []; }
 }
 function saveLocalLeaderboardEntry(name, summary) {
@@ -808,7 +862,19 @@ function renderLocalLeaderboard(listEl) {
   rows.slice(0, 5).forEach((row, i) => {
     const line = document.createElement('div');
     line.style.cssText = 'display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid rgba(255,215,150,.08);font:800 11px/1.2 var(--game-font-ui);letter-spacing:.08em;';
-    line.innerHTML = `<span style="color:#ffdf9d;">#${i + 1}</span><span>${row.name || 'PILOT'} <em style="opacity:.62;font-style:normal;">${row.grade || 'C'} · ${row.kills || 0}K</em></span><strong style="color:#fff4d6;">${row.score || 0}</strong>`;
+    const rank = document.createElement('span');
+    rank.style.color = '#ffdf9d';
+    rank.textContent = `#${i + 1}`;
+    const pilot = document.createElement('span');
+    pilot.textContent = `${row.name} `;
+    const detail = document.createElement('em');
+    detail.style.cssText = 'opacity:.62;font-style:normal;';
+    detail.textContent = `${row.grade} · ${row.kills}K`;
+    pilot.appendChild(detail);
+    const score = document.createElement('strong');
+    score.style.color = '#fff4d6';
+    score.textContent = String(row.score);
+    line.append(rank, pilot, score);
     listEl.appendChild(line);
   });
 }
@@ -1720,8 +1786,30 @@ function updateCamera(dt) {
   camera.up.copy(blendedUp);
   const cameraGroundH = getHeight(jet.position.x, jet.position.z);
   const lowFastFov = clamp01(1 - Math.max(0, jet.position.y - cameraGroundH) / 160) * clamp01((speedKtsForCamera - 34) / 100) * 1.2;
-  const speedFov = clamp01((speedKtsForCamera - 42) / 190) * 4.5 + clamp01((speedKtsForCamera - 150) / 280) * 2.0;
-  applyCameraLensFov(CAMERA_BASE_FOV + speedFov + lowFastFov + maneuverReveal * 1.3, Math.min(1, dt * 4.4));
+  // Third segment keeps widening past ~190 m/s (~369 kts) so the lens keeps
+  // stretching toward the airframe's top end; the afterburner kick (abBurn is
+  // written by updateJetVisual) makes full burner readable in the lens. Total
+  // variable boost stays ≤ +13 over CAMERA_BASE_FOV (CAMERA_MAX_FOV is 74).
+  const speedFov = clamp01((speedKtsForCamera - 42) / 190) * 4.5
+    + clamp01((speedKtsForCamera - 150) / 280) * 2.0
+    + clamp01((speedKtsForCamera - 369) / 310) * 4.5
+    + (plane.abBurn || 0) * 2.5;
+  const fovBoost = Math.min(13, speedFov + lowFastFov + maneuverReveal * 1.3);
+  applyCameraLensFov(CAMERA_BASE_FOV + fovBoost, Math.min(1, dt * 4.4));
+
+  // Structural-stress lens shake: airframe buffet (aeroFlexState.shake) plus
+  // G-load above ~2g drive a small multi-sine positional jitter so hard turns
+  // and top speed are FELT through the lens. Deterministic (no Math.random);
+  // disabled when crashed and during replay.
+  if (!plane.crashed && !replay.playing) {
+    const shakeAmp = aeroFlexState.shake * 0.3 + Math.max(0, (plane.loadFactor || 1) - 2) * 0.05;
+    if (shakeAmp > 0.001) {
+      const shakeT = performance.now() * 0.001;
+      camera.position.x += (Math.sin(shakeT * 37.1) + Math.sin(shakeT * 53.7 + 1.3)) * 0.5 * shakeAmp;
+      camera.position.y += (Math.sin(shakeT * 43.3 + 2.1) + Math.sin(shakeT * 61.9 + 0.7)) * 0.5 * shakeAmp;
+      camera.position.z += (Math.sin(shakeT * 47.9 + 4.2) + Math.sin(shakeT * 29.3 + 2.8)) * 0.5 * shakeAmp;
+    }
+  }
 
   camera.lookAt(lookTarget);
   if (!camera.userData.focusTarget || !camera.userData.focusTarget.isVector3) {
@@ -1731,4 +1819,3 @@ function updateCamera(dt) {
   camera.userData.cameraHeightOffset = camera.position.y - jet.position.y;
   camera.userData.cameraFocusYOffset = lookTarget.y - jet.position.y;
 }
-

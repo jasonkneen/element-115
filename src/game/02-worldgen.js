@@ -106,8 +106,82 @@ function fbm(x, y, oct) {
 //  TERRAIN HEIGHTMAP — canyon mesas with runway clearing
 // =============================================================
 const AIRFIELD_SURFACE_Y = 0.08;
-const AIRFIELD_FLAT_RADIUS = 230;
-const AIRFIELD_FLAT_R2 = AIRFIELD_FLAT_RADIUS * AIRFIELD_FLAT_RADIUS;
+const WATER_SURFACE_Y = 4;
+// The water shader punches a dry bowl around the airfield.  Keep the shared
+// surface query on the same boundary so physics never collides with an
+// invisible lake beside the visible runway.
+const WATER_AIRFIELD_EXCLUSION_RADIUS = 420;
+
+// The world has one authoritative surface query. Rendering keeps using the
+// analytic terrain heightfield, while physics, HUD, effects and traffic can
+// ask this contract for the actual surface they should interact with. This
+// replaces the old physics-only circular airfield override, which let a plane
+// roll on invisible ground outside the visible runway/apron mesh.
+function getAirfieldSurfaceKind(x, z) {
+  // Keep these bounds exactly in lockstep with the PlaneGeometry footprints
+  // in 05-airfield.js.  The old generous collision rectangles made wheels
+  // and dust read "pavement" on terrain where no visual surface existed.
+  // Overlapping meshes intentionally resolve to the higher runway surface.
+  if (Math.abs(x) <= 17 && Math.abs(z) <= 210) return 'runway';
+  if (Math.abs(x - 34) <= 29 && Math.abs(z - 150) <= 28) return 'apron';
+  if (Math.abs(x - 17) <= 7 && Math.abs(z - 116) <= 37) return 'taxiway';
+  return '';
+}
+
+function sampleSurface(x, z, out = {}, withNormal = true) {
+  const terrainHeight = getHeight(x, z);
+  const kind = getAirfieldSurfaceKind(x, z);
+  const water = !kind
+    && Math.hypot(x, z) >= WATER_AIRFIELD_EXCLUSION_RADIUS
+    && terrainHeight < WATER_SURFACE_Y;
+  // Pavement is rendered a fraction above the generated terrain.  It must
+  // therefore be the exact physical surface as well, otherwise wheels hover
+  // below the runway or sparks/dust appear inside it.
+  const height = kind ? AIRFIELD_SURFACE_Y : (water ? WATER_SURFACE_Y : terrainHeight);
+  out.terrainHeight = terrainHeight;
+  out.height = height;
+  out.kind = water ? 'water' : (kind || 'terrain');
+  out.water = water;
+
+  if (!withNormal || water) {
+    out.normalX = 0;
+    out.normalY = 1;
+    out.normalZ = 0;
+    return out;
+  }
+
+  // Central differences keep the collision normal and terrain contour in
+  // lockstep. At a paved pad the surrounding terrain is deliberately ignored:
+  // wheels need a stable, level runway normal through the feathered visual edge.
+  if (kind) {
+    out.normalX = 0;
+    out.normalY = 1;
+    out.normalZ = 0;
+    return out;
+  }
+  const sampleStep = 3;
+  const hx0 = getHeight(x - sampleStep, z);
+  const hx1 = getHeight(x + sampleStep, z);
+  const hz0 = getHeight(x, z - sampleStep);
+  const hz1 = getHeight(x, z + sampleStep);
+  let nx = (hx0 - hx1) / (sampleStep * 2);
+  let ny = 1;
+  let nz = (hz0 - hz1) / (sampleStep * 2);
+  const invLen = 1 / Math.max(1e-6, Math.hypot(nx, ny, nz));
+  out.normalX = nx * invLen;
+  out.normalY = ny * invLen;
+  out.normalZ = nz * invLen;
+  return out;
+}
+
+function getSurfaceHeight(x, z) {
+  const terrainHeight = getHeight(x, z);
+  return getAirfieldSurfaceKind(x, z)
+    ? AIRFIELD_SURFACE_Y
+    : (Math.hypot(x, z) >= WATER_AIRFIELD_EXCLUSION_RADIUS && terrainHeight < WATER_SURFACE_Y
+      ? WATER_SURFACE_Y
+      : terrainHeight);
+}
 
 // NOTE: heightPrefetch clones this function (and its const-only closure) into a
 // Web Worker via .toString() — if it ever reads a mutable global, update there.
@@ -143,6 +217,19 @@ function getHeight(x, z) {
   const frac = t - base;
   const tr = frac < 0.72 ? 0 : smoothstep((frac - 0.72) / 0.28);
   h = (base + tr) * step;
+
+  // Canyon micro-detail: one extra small-amplitude (±2 m) ridged octave on
+  // higher/steeper ground so cliff slopes don't read glassy up close. This
+  // MUST stay before the runway-ellipse / airfield flattening below: those
+  // masks cut height by ~96–99.8% near the field, which also crushes this
+  // detail to nothing there (airfield pad heights stay bit-identical).
+  // Const-only closure (vnoise + smoothstepRange) — safe for the height
+  // prefetch Worker's .toString() cloning.
+  if (h > 20) {
+    const detailMask = smoothstepRange(20, 60, h);
+    const dn = vnoise(x * 0.043 + 7.3, z * 0.043 - 2.1);
+    h += detailMask * ((1 - Math.abs(dn * 2 - 1)) * 2 - 1) * 2;
+  }
 
   // Carve a longer runway canyon and soften the valley floor so the airport
   // feels more open and the immediate approach is readable from the air.
@@ -248,4 +335,3 @@ function buildWorldOpportunities() {
     portalCandidates: chosenPortals,
   };
 }
-

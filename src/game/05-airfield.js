@@ -603,7 +603,7 @@ buildAirfield();
 
 const worldInstallations = [];
 function addGenerativeInstallation(label, x, z, opts = {}) {
-  const groundY = (x * x + z * z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(x, z);
+  const groundY = getSurfaceHeight(x, z);
   const group = new THREE.Group();
   group.name = `installation:${label}`;
   group.position.set(x, groundY, z);
@@ -742,4 +742,3 @@ function updateAirfieldAmbient(dt) {
     sign.position.y = Math.sin(performance.now() * 0.0014 + i) * 0.015;
   }
 }
-

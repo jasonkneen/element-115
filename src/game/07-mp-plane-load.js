@@ -639,33 +639,49 @@ function updateMultiplayer(dt) {
 //  shadow, physics anchors, etc. intact.
 // =============================================================
 (function loadOptionalPlaneGLB() {
-  // Read params from URL hash first (survives server redirects like `serve`
-  // stripping .html and dropping the query string), then fall back to query.
-  const hashStr = (window.location.hash || '').replace(/^#/, '');
-  const searchStr = (window.location.search || '').replace(/^\?/, '');
-  const params = new URLSearchParams(hashStr || searchStr);
+  // Use the same parser as boot config so the selected preset and the loader
+  // cannot disagree about whether a query or a copied tweak hash is active.
+  const params = getGameParamsFromLocation();
   let planeFile = params.get('plane');
-  let removedPlaneParam = false;
-  if (planeFile && REMOVED_PROP_MODEL_FILES.has(planeFile)) {
-    params.delete('plane');
-    params.delete('variant');
-    planeFile = null;
-    removedPlaneParam = true;
+  let explicitSelection = resolvePropPresetFromParams(params);
+  const removedPlaneParam = !!(planeFile && REMOVED_PROP_MODEL_FILES.has(planeFile));
+  const invalidPlaneParam = removedPlaneParam || explicitSelection.invalid;
+
+  function replaceWithSafeAircraftUrl(preset) {
+    const cleanUrl = new URL(location.href);
+    const nextParams = new URLSearchParams(params);
+    // Tweaks only have meaning for the model that failed/rejected. Keep
+    // non-aircraft game settings (spawn, debug, room), but never carry a
+    // rejected model's transform or class flags onto the E-115 fallback.
+    for (const key of ['plane', 'variant', 's', 'rx', 'ry', 'rz', 'dx', 'dy', 'dz', 'px', 'py', 'pz', 'jet']) {
+      nextParams.delete(key);
+    }
+    applyPropPresetIdentityToParams(nextParams, preset);
+    cleanUrl.search = nextParams.toString() ? `?${nextParams.toString()}` : '';
+    // A rejected hash must not resurrect the unsafe model on a refresh.
+    if ((cleanUrl.hash || '').includes('=')) cleanUrl.hash = '';
+    if (window.history && window.history.replaceState) window.history.replaceState(null, '', cleanUrl.toString());
   }
-  if (!planeFile) {
+
+  if (invalidPlaneParam) {
+    const fallback = markAircraftVisualFallback(removedPlaneParam ? 'REMOVED AIRCRAFT' : 'UNRECOGNISED AIRCRAFT');
+    applyPropPresetIdentityToParams(params, fallback);
+    replaceWithSafeAircraftUrl(fallback);
+    planeFile = fallback.file;
+    explicitSelection = { preset: fallback, invalid: false };
+  } else if (!planeFile) {
     const preset = getActivePropPreset();
     if (preset) {
       applyPropPresetToParams(params, preset);
       planeFile = params.get('plane');
-      if (removedPlaneParam && window.history && window.history.replaceState) {
-        const cleanUrl = new URL(location.href);
-        cleanUrl.search = params.toString() ? `?${params.toString()}` : '';
-        if ((cleanUrl.hash || '').includes('=')) cleanUrl.hash = '';
-        window.history.replaceState(null, '', cleanUrl.toString());
-      }
+      explicitSelection = { preset, invalid: false };
     }
   }
-  if (!planeFile || planeFile === 'default') return;
+  const selectedPreset = explicitSelection.preset || findPropPresetByPlaneFile(planeFile);
+  if (!planeFile || planeFile === 'default') {
+    markAircraftVisualLoaded(selectedPreset || getDefaultPropPreset());
+    return;
+  }
 
   // Snapshot user-authored URL/hash tweaks BEFORE hangar-preset fill-ins.
   // Preset keys (e.g. a10 rx:90, f15 ry:0) must NOT block plane-tweaks.json —
@@ -676,7 +692,15 @@ function updateMultiplayer(dt) {
 
   // Prefer the hangar preset (if this file maps to one) so jet flag + orientation
   // from PROP_MODEL_PRESETS always apply even when the URL is sparse.
-  const matchedPreset = findPropPresetByParams(params) || findPropPresetByPlaneFile(planeFile);
+  const matchedPreset = selectedPreset;
+  if (!matchedPreset) {
+    // This should be unreachable after the explicit allow-list above, but keep
+    // the loader closed if the registry ever changes independently.
+    const fallback = markAircraftVisualFallback('UNRECOGNISED AIRCRAFT');
+    replaceWithSafeAircraftUrl(fallback);
+    return;
+  }
+  markAircraftVisualLoading(matchedPreset);
   if (matchedPreset) {
     if (matchedPreset.jet && params.get('jet') !== '1') params.set('jet', '1');
     if (matchedPreset.variant != null && !params.has('variant')) params.set('variant', String(matchedPreset.variant));
@@ -740,8 +764,10 @@ function updateMultiplayer(dt) {
   };
 
   if (typeof THREE.GLTFLoader !== 'function') {
+    const fallback = markAircraftVisualFallback('GLTF LOADER UNAVAILABLE');
+    replaceWithSafeAircraftUrl(fallback);
     hud.style.color = '#ff4e7a';
-    hud.textContent = '✕ GLTFLoader not available — using default jet';
+    hud.textContent = `✕ GLTFLoader not available — using ${fallback.hudLabel}`;
     restoreProcedural();
     setTimeout(() => hud.remove(), 4000);
     return;
@@ -753,8 +779,12 @@ function updateMultiplayer(dt) {
     (gltf) => {
       const model = gltf.scene || (gltf.scenes && gltf.scenes[0]);
       if (!model) {
+        const fallback = markAircraftVisualFallback('EMPTY AIRCRAFT MODEL');
+        replaceWithSafeAircraftUrl(fallback);
+        plane.aircraftKey = fallback.key;
+        plane.aircraftSpec = getAircraftSpecByPreset(fallback);
         hud.style.color = '#ff4e7a';
-        hud.textContent = '✕ Empty GLB — using default jet';
+        hud.textContent = `✕ Empty GLB — using ${fallback.hudLabel}`;
         restoreProcedural();
         setTimeout(() => hud.remove(), 4000);
         return;
@@ -869,7 +899,10 @@ function updateMultiplayer(dt) {
       // retract animation (F-15 clips) or named wheel nodes, wire glbGear so
       // G toggles a visual retract. Physics gear stays fixed unless the
       // airframe is a jet with a clip (true retractable undercarriage).
-      plane.fixedGear = true;
+      const aircraftSpec = getAircraftSpecByPreset(matchedPreset);
+      plane.aircraftKey = matchedPreset.key;
+      plane.aircraftSpec = aircraftSpec;
+      plane.fixedGear = !!aircraftSpec.ground.fixedGear;
       plane.gear = 1;
       plane.gearTarget = 1;
       plane.glbGear = null;
@@ -1604,6 +1637,11 @@ function updateMultiplayer(dt) {
       });
       jet.userData.controlSurfaces = controlSurfaces;
 
+      // The visual has now actually landed in the scene. Commit the selected
+      // state only here so HUD, hangar, API, and physics metadata describe the
+      // same airframe rather than a requested model that failed to load.
+      markAircraftVisualLoaded(matchedPreset);
+
       hud.style.color = '#5df09a';
       hud.textContent = `✓ ${planeFile} · ×${s.toFixed(2)} · fixed gear${props.length ? ' · '+props.length+' prop(s)' : ''}`;
       console.log('[plane-swap] loaded', planeFile,
@@ -1961,12 +1999,17 @@ function updateMultiplayer(dt) {
       }
     },
     (err) => {
+      const fallback = markAircraftVisualFallback('AIRCRAFT MODEL LOAD FAILED');
+      replaceWithSafeAircraftUrl(fallback);
+      if (typeof plane !== 'undefined' && plane) {
+        plane.aircraftKey = fallback.key;
+        plane.aircraftSpec = getAircraftSpecByPreset(fallback);
+      }
       hud.style.color = '#ff4e7a';
-      hud.textContent = `✕ Failed to load ${planeFile} — using default jet`;
+      hud.textContent = `✕ Failed to load ${planeFile} — using ${fallback.hudLabel}`;
       console.error('[plane-swap] failed to load', planeFile, err);
       restoreProcedural();
       setTimeout(() => hud.remove(), 6000);
     }
   );
 })();
-

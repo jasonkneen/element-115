@@ -36,7 +36,15 @@ function applyStyle() {
     });
   }
   for (const c of farChunks.values()) {
-    c.mesh.material = sandM;
+    // Far terrain owns a polygon-offset material + edge-skirt material.  Do
+    // not replace it with the shared source material: that loses the LOD
+    // ordering guarantees and leaks the old per-tile clones.
+    refreshFarChunkMaterial(c, sandM);
+  }
+  for (const c of horizonChunks.values()) {
+    // Horizon tiles keep their own fog ceiling, so refresh through the helper
+    // that preserves that per-tile value as well as its skirt material.
+    refreshHorizonChunkMaterial(c, sandM);
   }
 
   // Swap cloud materials (called safely — swapCloudMaterials handles init order)
@@ -130,15 +138,13 @@ function applyBiome(name) {
   // colors and biome-appropriate flora. Cheap since streaming rebuilds
   // automatically from the updateChunks() call in the animate loop.
   for (const c of chunks.values()) {
-    scene.remove(c.group);
-    c.geo.dispose();
+    disposeNearChunk(c);
   }
   chunks.clear();
   pendingChunkBuilds.length = 0;
   pendingChunkKeys.clear();
   for (const c of farChunks.values()) {
-    scene.remove(c.mesh);
-    c.geo.dispose();
+    disposeLodChunk(c);
   }
   farChunks.clear();
   pendingFarChunkBuilds.length = 0;
@@ -165,4 +171,3 @@ function cycleBiome() {
   const next = BIOME_ORDER[(idx + 1) % BIOME_ORDER.length];
   applyBiome(next);
 }
-

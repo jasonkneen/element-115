@@ -283,12 +283,21 @@ window.addEventListener('keydown', (e) => {
 
 function syncPropModelIndicator() {
   if (!$propModelInd) return;
-  const preset = getActivePropPreset();
-  $propModelInd.textContent = preset.hudLabel || preset.label;
-  $propModelInd.className = 'ok';
+  const selection = getAircraftSelectionState();
+  const preset = selection.visual;
+  const requested = selection.requested;
+  const suffix = selection.status === 'loading' && requested.key !== preset.key
+    ? ` · LOAD ${requested.hudLabel || requested.label}`
+    : selection.status === 'fallback'
+      ? ' · FALLBACK'
+      : '';
+  $propModelInd.textContent = `${preset.hudLabel || preset.label}${suffix}`;
+  $propModelInd.className = selection.status === 'fallback' ? 'warn' : 'ok';
 }
 function syncPropModelPicker() {
-  const active = getActivePropPreset();
+  const selection = getAircraftSelectionState();
+  const active = selection.visual;
+  const requested = selection.requested;
   if (planePickerGrid) {
     while (planePickerGrid.firstChild) planePickerGrid.removeChild(planePickerGrid.firstChild);
     PROP_MODEL_PRESETS.forEach((preset) => {
@@ -305,7 +314,12 @@ function syncPropModelPicker() {
     });
   }
   if (planePickerNote) {
-    planePickerNote.textContent = `Active airframe: ${active.name || active.label}. All hangar planes selectable — press M in flight or use Options [P] / Planes menu to switch.`;
+    const loading = selection.status === 'loading' && requested.key !== active.key
+      ? ` Loading ${requested.name || requested.label}.`
+      : selection.status === 'fallback'
+        ? ' Requested model failed, so E-115 is flying.'
+        : '';
+    planePickerNote.textContent = `Active airframe: ${active.name || active.label}.${loading} All hangar planes selectable — press M in flight or use Options [P] / Planes menu to switch.`;
   }
 }
 if (mpCallsignInput) {
@@ -352,6 +366,17 @@ syncMultiplayerIndicator();
 syncMultiplayerSetupUI();
 syncPropModelIndicator();
 syncPropModelPicker();
+function syncActiveAircraftRuntime() {
+  const visual = getLoadedAircraftPreset();
+  plane.aircraftKey = visual.key;
+  plane.aircraftSpec = getActiveAircraftSpec();
+}
+syncActiveAircraftRuntime();
+window.addEventListener('aircraftvisualchange', () => {
+  syncActiveAircraftRuntime();
+  syncPropModelIndicator();
+  syncPropModelPicker();
+});
 
 const transientStatus = { text: '', className: 'panel', timer: 0 };
 function flashStatus(text, className = 'panel ok', duration = 1.2) {

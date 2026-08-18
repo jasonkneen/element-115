@@ -131,8 +131,7 @@ function updateShadow() {}
 
 const sunShadowFocus = new THREE.Vector3();
 function updateSunShadowRig() {
-  const groundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
-    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const groundH = getSurfaceHeight(plane.pos.x, plane.pos.z);
   sunShadowFocus.set(
     plane.pos.x,
     groundH + Math.min(36, Math.max(8, (plane.pos.y - groundH) * 0.35)),
@@ -169,18 +168,25 @@ const runwayPropWashPool = new ParticlePool(scene, {
 });
 const propWashState = { timer: 0, mix: 0, active: false };
 let heatTimer = 0;
+const _heatEx = new THREE.Vector3(); // scratch — no per-emission clone
 function updateHeat(dt) {
   heatTimer += dt;
-  if (plane.throttle > 0.15 && heatTimer > 0.04) {
+  // Afterburner (plane.abBurn, set by the jet visual/cam module; 0 when absent)
+  // tightens the emission interval and enlarges the plumes so full burner
+  // visibly shimmers.
+  const abBurn = plane.abBurn || 0;
+  if (plane.throttle > 0.15 && heatTimer > 0.04 / (1 + abBurn * 1.5)) {
     heatTimer = 0;
-    const ex = jet.userData.engineExhaust.clone()
+    const ex = _heatEx.copy(jet.userData.engineExhaust)
       .applyQuaternion(plane.quat).add(plane.pos);
     // Add small randomness for wobble
     ex.x += (Math.random() - 0.5) * 0.6;
     ex.y += (Math.random() - 0.5) * 0.6;
-    if (!plane.suppressJetFX) heatPool.emit(ex, 0.6 + plane.throttle * 0.4, 0.5 + plane.throttle * 0.6);
+    // emit() copies pos into the pool particle — scratch is safe.
+    if (!plane.suppressJetFX) heatPool.emit(ex, 0.6 + plane.throttle * 0.4, (0.5 + plane.throttle * 0.6) * (1 + abBurn * 0.7));
   }
   heatPool.update(dt);
+  updateFireflies(dt);
 }
 const _dustFwd = new THREE.Vector3();
 const _dustRight = new THREE.Vector3();
@@ -223,13 +229,79 @@ function updateRunwayPropWash(dt) {
       _dustPos.copy(plane.pos)
         .addScaledVector(_dustRight, side * 1.7)
         .addScaledVector(_dustFwd, 1.1);
-      _dustPos.y = (_dustPos.x * _dustPos.x + _dustPos.z * _dustPos.z < AIRFIELD_FLAT_R2)
-        ? AIRFIELD_SURFACE_Y + 0.12
-        : getHeight(_dustPos.x, _dustPos.z) + 0.12;
+      _dustPos.y = getSurfaceHeight(_dustPos.x, _dustPos.z) + 0.12;
       emitRunwayDustBurst(_dustPos, 0.55 + propWashState.mix * 0.95, side);
     }
   }
   runwayPropWashPool.update(dt);
+}
+
+// =============================================================
+//  FIREFLIES — warm yellow-green specks drifting just above the terrain at
+//  dusk/night. Fully pre-allocated Points cloud (one shared additive
+//  material); positions updated in place, swarm re-anchors as the plane flies.
+// =============================================================
+const FIREFLY_COUNT = 36;
+const fireflyGeo = new THREE.BufferGeometry();
+const fireflyPos = new Float32Array(FIREFLY_COUNT * 3);
+const fireflyAnchors = new Float32Array(FIREFLY_COUNT * 3);
+const fireflyPhase = new Float32Array(FIREFLY_COUNT);
+fireflyGeo.setAttribute('position', new THREE.BufferAttribute(fireflyPos, 3));
+const fireflyMat = new THREE.PointsMaterial({
+  color: 0xd8ff7a,
+  size: 1.6,
+  map: sharedSpriteTex,
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  sizeAttenuation: true,
+});
+const fireflyPoints = new THREE.Points(fireflyGeo, fireflyMat);
+fireflyPoints.frustumCulled = false;
+fireflyPoints.visible = false;
+scene.add(fireflyPoints);
+let _fireflyTime = 0;
+let _fireflyAnchorX = 1e9, _fireflyAnchorZ = 1e9;
+function updateFireflies(dt) {
+  const daylight = timeOfDay ? timeOfDay.daylight : 1;
+  const flora = (typeof window !== 'undefined' && window.gfx && window.gfx.floraDensity != null)
+    ? window.gfx.floraDensity : 0.78;
+  // Dusk/night only, and not when ground detail is turned to minimal.
+  const active = daylight < 0.3 && flora > 0.3;
+  if (fireflyPoints.visible !== active) fireflyPoints.visible = active;
+  if (!active) {
+    if (fireflyMat.opacity !== 0) fireflyMat.opacity = 0;
+    return;
+  }
+  _fireflyTime += dt;
+  const t = _fireflyTime;
+  // Fade in as daylight drops below the 0.3 threshold
+  fireflyMat.opacity = clamp01((0.3 - daylight) / 0.18) * 0.85;
+  const px = plane.pos.x, pz = plane.pos.z;
+  const adx = px - _fireflyAnchorX, adz = pz - _fireflyAnchorZ;
+  if (adx * adx + adz * adz > 240 * 240) {
+    _fireflyAnchorX = px; _fireflyAnchorZ = pz;
+    for (let i = 0; i < FIREFLY_COUNT; i++) {
+      const ang = srand(i, 17, 4242) * Math.PI * 2;
+      const dist = 24 + srand(i, 18, 4242) * 200;
+      const ax = px + Math.cos(ang) * dist;
+      const az = pz + Math.sin(ang) * dist;
+      fireflyAnchors[i * 3] = ax;
+      fireflyAnchors[i * 3 + 1] = getHeight(ax, az) + 1.2 + srand(i, 19, 4242) * 3.5;
+      fireflyAnchors[i * 3 + 2] = az;
+      fireflyPhase[i] = srand(i, 20, 4242) * Math.PI * 2;
+    }
+  }
+  // Slow sinusoidal drift around each anchor (two incommensurate frequencies
+  // per axis so paths never visibly repeat).
+  for (let i = 0; i < FIREFLY_COUNT; i++) {
+    const ph = fireflyPhase[i];
+    fireflyPos[i * 3]     = fireflyAnchors[i * 3]     + Math.sin(t * 0.31 + ph) * 2.6 + Math.sin(t * 0.83 + ph * 1.7) * 0.9;
+    fireflyPos[i * 3 + 1] = fireflyAnchors[i * 3 + 1] + Math.sin(t * 0.47 + ph * 2.3) * 0.9;
+    fireflyPos[i * 3 + 2] = fireflyAnchors[i * 3 + 2] + Math.cos(t * 0.27 + ph) * 2.6 + Math.cos(t * 0.71 + ph * 1.3) * 0.9;
+  }
+  fireflyGeo.attributes.position.needsUpdate = true;
 }
 
 // =============================================================
@@ -293,4 +365,3 @@ function updateBirds(t) {
     });
   }
 }
-

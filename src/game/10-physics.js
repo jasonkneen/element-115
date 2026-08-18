@@ -2,8 +2,18 @@
 // =============================================================
 //  PLANE STATE + PHYSICS
 // =============================================================
+function getRequestedAircraftGroundSpec() {
+  const preset = typeof getActivePropPreset === 'function' ? getActivePropPreset() : null;
+  const spec = typeof getAircraftSpecByPreset === 'function' ? getAircraftSpecByPreset(preset) : null;
+  return (spec && spec.ground) || { gearHeight: 2.3, fixedGear: false, taildragger: false, wheelbase: 5.8 };
+}
+function getSpawnSurfaceHeight(x, z) {
+  return typeof getSurfaceHeight === 'function' ? getSurfaceHeight(x, z) : getHeight(x, z);
+}
 function getSpawnProfileState(mode = playerProfileState.spawnMode) {
   const key = normalizeSpawnMode(mode);
+  const ground = getRequestedAircraftGroundSpec();
+  const gearHeight = Number.isFinite(ground.gearHeight) ? ground.gearHeight : 2.3;
   if (key === 'sky') {
     // Face +Z, toward the airfield: all saucer circuits orbit the airfield at
     // the origin, so an air start facing -Z put every target BEHIND the player.
@@ -26,7 +36,7 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
       mode: key,
       // Symmetric with runway36 default — sit at the -Z threshold facing +Z
       // so the whole runway is ahead.
-      pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, -180),
+      pos: new THREE.Vector3(0, getSpawnSurfaceHeight(0, -180) + gearHeight, -180),
       vel: new THREE.Vector3(),
       quat: q,
       throttle: 0,
@@ -38,7 +48,7 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI * 0.12, 0, 'YXZ'));
     return {
       mode: key,
-      pos: new THREE.Vector3(34, AIRFIELD_SURFACE_Y + 2.3, 154),
+      pos: new THREE.Vector3(34, getSpawnSurfaceHeight(34, 154) + gearHeight, 154),
       vel: new THREE.Vector3(),
       quat: q,
       throttle: 0,
@@ -51,7 +61,7 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
     // Runway extends from z=-210 to z=+210; takeoff direction is -Z. Spawning
     // at z=180 (was 120) puts Dusty just inside the +Z threshold so the full
     // runway length is ahead of you for the takeoff roll.
-    pos: new THREE.Vector3(0, AIRFIELD_SURFACE_Y + 2.3, 180),
+    pos: new THREE.Vector3(0, getSpawnSurfaceHeight(0, 180) + gearHeight, 180),
     vel: new THREE.Vector3(),
     quat: new THREE.Quaternion(),
     throttle: 0,
@@ -60,6 +70,7 @@ function getSpawnProfileState(mode = playerProfileState.spawnMode) {
   };
 }
 const initialSpawnProfile = getSpawnProfileState(playerProfileState.spawnMode);
+const initialAircraftSpec = typeof getActiveAircraftSpec === 'function' ? getActiveAircraftSpec() : null;
 const plane = {
   pos: initialSpawnProfile.pos.clone(),
   vel: initialSpawnProfile.vel.clone(),
@@ -70,6 +81,9 @@ const plane = {
   throttle: initialSpawnProfile.throttle,
   throttleTarget: initialSpawnProfile.throttle,
   gear: 1, gearTarget: 1,
+  aircraftKey: (initialAircraftSpec && initialAircraftSpec.key) || DEFAULT_PROP_MODEL_KEY,
+  aircraftSpec: initialAircraftSpec,
+  fixedGear: !!(initialAircraftSpec && initialAircraftSpec.ground && initialAircraftSpec.ground.fixedGear),
   brake: 0,
   landingLights: false,
   onGround: initialSpawnProfile.onGround,
@@ -94,6 +108,7 @@ const plane = {
   engineBurnTimer: 0,
   lastStressWarnAt: 0,
   lastDamageAt: -Infinity,
+  lastSurfaceImpactAt: -Infinity,
 };
 const controlState = {
   pitch: 0,
@@ -201,7 +216,21 @@ window.__sim = { plane, jet, scene, camera, renderer, weather, THREE,
   resetPlane: () => resetPlane(),
   damagePlane: (a, k, o) => damagePlane(a, k, o),
   playSfx: (e, o) => playSfx(e, o),
-  getHeight, heightPrefetch, // debug: worker-grid parity checks from devtools
+  // Deterministic dev/test hook. This intentionally advances only the fixed
+  // flight model: browser smoke tests can validate terrain contact without
+  // turning a physics assertion into a terrain-streaming/render benchmark.
+  stepPhysics(steps = 1, dt = 1 / 120) {
+    const count = Math.max(1, Math.min(2400, Math.floor(Number(steps) || 1)));
+    const fixedDt = Math.max(1 / 480, Math.min(1 / 20, Number(dt) || 1 / 120));
+    for (let i = 0; i < count; i++) {
+      plane.prevPos.copy(plane.pos);
+      plane.prevQuat.copy(plane.quat);
+      updatePhysics(fixedDt);
+      if (plane.crashed) break;
+    }
+    return plane;
+  },
+  getHeight, getSurfaceHeight, sampleSurface, heightPrefetch, // debug: terrain/contact parity checks from devtools
 };
 
 const GRAVITY = 9.81;
@@ -225,12 +254,37 @@ const DRAG_INDUCED = 0.018;    // multiplied by CL²
 // unrealistic for a small prop's fixed gear and was a major contributor
 // to the "bleeds to 40 kts on idle" behaviour.
 const GEAR_DRAG = 0.00020;
-const GEAR_HEIGHT = 2.3;       // wheel clearance below jet center
+const DEFAULT_GEAR_HEIGHT = 2.3;
 const STALL_AOA = 0.30;        // ~17°
 const MAX_ANG_VEL = 3.2;       // rad/s clamp to prevent runaway spin
 const MAX_PITCH_RATE = 1.55;   // rad/s, ~89 deg/s
 const MAX_ROLL_RATE = 2.35;    // rad/s, ~135 deg/s
 const MAX_YAW_RATE = 0.82;     // rad/s, ~47 deg/s
+
+function getCurrentAircraftSpec() {
+  return plane.aircraftSpec
+    || (typeof getActiveAircraftSpec === 'function' ? getActiveAircraftSpec() : null)
+    || { key: DEFAULT_PROP_MODEL_KEY, flight: {}, ground: {} };
+}
+function getCurrentFlightSpec() {
+  return getCurrentAircraftSpec().flight || {};
+}
+function getCurrentGroundSpec() {
+  return getCurrentAircraftSpec().ground || {};
+}
+function getCurrentGearHeight() {
+  const height = Number(getCurrentGroundSpec().gearHeight);
+  return Number.isFinite(height) && height > 0.4 ? height : DEFAULT_GEAR_HEIGHT;
+}
+function getAircraftFlightRatio(field, fallback = 1) {
+  const active = Number(getCurrentFlightSpec()[field]);
+  const baselineSpec = typeof getAircraftSpecByPreset === 'function' && typeof getDefaultPropPreset === 'function'
+    ? getAircraftSpecByPreset(getDefaultPropPreset())
+    : null;
+  const baseline = Number(baselineSpec && baselineSpec.flight && baselineSpec.flight[field]);
+  if (!Number.isFinite(active) || !Number.isFinite(baseline) || Math.abs(baseline) < 1e-6) return fallback;
+  return active / baseline;
+}
 
 const keys = {};
 // True when the user is typing into a form field — flight keys must not
@@ -290,6 +344,10 @@ function resetPlane() {
     return;
   }
   nhudFuel = 100;
+  const aircraftSpec = getActiveAircraftSpec();
+  plane.aircraftKey = aircraftSpec.key;
+  plane.aircraftSpec = aircraftSpec;
+  plane.fixedGear = !!(aircraftSpec.ground && aircraftSpec.ground.fixedGear);
   const spawn = getSpawnProfileState(playerProfileState.spawnMode);
   plane.pos.copy(spawn.pos);
   plane.vel.copy(spawn.vel);
@@ -338,8 +396,11 @@ function resetPlane() {
     camera.userData.pitchReveal = 0;
     camera.userData.cameraHeightOffset = 0;
     camera.userData.cameraFocusYOffset = 0;
-    camera.userData.verticalHeightState = null;
-    camera.userData.focusYOffsetState = null;
+    // Seed the camera smoothers with the values updateCamera would compute on
+    // the first post-spawn frame (all reveals are 0 here) — null would take
+    // the null-guard branch and pop the camera for one frame on respawn.
+    camera.userData.verticalHeightState = Math.max(-2.0, (typeof camLocalOffset !== 'undefined' && camLocalOffset) ? camLocalOffset.y : 2.35);
+    camera.userData.focusYOffsetState = 0;
     camera.userData.climbRevealState = 0;
     camera.userData.diveRevealState = 0;
     camera.userData.heroSide = 1;
@@ -382,7 +443,7 @@ function updateInputLatches(dt) {
       // Physics retract (procedural jet + F-15 clip gear): toggles gearTarget.
       // Cosmetic GLB node gear (props with named wheels): toggles glbGear.deployed
       // while fixedGear stays true so gear-up crash path is not armed.
-      if (!plane.fixedGear) {
+      if (!getCurrentGroundSpec().fixedGear) {
         plane.gearTarget = plane.gearTarget > 0.5 ? 0 : 1;
         if (plane.glbGear) plane.glbGear.deployed = plane.gearTarget > 0.5;
       } else if (plane.glbGear) {
@@ -449,7 +510,6 @@ const _physDrag = new THREE.Vector3();
 const _physThrust = new THREE.Vector3();
 const _physGravity = new THREE.Vector3(0, -GRAVITY, 0);
 const _physAccel = new THREE.Vector3();
-const _physHoriz = new THREE.Vector3();
 
 // Pre-allocated static scratch objects for visual updates
 const _visFwd = new THREE.Vector3();
@@ -466,6 +526,203 @@ const _visLocalVel = new THREE.Vector3();
 const _visInvQ = new THREE.Quaternion();
 const _physWorldPos = new THREE.Vector3();
 const _physDustPos = new THREE.Vector3();
+const _physGroundNormal = new THREE.Vector3();
+const _physGroundForward = new THREE.Vector3();
+const _physGroundRight = new THREE.Vector3();
+const _physGroundUp = new THREE.Vector3();
+const _physContactLocal = new THREE.Vector3();
+const _physContactWorld = new THREE.Vector3();
+const _physContactPrevious = new THREE.Vector3();
+const _physGroundCorrection = new THREE.Quaternion();
+const _physGroundTargetQuat = new THREE.Quaternion();
+const _physSurfaceContacts = Array.from({ length: 6 }, () => ({
+  sample: {},
+  kind: 'gear',
+  penetration: -Infinity,
+  previousClearance: Infinity,
+  x: 0,
+  z: 0,
+}));
+
+function sampleAircraftSurfaceContact(index, x, y, z, kind) {
+  const record = _physSurfaceContacts[index];
+  record.kind = kind;
+  _physContactLocal.set(x, y, z).applyQuaternion(plane.quat);
+  _physContactWorld.copy(plane.pos).add(_physContactLocal);
+  record.x = _physContactWorld.x;
+  record.z = _physContactWorld.z;
+  sampleSurface(record.x, record.z, record.sample, false);
+  record.penetration = record.sample.height - _physContactWorld.y;
+
+  // This is a swept test rather than a single-point clamp: a fast-moving
+  // aircraft can cross the surface between fixed steps, so retain whether this
+  // contact was above terrain at the previous integration position. The
+  // collision response below uses that transition to make hard impacts clear
+  // and to avoid the old "climb the mountain like a car" behavior.
+  _physContactPrevious.set(x, y, z).applyQuaternion(plane.prevQuat).add(plane.prevPos);
+  record.previousClearance = _physContactPrevious.y - getSurfaceHeight(_physContactPrevious.x, _physContactPrevious.z);
+  return record;
+}
+
+function resolvePostStepSurfaceContact(dt, forward, speed) {
+  const wasAirborne = !plane.onGround;
+  const ground = getCurrentGroundSpec();
+  const gearHeight = getCurrentGearHeight();
+  const wheelbase = Math.max(2.8, Number(ground.wheelbase) || 5.4);
+  const wheelTrack = Math.max(1.6, wheelbase * 0.46);
+  const taildragger = !!ground.taildragger;
+  const mainZ = taildragger ? -wheelbase * 0.18 : wheelbase * 0.28;
+  const thirdZ = taildragger ? wheelbase * 0.58 : -wheelbase * 0.58;
+  const gearY = -gearHeight * Math.max(0.18, plane.gear);
+  const bellyY = -Math.max(0.42, gearHeight * 0.48);
+  const wingHalfSpan = Math.max(2.25, wheelbase * 0.82);
+  // Avoid six contact probes while well clear of every possible hull/wing
+  // strike. This keeps the richer contact system cheap at cruise altitude.
+  const centerSurface = getSurfaceHeight(plane.pos.x, plane.pos.z);
+  if (plane.pos.y - centerSurface > Math.max(36, gearHeight + wheelbase)) {
+    plane.onGround = false;
+    return;
+  }
+  sampleAircraftSurfaceContact(0, -wheelTrack, gearY, mainZ, 'gear');
+  sampleAircraftSurfaceContact(1, wheelTrack, gearY, mainZ, 'gear');
+  sampleAircraftSurfaceContact(2, 0, gearY * 0.96, thirdZ, 'gear');
+  sampleAircraftSurfaceContact(3, 0, bellyY, 0, 'belly');
+  sampleAircraftSurfaceContact(4, -wingHalfSpan, -0.12, 0, 'wing');
+  sampleAircraftSurfaceContact(5, wingHalfSpan, -0.12, 0, 'wing');
+
+  let deepest = null;
+  let bodyPenetration = -Infinity;
+  let waterContact = false;
+  let crossedSurface = false;
+  for (let i = 0; i < _physSurfaceContacts.length; i++) {
+    const contact = _physSurfaceContacts[i];
+    if (!deepest || contact.penetration > deepest.penetration) deepest = contact;
+    if (contact.kind !== 'gear') bodyPenetration = Math.max(bodyPenetration, contact.penetration);
+    if (contact.penetration > -0.04 && contact.sample.water) waterContact = true;
+    if (contact.penetration > 0 && contact.previousClearance > 0.04) crossedSurface = true;
+  }
+  if (!deepest || deepest.penetration < -0.08) {
+    plane.onGround = false;
+    return;
+  }
+
+  // Only the deepest active contact needs the expensive terrain gradient.
+  // Every other probe uses height/kind only, which keeps a 120 Hz flight step
+  // from turning into a terrain-normal benchmark.
+  sampleSurface(deepest.x, deepest.z, deepest.sample, true);
+  _physGroundNormal.set(deepest.sample.normalX, deepest.sample.normalY, deepest.sample.normalZ).normalize();
+  const normal = _physGroundNormal;
+  const normalSpeed = plane.vel.dot(normal);
+  const tangentSpeedSq = Math.max(0, plane.vel.lengthSq() - normalSpeed * normalSpeed);
+  const tangentSpeed = Math.sqrt(tangentSpeedSq);
+  const slopeDeg = Math.acos(Math.max(-1, Math.min(1, normal.y))) * 180 / Math.PI;
+
+  // Resolve from the deepest contact along the terrain normal. That means a
+  // wheel rolls with the hill rather than snapping vertically through it, and
+  // a wing/belly strike cannot tunnel through a rising ridge at fixed-step
+  // speed.
+  if (deepest.penetration > 0) plane.pos.addScaledVector(normal, deepest.penetration + 0.006);
+  if (deepest.penetration >= -0.012 && normalSpeed < 0) {
+    plane.vel.addScaledVector(normal, -normalSpeed * (waterContact ? 0.18 : 0.72));
+  }
+
+  const impactSpeed = Math.max(0, -normalSpeed);
+  const bodyStrike = bodyPenetration > 0.035;
+  const terrainStrike = slopeDeg > 20 && tangentSpeed > 18 && (bodyStrike || crossedSurface);
+  const gearLanding = deepest.kind === 'gear' && plane.gear >= 0.4 && !bodyStrike;
+  const hardLanding = gearLanding && crossedSurface && impactSpeed > 8;
+  const now = performance.now();
+  if (waterContact) {
+    const severity = Math.min(1, impactSpeed / 15 + tangentSpeed / 115);
+    if ((impactSpeed > 4 || tangentSpeed > 24) && now - plane.lastSurfaceImpactAt > 650) {
+      plane.lastSurfaceImpactAt = now;
+      damagePlane(0.28 + severity * 0.68, 'airframe', {
+        reason: 'WATER IMPACT',
+        worldPos: _physWorldPos.copy(plane.pos),
+      });
+      audioThud(0.42 + severity * 0.38);
+    }
+    plane.vel.multiplyScalar(Math.max(0.18, 0.68 - severity * 0.34));
+    plane.vel.y = Math.max(0, plane.vel.y);
+    plane.onGround = true;
+    if (!plane.crashed) statusMsg.textContent = 'WATER CONTACT — POWER OFF AND RESET';
+  } else {
+    if ((bodyStrike || terrainStrike || hardLanding) && now - plane.lastSurfaceImpactAt > 500) {
+      const severity = Math.min(1, impactSpeed / 18 + tangentSpeed / 125 + Math.max(0, slopeDeg - 18) / 55);
+      plane.lastSurfaceImpactAt = now;
+      const fatal = damagePlane(0.20 + severity * 0.75, 'airframe', {
+        reason: plane.gear < 0.4 && bodyStrike
+          ? 'BELLY LANDING'
+          : hardLanding
+            ? 'HARD LANDING'
+            : bodyStrike
+              ? 'AIRFRAME GROUND STRIKE'
+              : 'TERRAIN IMPACT',
+        worldPos: _physWorldPos.copy(plane.pos),
+      });
+      audioThud(0.40 + severity * 0.42);
+      if (fatal) plane.vel.set(0, 0, 0);
+    }
+
+    if (gearLanding && crossedSurface && wasAirborne) {
+      const runwayTouchdown = deepest.sample.kind === 'runway';
+      let heading = Math.atan2(forward.x, -forward.z) * 180 / Math.PI;
+      if (heading < 0) heading += 360;
+      const headingErrorDeg = Math.min(Math.abs(heading), Math.abs(heading - 180), Math.abs(heading - 360));
+      const centerlineFt = Math.abs(plane.pos.x) * 3.28;
+      emitRunwayDustBurst(
+        _physDustPos.copy(plane.pos).setY(deepest.sample.height + 0.14),
+        hardLanding ? 1.05 + impactSpeed * 0.06 : 0.52 + impactSpeed * 0.07
+      );
+      recordLandingTouchdown({
+        sinkRateMps: impactSpeed,
+        speedKts: speed * 1.94,
+        centerlineFt,
+        headingErrorDeg,
+        onRunway: runwayTouchdown,
+        hard: hardLanding,
+      });
+      if (!hardLanding && impactSpeed > 2) audioThud(Math.min(0.6, impactSpeed * 0.06));
+    }
+
+    // Tire model: remove normal velocity, then independently damp forward
+    // rolling and sideways scrub on the actual tangent plane. Runway pavement
+    // has high lateral grip; rough terrain is looser but never a vertical rail.
+    const remainingNormalSpeed = plane.vel.dot(normal);
+    if (remainingNormalSpeed < 0) plane.vel.addScaledVector(normal, -remainingNormalSpeed);
+    _physGroundForward.copy(forward).addScaledVector(normal, -forward.dot(normal));
+    if (_physGroundForward.lengthSq() < 1e-5) _physGroundForward.set(0, 0, -1).addScaledVector(normal, normal.z);
+    _physGroundForward.normalize();
+    _physGroundRight.crossVectors(_physGroundForward, normal).normalize();
+    const forwardSpeed = plane.vel.dot(_physGroundForward);
+    const sideSpeed = plane.vel.dot(_physGroundRight);
+    const paved = deepest.sample.kind === 'runway' || deepest.sample.kind === 'apron' || deepest.sample.kind === 'taxiway';
+    const brakeTune = scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0;
+    const rollingGrip = (paved ? 0.24 : 0.12) + plane.brake * 2.9 * brakeTune;
+    const lateralGrip = paved ? 7.8 : 3.5;
+    plane.vel.addScaledVector(_physGroundForward, -forwardSpeed * (1 - Math.exp(-rollingGrip * dt)));
+    plane.vel.addScaledVector(_physGroundRight, -sideSpeed * (1 - Math.exp(-lateralGrip * dt)));
+
+    // Align gently to a slope under the wheels. The existing taildragger
+    // stance still supplies its parked nose-up pose; this correction only
+    // removes impossible roll/hovering against the visual terrain.
+    if (speed < 48) {
+      _physGroundUp.set(0, 1, 0).applyQuaternion(plane.quat);
+      _physGroundCorrection.setFromUnitVectors(_physGroundUp.normalize(), normal);
+      _physGroundTargetQuat.copy(_physGroundCorrection).multiply(plane.quat);
+      plane.quat.slerp(_physGroundTargetQuat, Math.min(1, dt * (paved ? 4.4 : 2.6)));
+    }
+    if (speed < 18) {
+      const euler = _physEuler.setFromQuaternion(plane.quat, 'YXZ');
+      const tailBlend = ground.taildragger ? Math.max(0, 1 - speed / 18) : 0;
+      const targetPitch = 0.225 * tailBlend;
+      euler.z *= Math.max(0, 1 - dt * 4);
+      euler.x += (targetPitch - euler.x) * Math.min(1, dt * 3.5);
+      plane.quat.setFromEuler(euler);
+    }
+    plane.onGround = true;
+  }
+}
 
 function updatePhysics(dt) {
   if (plane.crashed) return;
@@ -503,7 +760,7 @@ function updatePhysics(dt) {
   plane.brake = (keys['KeyB'] || (INPUT_FLAGS.gamepad && gamepadState.brake)) ? 1 : 0;
 
   // Animate gear
-  if (plane.fixedGear) { plane.gear = 1; plane.gearTarget = 1; }
+  if (getCurrentGroundSpec().fixedGear) { plane.gear = 1; plane.gearTarget = 1; }
   else plane.gear += (plane.gearTarget - plane.gear) * Math.min(1, dt * 1.8);
 
   // ----- Forces & rotations -----
@@ -560,9 +817,18 @@ function updatePhysics(dt) {
   const authPitch = Math.min(1.0, q / 34) * pitchScale;
   const authRoll  = Math.min(1.0, q / 30) * rollScale;
   const authYaw   = Math.min(0.72, q / 72) * yawScale;
-  const pitchAuthorityTune = scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0;
-  const rollAuthorityTune = scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0;
-  const rudderAuthorityTune = scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0;
+  // Per-airframe authority ratios, resolved once per physics step. The E-115
+  // baseline divides by itself → exactly 1.0 per axis, so default handling is
+  // bit-identical; other airframes differentiate around it.
+  const pitchAuthRatio = getAircraftFlightRatio('pitchAuthority');
+  const rollAuthRatio = getAircraftFlightRatio('rollAuthority');
+  const rudderAuthRatio = getAircraftFlightRatio('rudderAuthority');
+  const pitchAuthorityTune = (scene.userData.__flightPitchAuth != null ? scene.userData.__flightPitchAuth : 1.0)
+    * pitchAuthRatio;
+  const rollAuthorityTune = (scene.userData.__flightRollAuth != null ? scene.userData.__flightRollAuth : 1.0)
+    * rollAuthRatio;
+  const rudderAuthorityTune = (scene.userData.__flightRudderAuth != null ? scene.userData.__flightRudderAuth : 1.0)
+    * rudderAuthRatio;
 
   // Apply torque (pitch=X, yaw=Y, roll=Z in local frame). These are
   // intentionally conservative: a prop plane should enter a bank and let
@@ -650,9 +916,15 @@ function updatePhysics(dt) {
   plane.angVel.z *= Math.pow(0.05, dt * rollDampTune);
   plane.angVel.y *= Math.pow(0.08, dt * rudderDampTune);
 
-  plane.angVel.x = Math.max(-MAX_PITCH_RATE, Math.min(MAX_PITCH_RATE, plane.angVel.x));
-  plane.angVel.z = Math.max(-MAX_ROLL_RATE, Math.min(MAX_ROLL_RATE, plane.angVel.z));
-  plane.angVel.y = Math.max(-MAX_YAW_RATE, Math.min(MAX_YAW_RATE, plane.angVel.y));
+  // Rate ceilings scale with the airframe's authority ratios (1.0 for the
+  // E-115 baseline → unchanged default caps), so e.g. stunt airframes can
+  // actually reach their higher commanded rates.
+  const maxPitchRate = MAX_PITCH_RATE * pitchAuthRatio;
+  const maxRollRate = MAX_ROLL_RATE * rollAuthRatio;
+  const maxYawRate = MAX_YAW_RATE * rudderAuthRatio;
+  plane.angVel.x = Math.max(-maxPitchRate, Math.min(maxPitchRate, plane.angVel.x));
+  plane.angVel.z = Math.max(-maxRollRate, Math.min(maxRollRate, plane.angVel.z));
+  plane.angVel.y = Math.max(-maxYawRate, Math.min(maxYawRate, plane.angVel.y));
 
   // Hard clamp on rotation rate
   if (plane.angVel.length() > MAX_ANG_VEL) {
@@ -715,7 +987,8 @@ function updatePhysics(dt) {
   // student pilot is actually taught to recover.
   let cl;
   const aoaAbs = Math.abs(aoa);
-  const stallSoftTune = scene.userData.__flightStallSoft != null ? scene.userData.__flightStallSoft : 1.0;
+  const stallSoftTune = (scene.userData.__flightStallSoft != null ? scene.userData.__flightStallSoft : 1.0)
+    * getAircraftFlightRatio('stallSoftness');
   if (aoaAbs <= STALL_AOA) {
     cl = CL0 + CL_ALPHA * aoa;
   } else {
@@ -736,12 +1009,15 @@ function updatePhysics(dt) {
   // lift rises — the cushion that lets a stalled plane float to the
   // runway instead of face-planting. Scales from 0 (high AGL) to 1.35×
   // lift at 0 AGL, decaying exponentially over ~12 m.
-  const aglForGE = Math.max(0, plane.pos.y - getHeight(plane.pos.x, plane.pos.z));
+  const aglForGE = Math.max(0, plane.pos.y - getSurfaceHeight(plane.pos.x, plane.pos.z));
   const groundEffectTune = scene.userData.__flightGroundEffect != null ? scene.userData.__flightGroundEffect : 1.0;
   const groundEffect = 1 + 0.35 * groundEffectTune * Math.exp(-aglForGE / 12);
-  const liftTune = scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0;
-  const accelTune = scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0;
-  const topSpeedTuneKts = scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 720;
+  const liftTune = (scene.userData.__flightLift != null ? scene.userData.__flightLift : 1.0)
+    * getAircraftFlightRatio('lift');
+  const accelTune = (scene.userData.__flightAccel != null ? scene.userData.__flightAccel : 1.0)
+    * getAircraftFlightRatio('accel');
+  const topSpeedTuneKts = (scene.userData.__flightTopSpeedKts != null ? scene.userData.__flightTopSpeedKts : 720)
+    * getAircraftFlightRatio('topSpeedKts');
   const liftMag = LIFT_K * liftTune * v * v * cl * groundEffect;
   const lift = _physLift.copy(up).multiplyScalar(liftMag);
   // Arcade-realistic sideslip: the aircraft can skid, but the fuselage
@@ -751,6 +1027,7 @@ function updatePhysics(dt) {
   const slipSpeed = localVel.x;
   const slipDamping = _physSlipDamping.copy(right).multiplyScalar(-slipSpeed * Math.min(1.25, q / 42) * (0.68 + bankAmount * 0.32));
   const loadFactor = Math.max(0, liftMag / Math.max(0.001, GRAVITY));
+  plane.loadFactor = loadFactor;   // read by the camera stress shake (11-jet-visual-cam.js)
   const turnRateStress = Math.max(0, Math.abs(plane.angVel.y) + Math.abs(plane.angVel.z) * 0.35 - 0.22);
   const turnEnergyBleed = Math.max(0, loadFactor - 1.05) * Math.max(0, bankAmount - 0.18) * 0.040
     + turnRateStress * turnRateStress * 0.010;
@@ -779,13 +1056,13 @@ function updatePhysics(dt) {
   // throttle actually stop the plane. Use the persistent onGround state
   // instead of a raw altitude threshold so the parked aircraft does not
   // creep forward at 0% throttle the instant the sim starts.
-  const _thrGroundH = (plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2)
-    ? AIRFIELD_SURFACE_Y : getHeight(plane.pos.x, plane.pos.z);
+  const _thrGroundH = getSurfaceHeight(plane.pos.x, plane.pos.z);
   // Flight-idle floor only kicks in when throttle is actively engaged.
   // Holding CTRL all the way to 0% = genuine engine-off (glide-only).
   // Small hysteresis (0.03) so a slight breath on throttle doesn't jitter.
   const engineEngaged = plane.throttle > 0.03 || plane.throttleTarget > 0.03;
-  const idlePowerTune = scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0;
+  const idlePowerTune = (scene.userData.__flightIdlePower != null ? scene.userData.__flightIdlePower : 1.0)
+    * getAircraftFlightRatio('idlePower');
   const flightIdleFrac = IDLE_THRUST_FRAC * idlePowerTune;
   const effectiveThrottle = plane.onGround
     ? plane.throttle
@@ -822,180 +1099,9 @@ function updatePhysics(dt) {
 
   plane.vel.addScaledVector(accel, dt);
 
-  // ----- Ground interaction -----
-  const groundH = plane.pos.x * plane.pos.x + plane.pos.z * plane.pos.z < AIRFIELD_FLAT_R2
-    ? AIRFIELD_SURFACE_Y  // on the flat airfield
-    : getHeight(plane.pos.x, plane.pos.z);
-
-  const altAbove = plane.pos.y - groundH;
-  const wheelAlt = altAbove - GEAR_HEIGHT * plane.gear;
-
-  if (wheelAlt <= 0.02) {
-    // ——— SLOPE-IMPACT CHECK ———
-    // Without this the plane's "touchdown" branch below runs even when
-    // driving horizontally into a mountainside, snapping the plane to the
-    // terrain every frame so it climbs the slope like a rally car.
-    // If we're hitting a steep slope with real horizontal velocity
-    // pointed into it, that is a crash, gear or no gear.
-    const EPS = 3;
-    const sampleH = (x, z) =>
-      (x * x + z * z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(x, z);
-    const hC = sampleH(plane.pos.x, plane.pos.z);
-    const hX = sampleH(plane.pos.x + EPS, plane.pos.z) - hC;
-    const hZ = sampleH(plane.pos.x, plane.pos.z + EPS) - hC;
-    const slopeMag = Math.hypot(hX, hZ) / EPS;
-    const slopeDeg = Math.atan(slopeMag) * 180 / Math.PI;
-    const horizSpd = Math.hypot(plane.vel.x, plane.vel.z);
-    // Velocity component along the uphill gradient (positive = running into it)
-    const intoSlope = (plane.vel.x * hX + plane.vel.z * hZ) / EPS;
-
-    if (slopeDeg > 22 && intoSlope > 10 && horizSpd > 15) {
-      // Driving into a mountainside at speed: severe damage scaling
-      // with how hard we hit. Survivable if airframe was pristine and
-      // speed is modest; fatal if already wounded or going fast.
-      const severity = Math.min(1, (intoSlope / 60) + (horizSpd / 120));
-      const dmg = 0.55 + severity * 0.45;
-      statusMsg.className = 'panel warn';
-      audioThud(0.6 + severity * 0.35);
-      const fatal = damagePlane(dmg, 'airframe', {
-        reason: 'TERRAIN IMPACT',
-        worldPos: _physWorldPos.copy(plane.pos),
-      });
-      if (fatal) {
-        plane.vel.set(0, 0, 0);
-      } else {
-        // Survive but bounce back off the slope — kill momentum into slope
-        plane.vel.x *= 0.35; plane.vel.z *= 0.35;
-        plane.vel.y = Math.max(plane.vel.y, 6);
-        statusMsg.textContent = `HULL ${Math.round(plane.health)}% — TERRAIN STRIKE`;
-      }
-    } else if (plane.gear < 0.4) {
-      // Gear up: belly-landing damage scales with descent rate.
-      const vertVel = plane.vel.y;
-      const sev = Math.min(1, Math.max(0, -vertVel - 3) / 18);
-      const dmg = 0.35 + sev * 0.55;
-      statusMsg.className = 'panel warn';
-      audioThud(0.55 + sev * 0.3);
-      const fatal = damagePlane(dmg, 'airframe', {
-        reason: 'BELLY LANDING',
-        worldPos: _physWorldPos.copy(plane.pos),
-      });
-      plane.pos.y = groundH + 0.4;
-      if (fatal) {
-        plane.vel.set(0, 0, 0);
-      } else {
-        plane.vel.y = 0;
-        plane.vel.x *= 0.7; plane.vel.z *= 0.7;
-        statusMsg.textContent = `HULL ${Math.round(plane.health)}% — GEAR UP!`;
-      }
-    } else {
-      // Touchdown / rolling
-      const vertVel = plane.vel.y;
-      const wasAirborne = !plane.onGround;
-      const runwayTouchdown = Math.abs(plane.pos.x) < 24 && Math.abs(plane.pos.z) < 214;
-      const touchdownForward = forward;
-      let touchdownHeading = Math.atan2(touchdownForward.x, -touchdownForward.z) * 180 / Math.PI;
-      if (touchdownHeading < 0) touchdownHeading += 360;
-      const headingErrorDeg = Math.min(
-        Math.abs(touchdownHeading),
-        Math.abs(touchdownHeading - 180),
-        Math.abs(touchdownHeading - 360)
-      );
-      const centerlineFt = Math.abs(plane.pos.x) * 3.28;
-      plane.pos.y = groundH + GEAR_HEIGHT;
-
-      if (vertVel < -8) {
-        // Hard landing — scale damage with descent rate; 8-18 m/s is
-        // recoverable, beyond ~22 m/s is fatal on a healthy plane.
-        const sev = Math.min(1, (-vertVel - 8) / 14);
-        const dmg = 0.25 + sev * 0.85;
-        statusMsg.className = 'panel warn';
-        audioThud(0.5 + sev * 0.35);
-        if (wasAirborne) emitRunwayDustBurst(_physDustPos.copy(plane.pos).setY(groundH + 0.16), 1.15 + sev * 0.8);
-        const fatal = damagePlane(dmg, 'airframe', {
-          reason: 'HARD LANDING',
-          worldPos: _physWorldPos.copy(plane.pos),
-        });
-        if (fatal) {
-          plane.vel.set(0, 0, 0);
-        } else {
-          plane.vel.y = Math.max(0, vertVel * 0.2);
-          plane.vel.x *= 0.85; plane.vel.z *= 0.85;
-          plane.onGround = true;
-          if (wasAirborne) {
-            recordLandingTouchdown({
-              sinkRateMps: -vertVel,
-              speedKts: speed * 1.94,
-              centerlineFt,
-              headingErrorDeg,
-              onRunway: runwayTouchdown,
-              hard: true,
-            });
-          }
-          statusMsg.textContent = `HULL ${Math.round(plane.health)}% — HARD LANDING`;
-        }
-      } else {
-        // Soft touchdown thud — proportional to descent rate, only on transition
-        if (wasAirborne && vertVel < -2) {
-          audioThud(Math.min(0.6, Math.abs(vertVel) * 0.06));
-        }
-        if (wasAirborne) emitRunwayDustBurst(_physDustPos.copy(plane.pos).setY(groundH + 0.14), 0.55 + Math.max(0, -vertVel) * 0.08);
-        plane.vel.y = Math.max(0, plane.vel.y);
-        plane.onGround = true;
-        if (wasAirborne) {
-          recordLandingTouchdown({
-            sinkRateMps: -vertVel,
-            speedKts: speed * 1.94,
-            centerlineFt,
-            headingErrorDeg,
-            onRunway: runwayTouchdown,
-            hard: false,
-          });
-        }
-
-        // Rolling friction + brake
-        const brakeTune = scene.userData.__flightBrake != null ? scene.userData.__flightBrake : 1.0;
-        const rollFric = 0.015 + plane.brake * 2.0 * brakeTune;
-        const horiz = _physHoriz.set(plane.vel.x, 0, plane.vel.z);
-        horiz.multiplyScalar(Math.max(0, 1 - rollFric * dt));
-        plane.vel.x = horiz.x;
-        plane.vel.z = horiz.z;
-
-        // Ground attitude — taildragger "three-point" stance at rest,
-        // tail-up rotation as speed builds to takeoff. Fixed-gear
-        // (taildragger) planes sit nose-up ~11° when parked; tricycle
-        // gear sits level. Either way, roll always lerps to 0 while
-        // rolling so the wings stay level on the runway.
-        //
-        //   Taildragger:   speed=0 → pitch +0.19 rad  (nose up, tail down)
-        //                  speed=TAIL_LIFT → pitch 0  (tail has risen)
-        //
-        // Above TAIL_LIFT_SPEED the pilot has authority — we stop forcing
-        // the ground attitude so a pitch-input doesn't fight the stance.
-        const TAIL_LIFT_SPEED = 18;        // m/s ≈ 35 kt
-        const TAILDRAGGER_PITCH = 0.225;   // ~13°, extra tail-down stance
-        const isTaildragger = !!plane.fixedGear;
-        if (speed < TAIL_LIFT_SPEED) {
-          const euler = _physEuler.setFromQuaternion(plane.quat, 'YXZ');
-          // Roll always decays on ground
-          euler.z *= Math.max(0, 1 - dt * 4);
-          // Pitch: lerp toward the ground-attitude target
-          const tailBlend = isTaildragger
-            ? Math.max(0, 1 - speed / TAIL_LIFT_SPEED)   // 1 at rest → 0 at lift speed
-            : 0;
-          const pitchTarget = TAILDRAGGER_PITCH * tailBlend;
-          const k = Math.min(1, dt * 3.5);
-          euler.x += (pitchTarget - euler.x) * k;
-          plane.quat.setFromEuler(euler);
-        }
-      }
-    }
-  } else {
-    plane.onGround = false;
-  }
-
   // Integrate position
   plane.pos.addScaledVector(plane.vel, dt);
+  resolvePostStepSurfaceContact(dt, forward, plane.vel.length());
 
   // Altitude ceiling — hard cap at 3000 ft (914 m). Above the cap we
   // clamp y and zero any remaining upward velocity so the plane "tops
@@ -1022,4 +1128,3 @@ function updatePhysics(dt) {
     plane.pos.y = Math.max(50, plane.pos.y); // pop up slightly to avoid ground intersection
   }
 }
-

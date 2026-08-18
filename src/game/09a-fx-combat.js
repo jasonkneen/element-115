@@ -548,8 +548,7 @@ const combatState = {
   smokeScreenTimer: 0,
   flarePressed: false,
   smokePressed: false,
-  activeShooterId: '',
-  activeShooterUntil: 0,
+  activeShooters: [],   // engagement slots [{id, until}] — max 2 concurrent
   spaceDown: false,
   lastSpaceTapAt: 0,
   spaceMissileQueued: false,
@@ -1180,6 +1179,34 @@ const _combatTmpE = new THREE.Vector3();
 const _combatTmpF = new THREE.Vector3();
 const _combatCrashOffset = new THREE.Vector3(0, 2.4, -1.2);
 const _combatCrashRingOffset = new THREE.Vector3(0, 2.4, 0);
+// UFO pulse aim scratch (fireUfoPulse) — keeps per-shot allocation at zero.
+const _ufoAimTrue = new THREE.Vector3();
+const _ufoConeU = new THREE.Vector3();
+const _ufoConeV = new THREE.Vector3();
+const _ufoMuzzleDrop = new THREE.Vector3(0, -1.1, 0);
+// Saucer explosion scratch — never alias _combatTmp* here: callers hand us
+// those very vectors as `pos`.
+const _saucerStrikeDir = new THREE.Vector3();
+const _saucerStrikePerp = new THREE.Vector3();
+const _saucerSmokeUp = new THREE.Vector3();
+// Delayed secondary blasts, processed in updateCombat. setTimeout throttles
+// in background tabs and drifts at low fps, so the schedule lives in-loop.
+const pendingBooms = [];   // pooled {pos, at, intensity, smokeMul, active}
+const PENDING_BOOM_MAX = 10;
+function schedulePendingBoom(x, y, z, at, intensity, smokeMul) {
+  let slot = null;
+  for (const b of pendingBooms) { if (!b.active) { slot = b; break; } }
+  if (!slot) {
+    if (pendingBooms.length >= PENDING_BOOM_MAX) return;
+    slot = { pos: new THREE.Vector3(), at: 0, intensity: 1, smokeMul: 1, active: false };
+    pendingBooms.push(slot);
+  }
+  slot.pos.set(x, y, z);
+  slot.at = at;
+  slot.intensity = intensity;
+  slot.smokeMul = smokeMul;
+  slot.active = true;
+}
 const _projectileForward = new THREE.Vector3(0, 0, 1);
 const _missileForward = new THREE.Vector3(0, 0, -1);
 
@@ -1329,12 +1356,39 @@ function spawnExplosion(pos, intensity = 1.0, smokeMul = 1.0) {
 function spawnSaucerMissileExplosion(pos, killShot = false, intensity = 1.0) {
   const boom = killShot ? 2.9 + intensity * 0.45 : 1.55 + intensity * 0.35;
   spawnExplosion(pos, boom, boom * 1.15);
-  const offsetA = pos.clone().add(new THREE.Vector3(2.8, 0.9, -1.9).multiplyScalar(killShot ? 1.65 : 1.0));
-  const offsetB = pos.clone().add(new THREE.Vector3(-2.4, -0.35, 2.2).multiplyScalar(killShot ? 1.35 : 0.92));
-  setTimeout(() => spawnExplosion(offsetA, boom * (killShot ? 0.82 : 0.62), boom * 0.8), killShot ? 90 : 70);
-  if (killShot) setTimeout(() => spawnExplosion(offsetB, boom * 0.62, boom * 0.72), 185);
+  // Strike direction: player → impact (bullets and missiles both originate
+  // from the player), so the delayed secondary blasts radiate outward ALONG
+  // the strike instead of the old fixed world-space E/NE offsets.
+  const strikeDir = _saucerStrikeDir.copy(pos).sub(plane.pos);
+  if (strikeDir.lengthSq() < 1e-4) strikeDir.set(1, 0.3, -0.6);
+  strikeDir.normalize();
+  const perp = _saucerStrikePerp.set(-strikeDir.z, 0, strikeDir.x);
+  if (perp.lengthSq() < 1e-6) perp.set(1, 0, 0); else perp.normalize();
+  const scaleA = killShot ? 1.65 : 1.0;
+  const scaleB = killShot ? 1.35 : 0.92;
+  const now = performance.now();
+  // Secondary: forward along the strike, slightly above the impact point.
+  schedulePendingBoom(
+    pos.x + strikeDir.x * 3.2 * scaleA,
+    pos.y + strikeDir.y * 3.2 * scaleA + 0.85 * scaleA,
+    pos.z + strikeDir.z * 3.2 * scaleA,
+    now + (killShot ? 90 : 70),
+    boom * (killShot ? 0.82 : 0.62),
+    boom * 0.8
+  );
+  if (killShot) {
+    // Tertiary: back-splatter opposite the strike with lateral spread.
+    schedulePendingBoom(
+      pos.x - strikeDir.x * 2.3 * scaleB + perp.x * 1.2 * scaleB,
+      pos.y - strikeDir.y * 2.3 * scaleB - 0.35 * scaleB + perp.y * 1.2 * scaleB,
+      pos.z - strikeDir.z * 2.3 * scaleB + perp.z * 1.2 * scaleB,
+      now + 185,
+      boom * 0.62,
+      boom * 0.72
+    );
+  }
   impactSparkPool.emitCluster(pos, killShot ? 42 : 24, killShot ? 2.5 : 1.45, 0.42, killShot ? 1.35 : 0.88, killShot ? 2.2 : 1.35);
-  explosionSmokePool.emitCluster(pos.clone().add(new THREE.Vector3(0, 2.2, 0)), killShot ? 38 : 18, killShot ? 4.8 : 2.5, 0.75, killShot ? 2.3 : 1.45, killShot ? 2.2 : 1.2);
+  explosionSmokePool.emitCluster(_saucerSmokeUp.copy(pos).setY(pos.y + 2.2), killShot ? 38 : 18, killShot ? 4.8 : 2.5, 0.75, killShot ? 2.3 : 1.45, killShot ? 2.2 : 1.2);
   if (typeof playSfx3D === 'function') playSfx3D('explosion', pos, { volume: killShot ? 0.96 : 0.72, throttleMs: killShot ? 35 : 70, rate: killShot ? 0.88 : 0.96 });
 }
 
@@ -1564,8 +1618,10 @@ function destroyTarget(target, pos, intensity = 1.0, source = 'generic') {
   target.object.visible = false;
   combatState.kills += 1;
   const saucerKill = !!(target.trafficRef && target.trafficRef.targetKind === 'ufo-saucer');
-  if (saucerKill && source === 'missile') spawnSaucerMissileExplosion(pos, true, intensity);
-  else spawnExplosion(pos, intensity * (saucerKill ? 1.85 : 1.25), intensity * (saucerKill ? 1.9 : 1.35));
+  // All saucer kills get the multi-boom treatment — missiles with the full
+  // killShot intensity, guns with the standard one (was: single weak boom).
+  if (saucerKill) spawnSaucerMissileExplosion(pos, source === 'missile', intensity);
+  else spawnExplosion(pos, intensity * 1.25, intensity * 1.35);
   if (saucerKill) {
     shockwaveRingPool.emit(pos);
     debrisFieldFX.burst(pos, 6 + (Math.random() * 5 | 0));
@@ -1637,8 +1693,8 @@ function resetCombatState() {
   combatState.smokeScreenTimer = 0;
   combatState.flarePressed = false;
   combatState.smokePressed = false;
-  combatState.activeShooterId = '';
-  combatState.activeShooterUntil = 0;
+  combatState.activeShooters.length = 0;
+  for (const b of pendingBooms) b.active = false;
   combatState.spaceDown = false;
   combatState.lastSpaceTapAt = 0;
   combatState.spaceMissileQueued = false;
@@ -1828,22 +1884,33 @@ function fireUfoPulse(t, originPos, dt = 1 / 60) {
   const smokeActive = now < (combatState.smokeScreenUntil || 0);
   const canSee = dist < 840 && dist > 32 && facing > -0.06;
   const shooterId = t.hudId || t.callsign || t.file || String(t.phaseOffset || t.phase || Math.random());
-  const activeExpired = !combatState.activeShooterId || now > (combatState.activeShooterUntil || 0);
-  if (!activeExpired && combatState.activeShooterId !== shooterId) {
-    // Keep the arena readable: one UFO is the current dogfight/shooter.
-    // Everyone else is scenery until that engagement times out.
+  const shooters = combatState.activeShooters;
+  // Prune expired engagements, then find or claim this UFO's slot.
+  for (let i = shooters.length - 1; i >= 0; i--) {
+    if (now > shooters[i].until) shooters.splice(i, 1);
+  }
+  let shooterSlot = null;
+  for (let i = 0; i < shooters.length; i++) {
+    if (shooters[i].id === shooterId) { shooterSlot = shooters[i]; break; }
+  }
+  if (shooterSlot) {
+    shooterSlot.until = now + (canSee ? 4200 : 1200);
+  } else if (shooters.length < 2 && canSee) {
+    shooterSlot = { id: shooterId, until: now + 4200 };
+    shooters.push(shooterSlot);
+  } else {
+    // Keep the arena readable: at most TWO UFOs press the attack at once (a
+    // hunter pair, so there's real swarm pressure). Everyone else is scenery
+    // until a slot frees up.
     t.playerLock = Math.max(0, (t.playerLock || 0) - dt * 1.8);
     return false;
   }
-  if (activeExpired && canSee) {
-    combatState.activeShooterId = shooterId;
-    combatState.activeShooterUntil = now + 4200;
-  }
-  if (combatState.activeShooterId !== shooterId) return false;
   const lockTarget = canSee ? (cmActive ? 0.18 : smokeActive ? 0.08 : 1) : 0;
   t.playerLock = (t.playerLock || 0) + (lockTarget - (t.playerLock || 0)) * Math.min(1, dt * (lockTarget > (t.playerLock || 0) ? 0.85 + aggression * 0.8 : 2.8));
-  combatState.activeShooterUntil = now + (canSee ? 4200 : 1200);
-  const cadence = Math.max(620, 1450 - aggression * 460 - clamp01((t.aiBlend || 0)) * 180);
+  // With both slots engaged, stretch each shooter's cadence +25% so combined
+  // DPS doesn't double-spike relative to the old single-shooter arena.
+  const cadence = Math.max(620, 1450 - aggression * 460 - clamp01((t.aiBlend || 0)) * 180)
+    * (shooters.length >= 2 ? 1.25 : 1);
   if (now < (t.nextPulseAt || 0)) return false;
   if (!canSee || (t.playerLock || 0) < 0.34) return false;
   const realShooter = !cmActive && !smokeActive && (t.playerLock || 0) >= 0.62;
@@ -1853,10 +1920,31 @@ function fireUfoPulse(t, originPos, dt = 1 / 60) {
   if (!p) return false;
   const confused = cmActive || smokeActive || !realShooter;
   const lead = clamp01(dist / 620) * (0.42 + aggression * 0.22) * (confused ? 0.18 : 1);
-  const aim = _combatTmpB.copy(plane.pos)
-    .addScaledVector(plane.vel, lead)
-    .add(new THREE.Vector3((Math.random() - 0.5) * (confused ? 180 : 10), (Math.random() - 0.5) * (confused ? 80 : 5), (Math.random() - 0.5) * (confused ? 180 : 10)));
-  const dir = aim.sub(originPos).normalize();
+  const aim = _combatTmpB.copy(plane.pos).addScaledVector(plane.vel, lead);
+  let dir;
+  if (confused) {
+    // Confused aim: perturb the TRUE direction inside a random 8–14° cone,
+    // then pull 45% back toward true — countermeasure-spoiled shots clearly
+    // miss but still fly a plausible line past the player (the old ±180 m
+    // uniform box scatter just read as broken aim).
+    const trueDir = _ufoAimTrue.copy(aim).sub(originPos).normalize();
+    const missAng = (8 + Math.random() * 6) * (Math.PI / 180);
+    const missPhi = Math.random() * Math.PI * 2;
+    const coneRef = Math.abs(trueDir.y) < 0.92 ? _ufoConeV.set(0, 1, 0) : _ufoConeV.set(1, 0, 0);
+    const coneU = _ufoConeU.copy(trueDir).cross(coneRef).normalize();
+    const coneV = coneRef.crossVectors(trueDir, coneU);
+    const sinA = Math.sin(missAng);
+    dir = _combatTmpD.copy(trueDir).multiplyScalar(Math.cos(missAng))
+      .addScaledVector(coneU, Math.cos(missPhi) * sinA)
+      .addScaledVector(coneV, Math.sin(missPhi) * sinA)
+      .lerp(trueDir, 0.45)
+      .normalize();
+  } else {
+    aim.x += (Math.random() - 0.5) * 10;
+    aim.y += (Math.random() - 0.5) * 5;
+    aim.z += (Math.random() - 0.5) * 10;
+    dir = aim.sub(originPos).normalize();
+  }
   p.active = true;
   p.life = 2.2;
   p.damage = 0.0;
@@ -1865,11 +1953,12 @@ function fireUfoPulse(t, originPos, dt = 1 / 60) {
   p.lockStrength = realShooter ? (t.playerLock || 0) : 0;
   p.cmConfused = confused;
   setProjectileVisual(p, 'ufo-pulse');
-  p.pos.copy(originPos).addScaledVector(dir, 4.5).add(new THREE.Vector3(0, -1.1, 0));
+  p.pos.copy(originPos).addScaledVector(dir, 4.5).add(_ufoMuzzleDrop);
+  p.prevX = p.pos.x; p.prevY = p.pos.y; p.prevZ = p.pos.z;
   p.vel.copy(dir).multiplyScalar(260 + aggression * 80);
   p.mesh.visible = true;
   p.mesh.position.copy(p.pos);
-  p.mesh.quaternion.setFromUnitVectors(_projectileForward, p.vel.clone().normalize());
+  p.mesh.quaternion.setFromUnitVectors(_projectileForward, _combatTmpE.copy(p.vel).normalize());
   muzzleFlashPool.emitCluster(p.pos, 5, 0.24, 0.08, 0.34, 0.72);
   impactBlastPool.emitCluster(p.pos, 3, 0.52, 0.06, 0.18, 0.42);
   if (typeof playSfx3D === 'function') playSfx3D('dogfight', originPos, { throttleMs: 190, maxMs: 160, volume: 0.34, rate: 1.38 + Math.random() * 0.18 });
@@ -1901,6 +1990,13 @@ function updateCombat(dt) {
   if (combatState.heat <= 0.08 && combatState.overheatedUntil > 0 && performance.now() > combatState.overheatedUntil) combatState.overheatedUntil = 0;
   transientStatus.timer = Math.max(0, transientStatus.timer - dt);
   const combatNow = performance.now();
+  // In-loop scheduled secondary blasts (replaces setTimeout, which throttles
+  // in background tabs and drifts at low fps).
+  for (const b of pendingBooms) {
+    if (!b.active || combatNow < b.at) continue;
+    b.active = false;
+    spawnExplosion(b.pos, b.intensity, b.smokeMul);
+  }
   // Time-earned supply: active flight steadily refills bullets and builds
   // missile credits. Firing can still outpace earning, so ammo remains scarce.
   updateCombatSupplyEarnings(dt);
@@ -2026,12 +2122,16 @@ function updateCombat(dt) {
       const speed = Math.max(420, p.vel.length());
       p.vel.lerp(desiredDir.multiplyScalar(speed), Math.min(1, dt * (2.4 + (targetHudState.lockAmount || 0) * 4.6))).normalize().multiplyScalar(speed);
     }
+    if (p.source === 'ufo-pulse') {
+      // Remember the pre-integration position for the swept hit test below —
+      // at 260–340 m/s a point-in-sphere check tunnels through the player.
+      p.prevX = p.pos.x; p.prevY = p.pos.y; p.prevZ = p.pos.z;
+    }
     p.pos.addScaledVector(p.vel, dt);
     p.mesh.position.copy(p.pos);
     p.mesh.quaternion.setFromUnitVectors(_projectileForward, _combatTmpB.copy(p.vel).normalize());
 
-    const groundH = (p.pos.x * p.pos.x + p.pos.z * p.pos.z < AIRFIELD_FLAT_R2)
-      ? AIRFIELD_SURFACE_Y : getHeight(p.pos.x, p.pos.z);
+    const groundH = getSurfaceHeight(p.pos.x, p.pos.z);
     if (p.pos.y <= groundH + 0.12) {
       _combatTmpE.copy(p.pos);
       _combatTmpE.y = groundH + 0.05;
@@ -2046,9 +2146,17 @@ function updateCombat(dt) {
     }
 
     if (p.source === 'ufo-pulse') {
-      const playerMiss = p.pos.distanceTo(plane.pos);
+      // Distance from the player to the swept segment prev→current.
+      const segX = p.pos.x - p.prevX, segY = p.pos.y - p.prevY, segZ = p.pos.z - p.prevZ;
+      const toPX = plane.pos.x - p.prevX, toPY = plane.pos.y - p.prevY, toPZ = plane.pos.z - p.prevZ;
+      const segLenSq = segX * segX + segY * segY + segZ * segZ;
+      const segT = segLenSq > 1e-9 ? Math.max(0, Math.min(1, (toPX * segX + toPY * segY + toPZ * segZ) / segLenSq)) : 0;
+      const missX = p.prevX + segX * segT - plane.pos.x;
+      const missY = p.prevY + segY * segT - plane.pos.y;
+      const missZ = p.prevZ + segZ * segT - plane.pos.z;
+      const playerMiss = Math.sqrt(missX * missX + missY * missY + missZ * missZ);
       const maintainedLock = !p.cmConfused && (p.lockStrength || 0) >= 0.62;
-      if (!plane.crashed && maintainedLock && playerMiss < 6.8) {
+      if (!plane.crashed && maintainedLock && playerMiss < 7.2) {
         _combatTmpE.copy(p.pos);
         impactBlastPool.emitCluster(_combatTmpE, 8, 1.05, 0.08, 0.36, 0.95);
         impactSparkPool.emitCluster(_combatTmpE, 10, 0.82, 0.16, 0.42, 0.9);
@@ -2127,7 +2235,7 @@ function updateCombat(dt) {
         if (Math.random() < 0.55) explosionFirePool.emitCluster(_combatTmpE, 1, 0.72, 0.05, 0.18, 0.38);
       }
     }
-    const groundH = (m.pos.x * m.pos.x + m.pos.z * m.pos.z < AIRFIELD_FLAT_R2) ? AIRFIELD_SURFACE_Y : getHeight(m.pos.x, m.pos.z);
+    const groundH = getSurfaceHeight(m.pos.x, m.pos.z);
     if (m.pos.y <= groundH + 0.2) {
       _combatTmpE.copy(m.pos);
       _combatTmpE.y = groundH + 0.05;
@@ -2200,6 +2308,13 @@ const throatClearSmokeR = new ParticlePool(scene, {
 const dirtyExhaustCore = new ParticlePool(scene, {
   max: 260, color: 0x4b433d, size: 1.9,
   life: 2.0, growth: 1.7, additive: false, texture: sharedSpriteTex,
+});
+// Prop-disc condensation — thin white puffs streaming off the prop discs at
+// high throttle / low altitude (the real implementation of the pointer
+// comment in 11-jet-visual-cam.js).
+const propCondensePool = new ParticlePool(scene, {
+  max: 60, color: 0xf4f8ff, size: 0.85,
+  life: 1.1, growth: 2.6, additive: false, texture: sharedSpriteTex,
 });
 
 const engineSurgeState = {
@@ -2296,6 +2411,8 @@ let greyTurnSmokeTimer = 0;
 let throatClearSmokeTimer = 0;
 let dirtyExhaustCoreTimer = 0;
 let contrailTimer = 0;
+let contrailSide = 0;
+let propCondenseTimer = 0;
 // Reusable scratch vectors for updateAtmospheric — eliminates ~11 Vector3 + 1
 // Quaternion allocations every frame (the top steady-state GC source). Each var
 // has its own temp (no aliasing); emit/emitCluster/addPoint all copy/clone the
@@ -2304,6 +2421,7 @@ const _atmWlL = new THREE.Vector3(), _atmWlR = new THREE.Vector3(), _atmWlE = ne
 const _atmFwd = new THREE.Vector3(), _atmRight = new THREE.Vector3(), _atmTrailBack = new THREE.Vector3();
 const _atmWtL = new THREE.Vector3(), _atmWtR = new THREE.Vector3(), _atmWlCore = new THREE.Vector3();
 const _atmLocalVel = new THREE.Vector3(), _atmInvQ = new THREE.Quaternion();
+const _atmPropPos = new THREE.Vector3();
 function updateAtmospheric(dt) {
   // Engine smoke stays near the cowling; healthy condensation trails come
   // from the real wing tips so hard manoeuvres read as wing vapor instead
@@ -2450,7 +2568,25 @@ function updateAtmospheric(dt) {
   const emitInterval = plane.throttle > 0.55 ? 0.04 : 0.09;
   if (!plane.suppressJetFX && plane.throttle > 0.25 && altAGL > 4 && contrailTimer > emitInterval) {
     contrailTimer = 0;
-    contrail.emit(wlE, 1.0, 0.7 + plane.throttle * 0.5);
+    if (jet.userData.engineSmokeL && jet.userData.engineSmokeR) {
+      // Twin-engine jets: trail from BOTH exhaust anchors, alternating L/R
+      // per emission (each side gets half cadence — same total rate).
+      contrail.emit(contrailSide ? wlR : wlL, 1.0, 0.7 + plane.throttle * 0.5);
+      contrailSide ^= 1;
+    } else {
+      contrail.emit(wlE, 1.0, 0.7 + plane.throttle * 0.5);
+    }
+  }
+
+  // Prop-disc condensation: thin white puffs off each prop disc at high
+  // throttle, low altitude — prop-tip vortex condensation.
+  propCondenseTimer += dt;
+  if (!plane.crashed && plane.props && plane.props.length && plane.throttle > 0.55 && altAGL < 80 && propCondenseTimer > 0.08) {
+    propCondenseTimer = 0;
+    for (const prop of plane.props) {
+      prop.getWorldPosition(_atmPropPos);
+      propCondensePool.emit(_atmPropPos, 0.85 + Math.random() * 0.3, 0.55 + plane.throttle * 0.45);
+    }
   }
 
   vaporL.update(dt);
@@ -2461,7 +2597,7 @@ function updateAtmospheric(dt) {
   throatClearSmokeR.update(dt);
   dirtyExhaustCore.update(dt);
   contrail.update(dt);
+  propCondensePool.update(dt);
   if (window.__mountainTargetSpin) window.__mountainTargetSpin(dt);
   if (window.__mountainPortalSpin) window.__mountainPortalSpin(dt);
 }
-

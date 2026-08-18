@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { syncThreeRuntime } from './sync-three-runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceName = 'flight-sim3.html';
@@ -32,6 +33,15 @@ const args = new Set(process.argv.slice(2));
 const clean = !args.has('--no-clean');
 const chunkSize = 24_000;
 const deploySupportFiles = ['plane-tweaks.json', 'latest-features.json'];
+const deployStaticDirectories = ['assets', 'vendor'];
+const redirectAliases = ['flight-sim3.html', 'plane-select.html'];
+const excludedScannedAssets = new Set([
+  // These retired models are mentioned by the source migration guard, not used
+  // by any selectable airframe. Do not make releases larger because of comments
+  // or fallback bookkeeping.
+  'models/claude_scruggs.glb',
+  'models/crank_bush_plane.glb',
+]);
 
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
@@ -58,7 +68,9 @@ function collectReferencedAssets(html) {
   let match;
   while ((match = literalAssetRe.exec(html))) {
     const rel = match[1].replace(/^\.\//, '');
-    if (!rel.includes('${') && !/^https?:\/\//i.test(rel) && !rel.startsWith('data:')) assets.add(rel);
+    if (!rel.includes('${') && !/^https?:\/\//i.test(rel) && !rel.startsWith('data:') && !excludedScannedAssets.has(rel)) {
+      assets.add(rel);
+    }
   }
 
   // The stunt plane texture is template-built in flight-sim3.html:
@@ -68,6 +80,44 @@ function collectReferencedAssets(html) {
   }
 
   return [...assets].sort((a, b) => a.localeCompare(b));
+}
+
+async function listFiles(dir, prefix = '') {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const rel = path.join(prefix, entry.name);
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...await listFiles(abs, rel));
+    else if (entry.isFile()) files.push({ abs, rel });
+  }
+  return files;
+}
+
+async function copyDirectoryWithManifest(rel, copiedAssets) {
+  const source = path.join(root, rel);
+  const destination = path.join(distDir, rel);
+  try {
+    const sourceStat = await stat(source);
+    if (!sourceStat.isDirectory()) throw new Error(`${rel} is not a directory`);
+  } catch (error) {
+    throw new Error(`Build static directory is missing: ${rel} (${error.message})`);
+  }
+  await cp(source, destination, { recursive: true, force: true });
+  for (const item of await listFiles(destination)) {
+    copiedAssets.push(await fileInfo(item.abs, path.posix.join(rel, item.rel.split(path.sep).join('/'))));
+  }
+}
+
+async function assertReleaseFiles(paths) {
+  for (const rel of paths) {
+    try {
+      const entry = await stat(path.join(distDir, rel));
+      if (!entry.isFile()) throw new Error('not a file');
+    } catch {
+      throw new Error(`Release integrity check failed: ${rel} was not packaged`);
+    }
+  }
 }
 
 function buildEncodedDocument(html, sourceHash) {
@@ -93,7 +143,27 @@ ${chunkList}
 `;
 }
 
+function buildRedirectDocument(title = 'Canyon Flight Sim') {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<meta http-equiv="refresh" content="0; url=game.html">
+<link rel="canonical" href="game.html">
+<script>location.replace('game.html' + (location.search || '') + (location.hash || ''));</script>
+</head>
+<body><p>Loading <a href="game.html">game.html</a>…</p></body>
+</html>
+`;
+}
+
 async function main() {
+  // Keep the browser runtime self-hosted and version-locked. This runs before
+  // source assembly so direct source smoke tests and the packaged game resolve
+  // the same local scripts.
+  await syncThreeRuntime(root);
   assembleGameSource();
   const source = await readFile(sourcePath, 'utf8');
   const sourceBuffer = Buffer.from(source, 'utf8');
@@ -117,6 +187,13 @@ async function main() {
     copiedAssets.push(await fileInfo(dest, rel));
   }
 
+  // UI art includes dynamic hangar thumbnail paths, so copy the approved
+  // static trees as trees instead of attempting to infer every template-built
+  // filename from the assembled document.
+  for (const rel of deployStaticDirectories) {
+    await copyDirectoryWithManifest(rel, copiedAssets);
+  }
+
   for (const rel of deploySupportFiles) {
     const src = path.join(root, rel);
     const dest = path.join(distDir, rel);
@@ -133,19 +210,22 @@ async function main() {
   const outGame = buildEncodedDocument(source, sourceHash);
   await writeFile(outGamePath, outGame, 'utf8');
 
-  const indexHtml = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Canyon Flight Sim</title>
-<meta http-equiv="refresh" content="0; url=game.html">
-<link rel="canonical" href="game.html">
-<script>location.replace('game.html' + (location.search || '') + (location.hash || ''));</script>
-</head>
-<body><p>Loading <a href="game.html">game.html</a>...</p></body>
-</html>
-`;
+  const indexHtml = buildRedirectDocument();
   await writeFile(outIndexPath, indexHtml, 'utf8');
+
+  const aliasInfos = [];
+  for (const alias of redirectAliases) {
+    const aliasPath = path.join(distDir, alias);
+    await writeFile(aliasPath, buildRedirectDocument(), 'utf8');
+    aliasInfos.push(await fileInfo(aliasPath, alias));
+  }
+
+  await assertReleaseFiles([
+    'assets/ui/menu/bg-169.jpg',
+    'assets/ui/menu/05_play_solo_normal.png',
+    'assets/ui/planes/e115.jpg',
+    'vendor/three/r128/build/three.min.js',
+  ]);
 
   const gameInfo = await fileInfo(outGamePath, 'game.html');
   const indexInfo = await fileInfo(outIndexPath, 'index.html');
@@ -158,7 +238,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     sourceBytes: sourceBuffer.length,
     sourceSha256: sourceHash,
-    outputs: [gameInfo, indexInfo],
+    outputs: [gameInfo, indexInfo, ...aliasInfos],
     assets: copiedAssets,
     assetBytes: totalAssetBytes,
     note: 'This hides readable source from casual view by shipping an encoded DOM bootstrap. Browser-delivered JavaScript cannot be made secret; do not place credentials or private logic in client code.',
