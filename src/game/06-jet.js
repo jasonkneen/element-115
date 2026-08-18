@@ -219,8 +219,11 @@ function makeJet() {
     color: 0x292c34, metalness: 0.8, roughness: 0.35
   });
   const matCanopy = new THREE.MeshStandardMaterial({
-    color: 0x1a3045, metalness: 1.0, roughness: 0.06,
-    transparent: true, opacity: 0.42
+    // Dark blue-black glass: at 0.42 opacity the bubble picked up the hull
+    // tone from behind and read as body metal; a deeper tint + stronger env
+    // response keeps the "glass bubble" landmark at every azimuth.
+    color: 0x0c1a2c, metalness: 1.0, roughness: 0.04,
+    transparent: true, opacity: 0.6
   });
   const matAccent = new THREE.MeshStandardMaterial({
     color: 0x9a1a28, metalness: 0.3, roughness: 0.7
@@ -285,17 +288,30 @@ function makeJet() {
     (() => { const m = matDark.clone(); m.flatShading = true; return m; })()
   );
   nozzle.rotation.x = Math.PI / 2;
-  nozzle.position.z = 8.0;
+  // Sit the nozzle on the tail-boom visual centerline: at y=0 the exhaust
+  // hung below the aft taper and gave the side profile a drooped/broken-back
+  // read.
+  nozzle.position.set(0, 0.18, 8.0);
   root.add(nozzle);
 
-  // Nozzle inner glow ring
+  // Nozzle inner glow ring — hot enough to give the rear 3/4 an engine read
+  // even at idle (the old 0x662200 crushed to black at chase distance).
   const nozRing = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.6, 0.6, 0.22, 14, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0x662200, toneMapped: false })
+    new THREE.CylinderGeometry(0.6, 0.56, 0.3, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xff5a18, toneMapped: false, side: THREE.DoubleSide })
   );
   nozRing.rotation.x = Math.PI / 2;
-  nozRing.position.z = 8.5;
+  nozRing.position.set(0, 0.18, 8.45);
   root.add(nozRing);
+  // Turbine face plug closes the tailpipe so the nozzle never reads as a
+  // hollow open cap from dead astern.
+  const turbineFace = new THREE.Mesh(
+    new THREE.CircleGeometry(0.58, 14),
+    new THREE.MeshBasicMaterial({ color: 0x30140a, toneMapped: false })
+  );
+  turbineFace.rotation.y = Math.PI;
+  turbineFace.position.set(0, 0.18, 8.3);
+  root.add(turbineFace);
 
   // Canopy — teardrop bubble via lathe profile (windscreen rake -> apex ->
   // spine fairing), thin dark frame rails, envMap glass (matCanopy set in P3).
@@ -319,7 +335,7 @@ function makeJet() {
   // maps to -Z after this rotation, so a positive scale.y put the tail
   // (py=3.9) more forward than the nose (py=0), burying the bubble ~3.5 units
   // too far forward. Negating restores nose-forward orientation.
-  canopy.scale.set(1.3, -0.8, 0.96);       // wider (x) than tall (z)
+  canopy.scale.set(1.3, -0.8, 1.24);       // taller bubble: at 0.96 the apex sat nearly flush with the spine
   canopy.position.set(0, 1.18, -3.3);
   root.add(canopy);
   // Frame rails — thin dark arcs (windscreen bow + mid hoop)
@@ -736,11 +752,14 @@ function makeJet() {
   root.add(formationLights);
 
   // ============ WEAPONS LOADOUT ============
-  function makeMissile(length, dia, bodyColor) {
+  function makeMissile(length, dia, bodyColor, tipColor) {
     const grp = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({
       color: bodyColor, metalness: 0.35, roughness: 0.45
     });
+    const tipMat = tipColor
+      ? new THREE.MeshStandardMaterial({ color: tipColor, metalness: 0.3, roughness: 0.5 })
+      : bodyMat;
     const finMat = new THREE.MeshStandardMaterial({
       color: 0x33363a, metalness: 0.5, roughness: 0.6
     });
@@ -751,7 +770,7 @@ function makeJet() {
     body.position.z = length * 0.05;
     grp.add(body);
     const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(dia, length * 0.22, 12), bodyMat
+      new THREE.ConeGeometry(dia, length * 0.22, 12), tipMat
     );
     tip.rotation.x = -Math.PI / 2;
     tip.position.z = -length * 0.45;
@@ -784,15 +803,17 @@ function makeJet() {
   }
 
   const pylonMat = new THREE.MeshStandardMaterial({
-    color: 0x4a4f58, metalness: 0.6, roughness: 0.5
+    color: 0x5b6570, metalness: 0.6, roughness: 0.5
   });
 
-  // 4 underwing pylons + AAMs (inner = larger, outer = sidewinder)
+  // 4 underwing pylons + AAMs (inner = larger, outer = sidewinder).
+  // Light-grey bodies with red-orange seeker tips: the old olive-drab rounds
+  // merged with the dark pylons/gear into one unreadable belly mass.
   const hardpoints = [
-    { x: -3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x: -1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x:  1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x:  3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+    { x: -3.4, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x: -1.9, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x:  1.9, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x:  3.4, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
   ];
   for (const hp of hardpoints) {
     const pylon = new THREE.Mesh(
@@ -800,7 +821,7 @@ function makeJet() {
     );
     pylon.position.set(hp.x, -0.32 - hp.pylonH * 0.5, 0.95);
     root.add(pylon);
-    const m = makeMissile(hp.len, hp.dia, hp.color);
+    const m = makeMissile(hp.len, hp.dia, hp.color, hp.tip);
     m.position.set(hp.x, -0.32 - hp.pylonH - hp.dia, 0.95);
     root.add(m);
   }
@@ -976,27 +997,40 @@ function makeJet() {
   const landingLeft = makeLandingLightRig(-1);
   const landingRight = makeLandingLightRig(1);
 
-  // Canard foreplanes — small winglets ahead of the main wing
+  // Canard foreplanes — swept delta foreplanes at the canopy sill. Sized to
+  // read at chase-cam distance (~26 m): the old 1.6-span plates sat half
+  // buried in the hull and vanished, erasing the "delta-canard" silhouette.
   function makeCanard() {
-    const g = new THREE.BoxGeometry(1.6, 0.1, 0.9, 2, 1, 1);
+    const g = new THREE.BoxGeometry(2.6, 0.09, 1.15, 2, 1, 1);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i);
-      const ax = Math.abs(x);
+      const ax = Math.abs(x) / 1.3;           // 0 at root, 1 at tip
       const z = p.getZ(i);
-      p.setZ(i, z * (1 - ax * 0.3) + ax * 0.3);
+      // Sweep the leading edge back and shrink chord toward the tip
+      p.setZ(i, z * (1 - ax * 0.45) + ax * 0.62);
+      p.setY(i, p.getY(i) * (1 - ax * 0.35)); // thin toward the tip
     }
     g.computeVertexNormals();
     return g;
   }
-  const canardL = new THREE.Mesh(makeCanard(), matFuse);
-  canardL.position.set(-1.1, 0.15, -3.5);
-  canardL.rotation.z = 0.05;
-  root.add(canardL);
-  const canardR = new THREE.Mesh(makeCanard(), matFuse);
-  canardR.position.set(1.1, 0.15, -3.5);
-  canardR.rotation.z = -0.05;
-  root.add(canardR);
+  // Orange leading-edge strips make the foreplanes separate from the
+  // gunmetal hull at chase distance — same-material canards kept reading as
+  // fuselage chines to three independent critics.
+  const canardTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xd4722a, metalness: 0.3, roughness: 0.55
+  });
+  for (const side of [-1, 1]) {
+    const canard = new THREE.Mesh(makeCanard(), matFuse);
+    canard.position.set(side * 1.7, 0.34, -3.35);
+    canard.rotation.z = side * -0.12;      // visible anhedral
+    root.add(canard);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.14), canardTrimMat);
+    trim.position.set(side * 1.75, 0.345, -3.86);
+    trim.rotation.z = side * -0.12;
+    trim.rotation.y = side * -0.16;        // follow the swept leading edge
+    root.add(trim);
+  }
 
   // Dorsal spine — raised ridge with emissive accent
   const spine = new THREE.Mesh(

@@ -287,11 +287,30 @@ function buildAirfield() {
 
   g.add(towerGrp);
 
-  // Some hangars / crates as set dressing
-  const crateMat = new THREE.MeshStandardMaterial({ color: 0x9a7d5a, roughness: 0.95 });
+  // Some hangars / crates as set dressing. Color variants, deterministic yaw/
+  // scale jitter, and a proud lid slab per crate — six identical aligned
+  // beige boxes read as placeholder geometry at apron distance.
+  const crateMats = [0x9a7d5a, 0x6f7a4f, 0xb0562e, 0xcfc4ae].map(
+    (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.95 })
+  );
   for (let i = 0; i < 6; i++) {
-    const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMat);
-    c.position.set(28 + (i % 3) * 8, 1.5, 176 - Math.floor(i / 3) * 8);
+    const s = 0.85 + ((i * 37) % 40) / 100;                 // 0.85..1.24
+    const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMats[i % crateMats.length]);
+    c.scale.setScalar(s);
+    c.rotation.y = (((i * 53) % 21) - 10) * 0.017;          // ±10 deg
+    c.position.set(28 + (i % 3) * 8, 1.5 * s, 176 - Math.floor(i / 3) * 8);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.35, 4.4), crateMats[(i + 1) % crateMats.length]);
+    lid.position.y = 1.62;
+    c.add(lid);
+    if (i === 4) {
+      // Stacked crate breaks the uniform single-height row. A child of its
+      // base crate (local units — parent is scaled 1.13) so destroying the
+      // base takes the stack with it instead of leaving it floating.
+      const stackCrate = new THREE.Mesh(new THREE.BoxGeometry(3.9, 1.95, 2.85), crateMats[2]);
+      stackCrate.rotation.y = 0.12;
+      stackCrate.position.y = 2.47;
+      c.add(stackCrate);
+    }
     g.add(c);
     registerDestructible(c, { radius: 3.7, kind: 'crate' });
   }
@@ -321,6 +340,24 @@ function buildAirfield() {
   const hangar2Back = hangarBack.clone();
   hangar2Back.position.set(-66, 3.5, 124);
   g.add(hangar2Back);
+
+  // Close the hangar shells: end gables + a dark door inset on the runway
+  // side. The open DoubleSide half-cylinders read as paper-thin ribbon curls
+  // with an unlit interior instead of buildings.
+  const hangarCapMat = new THREE.MeshStandardMaterial({ color: 0x958c79, roughness: 0.85, metalness: 0.1, side: THREE.DoubleSide });
+  const hangarDoorMat = new THREE.MeshStandardMaterial({ color: 0x4f4a40, roughness: 0.9 });
+  for (const h of [{ x: 68, z: 146, doorSide: -1 }, { x: -66, z: 132, doorSide: 1 }]) {
+    for (const side of [-1, 1]) {
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(7, 18, 0, Math.PI), hangarCapMat);
+      cap.rotation.y = side * Math.PI / 2;
+      cap.position.set(h.x + side * 8, 0, h.z);
+      g.add(cap);
+    }
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 4.6), hangarDoorMat);
+    door.rotation.y = h.doorSide * Math.PI / 2;
+    door.position.set(h.x + h.doorSide * 8.05, 2.3, h.z);
+    g.add(door);
+  }
 
   // Fuel tanks
   const tankMat = new THREE.MeshStandardMaterial({ color: 0xb8a285, roughness: 0.7, metalness: 0.4 });

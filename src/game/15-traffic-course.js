@@ -26,8 +26,10 @@ function getSaucerSharedMats() {
   if (saucerSharedMats) return saucerSharedMats;
   const hull = new THREE.MeshStandardMaterial({
     color: 0x7f92a8,
-    emissive: 0x10243d,
-    emissiveIntensity: 0.18,
+    emissive: 0x16304a,
+    // Slightly stronger self-illumination so the metal never crushes to a
+    // pure black silhouette when lit only by sky from above.
+    emissiveIntensity: 0.34,
     roughness: 0.38,
     metalness: 0.74,
   });
@@ -40,12 +42,22 @@ function getSaucerSharedMats() {
   });
   const canopy = new THREE.MeshStandardMaterial({
     color: 0x9fe8ff,
-    emissive: 0x256d8c,
-    emissiveIntensity: 0.55,
-    roughness: 0.18,
+    emissive: 0x2f85aa,
+    emissiveIntensity: 0.8,
+    roughness: 0.06,
     metalness: 0.12,
     transparent: true,
     opacity: 0.78,
+  });
+  // Belly metal: no scene light reaches the underside, so the belly tiers
+  // need their own emissive lift to read as machined metal instead of a
+  // black silhouette. Shared across all saucers like the rest of the set.
+  const belly = new THREE.MeshStandardMaterial({
+    color: 0x8fa2b6,
+    emissive: 0x33506e,
+    emissiveIntensity: 0.62,
+    roughness: 0.34,
+    metalness: 0.7,
   });
   const beacons = [];
   for (let i = 0; i < 12; i++) {
@@ -56,8 +68,8 @@ function getSaucerSharedMats() {
       toneMapped: false,
     }));
   }
-  saucerSharedMats = { hull, rim, canopy, beacons };
-  for (const m of [hull, rim, canopy, ...beacons]) m.userData.__sharedSaucerMat = true;
+  saucerSharedMats = { hull, rim, canopy, belly, beacons };
+  for (const m of [hull, rim, canopy, belly, ...beacons]) m.userData.__sharedSaucerMat = true;
   return saucerSharedMats;
 }
 
@@ -104,11 +116,39 @@ function createSaucerTargetModel(opts = {}) {
   topDome.position.y = 0.48;
   root.add(topDome);
 
-  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat);
+  // Under-hull: a stepped convex belly instead of the old flat black disc —
+  // from below (the view combat players see most) the saucer needs real
+  // volume and a glow that survives without top-down lighting.
+  const underTier = new THREE.Mesh(new THREE.CylinderGeometry(5.35, 4.35, 0.3, 56, 1), shared.belly);
+  underTier.name = 'ufo under hull tier';
+  underTier.position.y = -0.5;
+  root.add(underTier);
+  const underTier2 = new THREE.Mesh(new THREE.CylinderGeometry(4.35, 3.3, 0.32, 56, 1), shared.hull);
+  underTier2.name = 'ufo under hull tier 2';
+  underTier2.position.y = -0.8;
+  root.add(underTier2);
+  const underDome = new THREE.Mesh(new THREE.SphereGeometry(2.9, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), shared.belly);
+  underDome.name = 'ufo under hull dome';
+  underDome.scale.set(1, 0.45, 1);
+  underDome.position.y = -0.9;
+  root.add(underDome);
+
+  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.55, 0.1, 48, 1), glowMat);
   lowerGlow.name = 'ufo underside glow';
-  lowerGlow.position.y = -0.48;
+  lowerGlow.position.y = -1.18;
   lowerGlow.userData.glowPhase = 0;
   root.add(lowerGlow);
+  // Emissive under-ring: a bright static additive torus — kept OUT of the
+  // pulsing glowParts driver so the combat-distance "glowing ring" read from
+  // below never dips dim.
+  const underRingGlow = new THREE.Mesh(
+    new THREE.TorusGeometry(3.75, 0.24, 8, 56),
+    new THREE.MeshBasicMaterial({ color: 0x74eaff, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+  );
+  underRingGlow.name = 'ufo underside glow ring';
+  underRingGlow.rotation.x = Math.PI / 2;
+  underRingGlow.position.y = -0.95;
+  root.add(underRingGlow);
 
   const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), ringGlowMat);
   ringGlow.name = 'ufo equator glow';
@@ -123,7 +163,10 @@ function createSaucerTargetModel(opts = {}) {
     new THREE.MeshBasicMaterial({ color: 0x74efff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
   );
   shield.name = 'ufo reactive shield bubble';
-  shield.scale.set(1.18, 0.48, 1.18);
+  // Tighter, hull-centered bubble: the old 1.18/0.48 squash read as an
+  // offset haze smear from low angles instead of a shield.
+  shield.scale.set(1.02, 0.42, 1.02);
+  shield.position.y = 0.05;
   shield.renderOrder = 26;
   root.userData.shieldMesh = shield;
   root.add(shield);
@@ -142,9 +185,11 @@ function createSaucerTargetModel(opts = {}) {
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     const mat = shared.beacons[i];
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), mat);
     beacon.name = 'ufo symmetric rim beacon';
-    beacon.position.set(Math.cos(a) * 5.15, 0.02, Math.sin(a) * 5.15);
+    // Proud of the rim lip and slightly below the equator so the orange/cyan
+    // identification lights survive underside combat angles.
+    beacon.position.set(Math.cos(a) * 5.42, -0.08, Math.sin(a) * 5.42);
     beacon.userData.phase = i / 12;
     root.userData.beaconLights.push(beacon);
     root.add(beacon);
@@ -660,12 +705,16 @@ function updateTraffic(dt) {
             const hitPulse = clamp01(destructible.shieldPulse || 0);
             const failing = shieldRatio < 0.34 || hullRatio < 0.66;
             const glitch = failing ? Math.max(0, Math.sin(pulseT * 6.4 + (t.evasivePhase || 0))) : 0;
-            const opacity = Math.max(hitPulse * 0.42, shieldRatio > 0 ? 0.035 + shieldRatio * 0.045 : 0, failing ? glitch * 0.16 : 0);
+            // Idle shield is a whisper (it read as a big haze smear from low
+            // angles); it flares on hits and while failing.
+            const opacity = Math.max(hitPulse * 0.42, failing ? glitch * 0.16 : 0);
             shield.visible = opacity > 0.012;
             shield.material.opacity = opacity;
             shield.material.color.setHex(destructible.shield > 0 ? (failing && glitch > 0.55 ? 0xffd36a : 0x74efff) : 0xff8c6a);
             const s = 1 + hitPulse * 0.16 + Math.sin(pulseT * (failing ? 3.4 : 1.4)) * (failing ? 0.035 : 0.015) + glitch * 0.05;
-            shield.scale.set(1.18 * s, 0.48 * s, 1.18 * s);
+            // Hug the hull (hull radius 5.8, shield sphere 6.15): the old
+            // 1.18 lateral scale pushed the bubble ~1.5 m clear of the rim.
+            shield.scale.set(1.02 * s, 0.42 * s, 1.02 * s);
           }
         }
         const beam = t.child.userData.landingBeam;

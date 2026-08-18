@@ -6087,11 +6087,30 @@ function buildAirfield() {
 
   g.add(towerGrp);
 
-  // Some hangars / crates as set dressing
-  const crateMat = new THREE.MeshStandardMaterial({ color: 0x9a7d5a, roughness: 0.95 });
+  // Some hangars / crates as set dressing. Color variants, deterministic yaw/
+  // scale jitter, and a proud lid slab per crate — six identical aligned
+  // beige boxes read as placeholder geometry at apron distance.
+  const crateMats = [0x9a7d5a, 0x6f7a4f, 0xb0562e, 0xcfc4ae].map(
+    (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.95 })
+  );
   for (let i = 0; i < 6; i++) {
-    const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMat);
-    c.position.set(28 + (i % 3) * 8, 1.5, 176 - Math.floor(i / 3) * 8);
+    const s = 0.85 + ((i * 37) % 40) / 100;                 // 0.85..1.24
+    const c = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 4), crateMats[i % crateMats.length]);
+    c.scale.setScalar(s);
+    c.rotation.y = (((i * 53) % 21) - 10) * 0.017;          // ±10 deg
+    c.position.set(28 + (i % 3) * 8, 1.5 * s, 176 - Math.floor(i / 3) * 8);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.35, 4.4), crateMats[(i + 1) % crateMats.length]);
+    lid.position.y = 1.62;
+    c.add(lid);
+    if (i === 4) {
+      // Stacked crate breaks the uniform single-height row. A child of its
+      // base crate (local units — parent is scaled 1.13) so destroying the
+      // base takes the stack with it instead of leaving it floating.
+      const stackCrate = new THREE.Mesh(new THREE.BoxGeometry(3.9, 1.95, 2.85), crateMats[2]);
+      stackCrate.rotation.y = 0.12;
+      stackCrate.position.y = 2.47;
+      c.add(stackCrate);
+    }
     g.add(c);
     registerDestructible(c, { radius: 3.7, kind: 'crate' });
   }
@@ -6121,6 +6140,24 @@ function buildAirfield() {
   const hangar2Back = hangarBack.clone();
   hangar2Back.position.set(-66, 3.5, 124);
   g.add(hangar2Back);
+
+  // Close the hangar shells: end gables + a dark door inset on the runway
+  // side. The open DoubleSide half-cylinders read as paper-thin ribbon curls
+  // with an unlit interior instead of buildings.
+  const hangarCapMat = new THREE.MeshStandardMaterial({ color: 0x958c79, roughness: 0.85, metalness: 0.1, side: THREE.DoubleSide });
+  const hangarDoorMat = new THREE.MeshStandardMaterial({ color: 0x4f4a40, roughness: 0.9 });
+  for (const h of [{ x: 68, z: 146, doorSide: -1 }, { x: -66, z: 132, doorSide: 1 }]) {
+    for (const side of [-1, 1]) {
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(7, 18, 0, Math.PI), hangarCapMat);
+      cap.rotation.y = side * Math.PI / 2;
+      cap.position.set(h.x + side * 8, 0, h.z);
+      g.add(cap);
+    }
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 4.6), hangarDoorMat);
+    door.rotation.y = h.doorSide * Math.PI / 2;
+    door.position.set(h.x + h.doorSide * 8.05, 2.3, h.z);
+    g.add(door);
+  }
 
   // Fuel tanks
   const tankMat = new THREE.MeshStandardMaterial({ color: 0xb8a285, roughness: 0.7, metalness: 0.4 });
@@ -6763,8 +6800,11 @@ function makeJet() {
     color: 0x292c34, metalness: 0.8, roughness: 0.35
   });
   const matCanopy = new THREE.MeshStandardMaterial({
-    color: 0x1a3045, metalness: 1.0, roughness: 0.06,
-    transparent: true, opacity: 0.42
+    // Dark blue-black glass: at 0.42 opacity the bubble picked up the hull
+    // tone from behind and read as body metal; a deeper tint + stronger env
+    // response keeps the "glass bubble" landmark at every azimuth.
+    color: 0x0c1a2c, metalness: 1.0, roughness: 0.04,
+    transparent: true, opacity: 0.6
   });
   const matAccent = new THREE.MeshStandardMaterial({
     color: 0x9a1a28, metalness: 0.3, roughness: 0.7
@@ -6829,17 +6869,30 @@ function makeJet() {
     (() => { const m = matDark.clone(); m.flatShading = true; return m; })()
   );
   nozzle.rotation.x = Math.PI / 2;
-  nozzle.position.z = 8.0;
+  // Sit the nozzle on the tail-boom visual centerline: at y=0 the exhaust
+  // hung below the aft taper and gave the side profile a drooped/broken-back
+  // read.
+  nozzle.position.set(0, 0.18, 8.0);
   root.add(nozzle);
 
-  // Nozzle inner glow ring
+  // Nozzle inner glow ring — hot enough to give the rear 3/4 an engine read
+  // even at idle (the old 0x662200 crushed to black at chase distance).
   const nozRing = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.6, 0.6, 0.22, 14, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0x662200, toneMapped: false })
+    new THREE.CylinderGeometry(0.6, 0.56, 0.3, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xff5a18, toneMapped: false, side: THREE.DoubleSide })
   );
   nozRing.rotation.x = Math.PI / 2;
-  nozRing.position.z = 8.5;
+  nozRing.position.set(0, 0.18, 8.45);
   root.add(nozRing);
+  // Turbine face plug closes the tailpipe so the nozzle never reads as a
+  // hollow open cap from dead astern.
+  const turbineFace = new THREE.Mesh(
+    new THREE.CircleGeometry(0.58, 14),
+    new THREE.MeshBasicMaterial({ color: 0x30140a, toneMapped: false })
+  );
+  turbineFace.rotation.y = Math.PI;
+  turbineFace.position.set(0, 0.18, 8.3);
+  root.add(turbineFace);
 
   // Canopy — teardrop bubble via lathe profile (windscreen rake -> apex ->
   // spine fairing), thin dark frame rails, envMap glass (matCanopy set in P3).
@@ -6863,7 +6916,7 @@ function makeJet() {
   // maps to -Z after this rotation, so a positive scale.y put the tail
   // (py=3.9) more forward than the nose (py=0), burying the bubble ~3.5 units
   // too far forward. Negating restores nose-forward orientation.
-  canopy.scale.set(1.3, -0.8, 0.96);       // wider (x) than tall (z)
+  canopy.scale.set(1.3, -0.8, 1.24);       // taller bubble: at 0.96 the apex sat nearly flush with the spine
   canopy.position.set(0, 1.18, -3.3);
   root.add(canopy);
   // Frame rails — thin dark arcs (windscreen bow + mid hoop)
@@ -7280,11 +7333,14 @@ function makeJet() {
   root.add(formationLights);
 
   // ============ WEAPONS LOADOUT ============
-  function makeMissile(length, dia, bodyColor) {
+  function makeMissile(length, dia, bodyColor, tipColor) {
     const grp = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({
       color: bodyColor, metalness: 0.35, roughness: 0.45
     });
+    const tipMat = tipColor
+      ? new THREE.MeshStandardMaterial({ color: tipColor, metalness: 0.3, roughness: 0.5 })
+      : bodyMat;
     const finMat = new THREE.MeshStandardMaterial({
       color: 0x33363a, metalness: 0.5, roughness: 0.6
     });
@@ -7295,7 +7351,7 @@ function makeJet() {
     body.position.z = length * 0.05;
     grp.add(body);
     const tip = new THREE.Mesh(
-      new THREE.ConeGeometry(dia, length * 0.22, 12), bodyMat
+      new THREE.ConeGeometry(dia, length * 0.22, 12), tipMat
     );
     tip.rotation.x = -Math.PI / 2;
     tip.position.z = -length * 0.45;
@@ -7328,15 +7384,17 @@ function makeJet() {
   }
 
   const pylonMat = new THREE.MeshStandardMaterial({
-    color: 0x4a4f58, metalness: 0.6, roughness: 0.5
+    color: 0x5b6570, metalness: 0.6, roughness: 0.5
   });
 
-  // 4 underwing pylons + AAMs (inner = larger, outer = sidewinder)
+  // 4 underwing pylons + AAMs (inner = larger, outer = sidewinder).
+  // Light-grey bodies with red-orange seeker tips: the old olive-drab rounds
+  // merged with the dark pylons/gear into one unreadable belly mass.
   const hardpoints = [
-    { x: -3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x: -1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x:  1.9, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
-    { x:  3.4, len: 2.4, dia: 0.16, color: 0x3a4520, pylonH: 0.45 },
+    { x: -3.4, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x: -1.9, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x:  1.9, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
+    { x:  3.4, len: 2.4, dia: 0.16, color: 0xcfd4da, tip: 0xb8422a, pylonH: 0.45 },
   ];
   for (const hp of hardpoints) {
     const pylon = new THREE.Mesh(
@@ -7344,7 +7402,7 @@ function makeJet() {
     );
     pylon.position.set(hp.x, -0.32 - hp.pylonH * 0.5, 0.95);
     root.add(pylon);
-    const m = makeMissile(hp.len, hp.dia, hp.color);
+    const m = makeMissile(hp.len, hp.dia, hp.color, hp.tip);
     m.position.set(hp.x, -0.32 - hp.pylonH - hp.dia, 0.95);
     root.add(m);
   }
@@ -7520,27 +7578,40 @@ function makeJet() {
   const landingLeft = makeLandingLightRig(-1);
   const landingRight = makeLandingLightRig(1);
 
-  // Canard foreplanes — small winglets ahead of the main wing
+  // Canard foreplanes — swept delta foreplanes at the canopy sill. Sized to
+  // read at chase-cam distance (~26 m): the old 1.6-span plates sat half
+  // buried in the hull and vanished, erasing the "delta-canard" silhouette.
   function makeCanard() {
-    const g = new THREE.BoxGeometry(1.6, 0.1, 0.9, 2, 1, 1);
+    const g = new THREE.BoxGeometry(2.6, 0.09, 1.15, 2, 1, 1);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i);
-      const ax = Math.abs(x);
+      const ax = Math.abs(x) / 1.3;           // 0 at root, 1 at tip
       const z = p.getZ(i);
-      p.setZ(i, z * (1 - ax * 0.3) + ax * 0.3);
+      // Sweep the leading edge back and shrink chord toward the tip
+      p.setZ(i, z * (1 - ax * 0.45) + ax * 0.62);
+      p.setY(i, p.getY(i) * (1 - ax * 0.35)); // thin toward the tip
     }
     g.computeVertexNormals();
     return g;
   }
-  const canardL = new THREE.Mesh(makeCanard(), matFuse);
-  canardL.position.set(-1.1, 0.15, -3.5);
-  canardL.rotation.z = 0.05;
-  root.add(canardL);
-  const canardR = new THREE.Mesh(makeCanard(), matFuse);
-  canardR.position.set(1.1, 0.15, -3.5);
-  canardR.rotation.z = -0.05;
-  root.add(canardR);
+  // Orange leading-edge strips make the foreplanes separate from the
+  // gunmetal hull at chase distance — same-material canards kept reading as
+  // fuselage chines to three independent critics.
+  const canardTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xd4722a, metalness: 0.3, roughness: 0.55
+  });
+  for (const side of [-1, 1]) {
+    const canard = new THREE.Mesh(makeCanard(), matFuse);
+    canard.position.set(side * 1.7, 0.34, -3.35);
+    canard.rotation.z = side * -0.12;      // visible anhedral
+    root.add(canard);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.14), canardTrimMat);
+    trim.position.set(side * 1.75, 0.345, -3.86);
+    trim.rotation.z = side * -0.12;
+    trim.rotation.y = side * -0.16;        // follow the swept leading edge
+    root.add(trim);
+  }
 
   // Dorsal spine — raised ridge with emissive accent
   const spine = new THREE.Mesh(
@@ -20887,8 +20958,10 @@ function getSaucerSharedMats() {
   if (saucerSharedMats) return saucerSharedMats;
   const hull = new THREE.MeshStandardMaterial({
     color: 0x7f92a8,
-    emissive: 0x10243d,
-    emissiveIntensity: 0.18,
+    emissive: 0x16304a,
+    // Slightly stronger self-illumination so the metal never crushes to a
+    // pure black silhouette when lit only by sky from above.
+    emissiveIntensity: 0.34,
     roughness: 0.38,
     metalness: 0.74,
   });
@@ -20901,12 +20974,22 @@ function getSaucerSharedMats() {
   });
   const canopy = new THREE.MeshStandardMaterial({
     color: 0x9fe8ff,
-    emissive: 0x256d8c,
-    emissiveIntensity: 0.55,
-    roughness: 0.18,
+    emissive: 0x2f85aa,
+    emissiveIntensity: 0.8,
+    roughness: 0.06,
     metalness: 0.12,
     transparent: true,
     opacity: 0.78,
+  });
+  // Belly metal: no scene light reaches the underside, so the belly tiers
+  // need their own emissive lift to read as machined metal instead of a
+  // black silhouette. Shared across all saucers like the rest of the set.
+  const belly = new THREE.MeshStandardMaterial({
+    color: 0x8fa2b6,
+    emissive: 0x33506e,
+    emissiveIntensity: 0.62,
+    roughness: 0.34,
+    metalness: 0.7,
   });
   const beacons = [];
   for (let i = 0; i < 12; i++) {
@@ -20917,8 +21000,8 @@ function getSaucerSharedMats() {
       toneMapped: false,
     }));
   }
-  saucerSharedMats = { hull, rim, canopy, beacons };
-  for (const m of [hull, rim, canopy, ...beacons]) m.userData.__sharedSaucerMat = true;
+  saucerSharedMats = { hull, rim, canopy, belly, beacons };
+  for (const m of [hull, rim, canopy, belly, ...beacons]) m.userData.__sharedSaucerMat = true;
   return saucerSharedMats;
 }
 
@@ -20965,11 +21048,39 @@ function createSaucerTargetModel(opts = {}) {
   topDome.position.y = 0.48;
   root.add(topDome);
 
-  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.65, 0.08, 48, 1), glowMat);
+  // Under-hull: a stepped convex belly instead of the old flat black disc —
+  // from below (the view combat players see most) the saucer needs real
+  // volume and a glow that survives without top-down lighting.
+  const underTier = new THREE.Mesh(new THREE.CylinderGeometry(5.35, 4.35, 0.3, 56, 1), shared.belly);
+  underTier.name = 'ufo under hull tier';
+  underTier.position.y = -0.5;
+  root.add(underTier);
+  const underTier2 = new THREE.Mesh(new THREE.CylinderGeometry(4.35, 3.3, 0.32, 56, 1), shared.hull);
+  underTier2.name = 'ufo under hull tier 2';
+  underTier2.position.y = -0.8;
+  root.add(underTier2);
+  const underDome = new THREE.Mesh(new THREE.SphereGeometry(2.9, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), shared.belly);
+  underDome.name = 'ufo under hull dome';
+  underDome.scale.set(1, 0.45, 1);
+  underDome.position.y = -0.9;
+  root.add(underDome);
+
+  const lowerGlow = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.55, 0.1, 48, 1), glowMat);
   lowerGlow.name = 'ufo underside glow';
-  lowerGlow.position.y = -0.48;
+  lowerGlow.position.y = -1.18;
   lowerGlow.userData.glowPhase = 0;
   root.add(lowerGlow);
+  // Emissive under-ring: a bright static additive torus — kept OUT of the
+  // pulsing glowParts driver so the combat-distance "glowing ring" read from
+  // below never dips dim.
+  const underRingGlow = new THREE.Mesh(
+    new THREE.TorusGeometry(3.75, 0.24, 8, 56),
+    new THREE.MeshBasicMaterial({ color: 0x74eaff, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+  );
+  underRingGlow.name = 'ufo underside glow ring';
+  underRingGlow.rotation.x = Math.PI / 2;
+  underRingGlow.position.y = -0.95;
+  root.add(underRingGlow);
 
   const ringGlow = new THREE.Mesh(new THREE.TorusGeometry(4.72, 0.08, 8, 72), ringGlowMat);
   ringGlow.name = 'ufo equator glow';
@@ -20984,7 +21095,10 @@ function createSaucerTargetModel(opts = {}) {
     new THREE.MeshBasicMaterial({ color: 0x74efff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
   );
   shield.name = 'ufo reactive shield bubble';
-  shield.scale.set(1.18, 0.48, 1.18);
+  // Tighter, hull-centered bubble: the old 1.18/0.48 squash read as an
+  // offset haze smear from low angles instead of a shield.
+  shield.scale.set(1.02, 0.42, 1.02);
+  shield.position.y = 0.05;
   shield.renderOrder = 26;
   root.userData.shieldMesh = shield;
   root.add(shield);
@@ -21003,9 +21117,11 @@ function createSaucerTargetModel(opts = {}) {
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     const mat = shared.beacons[i];
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), mat);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), mat);
     beacon.name = 'ufo symmetric rim beacon';
-    beacon.position.set(Math.cos(a) * 5.15, 0.02, Math.sin(a) * 5.15);
+    // Proud of the rim lip and slightly below the equator so the orange/cyan
+    // identification lights survive underside combat angles.
+    beacon.position.set(Math.cos(a) * 5.42, -0.08, Math.sin(a) * 5.42);
     beacon.userData.phase = i / 12;
     root.userData.beaconLights.push(beacon);
     root.add(beacon);
@@ -21521,12 +21637,16 @@ function updateTraffic(dt) {
             const hitPulse = clamp01(destructible.shieldPulse || 0);
             const failing = shieldRatio < 0.34 || hullRatio < 0.66;
             const glitch = failing ? Math.max(0, Math.sin(pulseT * 6.4 + (t.evasivePhase || 0))) : 0;
-            const opacity = Math.max(hitPulse * 0.42, shieldRatio > 0 ? 0.035 + shieldRatio * 0.045 : 0, failing ? glitch * 0.16 : 0);
+            // Idle shield is a whisper (it read as a big haze smear from low
+            // angles); it flares on hits and while failing.
+            const opacity = Math.max(hitPulse * 0.42, failing ? glitch * 0.16 : 0);
             shield.visible = opacity > 0.012;
             shield.material.opacity = opacity;
             shield.material.color.setHex(destructible.shield > 0 ? (failing && glitch > 0.55 ? 0xffd36a : 0x74efff) : 0xff8c6a);
             const s = 1 + hitPulse * 0.16 + Math.sin(pulseT * (failing ? 3.4 : 1.4)) * (failing ? 0.035 : 0.015) + glitch * 0.05;
-            shield.scale.set(1.18 * s, 0.48 * s, 1.18 * s);
+            // Hug the hull (hull radius 5.8, shield sphere 6.15): the old
+            // 1.18 lateral scale pushed the bubble ~1.5 m clear of the rim.
+            shield.scale.set(1.02 * s, 0.42 * s, 1.02 * s);
           }
         }
         const beam = t.child.userData.landingBeam;

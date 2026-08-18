@@ -65,3 +65,12 @@ TODO / suggestions:
 - Hoisted per-frame allocations: cockpit/wing replay cams (2×Vector3+clone/frame) and `updateReplayHeroLightAfterCamera` (3×Vector3/frame) now use module scratch vectors.
 - Added `window.__sim.replay/replayStart/replayStop` test hooks (matches `__sim.getHeight` convention).
 - Verification: NDC in-frame check (scratch `replay-cam-check.mjs`: fly 8s at 278 m/s via advanceTime, start movie replay, project plane.pos through camera each RAF) — max deviation 0.06 NDC over 1352 frames, never behind camera. `bun run test` PASS.
+
+## 2026-08-19 vibe-model pass — procedural model improvements
+
+- Built a deterministic capture harness (scratch `model-shots.mjs`): pause via `__ap.pause()` (camera left alone while the world renders), noon TOD, identity jet pose, saucer parked on a pedestal, course-ring torii hidden, six fixed camera shots. Fresh-critic loop per improving-existing.md (brief + baseline + current to a context-free agent).
+- E-115 `makeJet` (64 → 72/100, plateaued): swept canard foreplanes enlarged + anhedral + orange leading-edge trim (old ones sat buried in the hull); afterburner ring brightened 0x662200→0xff5a18 + turbine face plug (rear had no engine read); nozzle assembly raised to the tail centerline (droop read); canopy glass deepened/glassier; underwing missiles light-grey with red seeker tips + lighter pylons (belly read as one dark mass).
+- UFO saucer (63 → 80/100): stepped convex belly (2 tiers + dome) replacing the flat black disc; new shared `belly` material with emissive lift (no light reaches the underside); bright static additive under-ring (kept out of the pulsing glowParts driver); beacons proud of the rim and visible from below; idle shield now invisible (was a constant milky halo — flares on hit/failing only); shield hugs the hull (1.02/0.42 in the driver, was 1.18/0.48).
+- Airfield props (56/100 group critique): crates get 4 color variants, deterministic yaw/scale jitter, lid slabs, one stack; hangars closed with end gables + door insets (were open DoubleSide ribbons).
+- Contracts preserved: no new lights (pre-warm hash invariant), shared saucer mats extended (not cloned), jet userData anchors untouched, physics contact spec untouched. `bun run test` PASS after every accepted round.
+- Excluded: 15 GLB aircraft (external assets, not procedural), sprite-based birds/sun/moon/clouds.
